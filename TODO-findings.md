@@ -670,7 +670,7 @@ correções não podem mudar um único bit do áudio; se mudarem, algo está err
 `inference_bench`/`regression_gate` sem regressão > ruído. Risco: baixo-médio (toca hot path;
 mitigado pelo contrato bit-exact e pelos goldens).
 
-### EP-R2 — Ciclo de vida à prova de host hostil (R2 + R13 + R11 + R3)
+### EP-R2 — Ciclo de vida à prova de host hostil (R2 + R13 + R11 + R3) [DOING]
 
 Escopo: `Arc<DialogSharedState>` nas threads de diálogo + join com deadline no destroy da GUI
 

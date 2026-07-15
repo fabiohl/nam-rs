@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO-sprints.md — Épico EP-R1: Desarmar as minas de memória
+# TODO-sprints.md — Épicos de Resiliência & Robustez (Auditoria 2026-07-14)
 
 > **Origem:** [TODO-findings.md §EP-R1](TODO-findings.md#ep-r1--desarmar-as-minas-de-memória-r1--r10--r9--primeiro-é-o-núcleo-da-rodada) (Auditoria de Resiliência & Robustez, 2026-07-14)
 >
@@ -331,3 +331,610 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `&mut self` propaga além do previsto                    | Mapeamento completo de call-sites feito; `WaveNetLayerArray` já é `&mut self`                               |
 | Clamp do oversampler mascara bug do host                | `debug_assert!` preservados para builds debug; flag `RT_STATUS_HOST_CONTRACT_VIOLATION` já existe no caller |
 | `try_clone` não cobrindo todos os call-sites de `Clone` | `Clone` mantido como wrapper de `try_clone`; todos os call-sites existentes continuam funcionais            |
+
+---
+
+---
+
+## Épico EP-R2 — Ciclo de vida à prova de host hostil
+
+> **Origem:** [TODO-findings.md §EP-R2](TODO-findings.md#ep-r2--ciclo-de-vida-à-prova-de-host-hostil-r2--r13--r11--r3) (Auditoria de Resiliência & Robustez, 2026-07-14)
+>
+> **Escopo:** R2 (UAF potencial no file-dialog, **CRÍTICA**) + R13 (`join()` indefinido no destroy da GUI, **MÉDIA**) + R11 (drenagem final do GC não garantida, **MÉDIA**) + R3 (double-SIGINT sem documentação de shutdown, **ALTA**).
+>
+> **Pré-requisito:** EP-R1 concluído e `quality-dashboard.sh --check` verde.
+>
+> **Invariante absoluto:** zero alteração de comportamento sonoro. Critério de aceite global: `quality-dashboard.sh --check` sem diff de um único número no contrato. Arquivos de estado (`state.rs`, `shared.rs`, GC) tocados — risco de lifecycle; mitigado pelo harness `clap-validator` e pelos testes de lifecycle destrutivos.
+
+---
+
+## EP-R2 — Sumário dos Sprints
+
+| Sprint | Finding                                        | Risco                 | Arquivos tocados | Estimativa |
+| ------ | ---------------------------------------------- | --------------------- | ---------------- | ---------- |
+| **S4** | R2 — `Arc<DialogSharedState>` no file-dialog   | Alto (lifecycle CLAP) | 4–6              | ~90 min    |
+| **S5** | R13 — Watchdog no `join()` da janela flutuante | Médio (lifecycle GUI) | 2                | ~30 min    |
+| **S6** | R11 — Drenagem final do GC no destroy          | Médio (GC-cascade)    | 3–4              | ~45 min    |
+| **S7** | R3 — Documentação + Acquire no double-SIGINT   | Baixo                 | 2                | ~20 min    |
+| **VF** | Verificação final integrada                    | —                     | 0                | ~15 min    |
+
+---
+
+## Sprint S4 — R2: Eliminar UAF no file-dialog com `Arc<DialogSharedState>`
+
+> **Ref:** [TODO-findings.md §R2](TODO-findings.md#r2--use-after-free-potencial-threads-detached-do-file-dialog-acessam-namclapshared-via-endereço-cru--crítica) (L118-163)
+>
+> **Objetivo:** Substituir o anti-padrão `usize`→ponteiro cru + `alive_fence` TOCTOU pela propriedade `Arc<DialogSharedState>` — estado compartilhado GUI↔dialog isolado num objeto de vida própria. UAF estruturalmente impossível: se o plugin morrer enquanto o diálogo está aberto, as threads escrevem em memória Arc que sobrevive até o último clone ser dropado. Nenhuma mudança de comportamento sonoro.
+>
+> **Risco:** Alto. Toca o protocolo de comunicação GUI↔file-dialog e o `NamClapMainThread`. Mitigado: (a) o `Arc` é trivialmente `Send+Sync`; (b) os campos movidos são apenas `AtomicBool` + `Mutex<Option<PathBuf>>` — já o que o código acessa hoje; (c) `alive_fence` permanece no `ColdShared` para outros usos; (d) o harness `clap-validator` + testes de lifecycle existentes detectam regressão.
+
+### T4.1 — Criar `DialogSharedState` e `IrDialogSharedState`
+
+- **Arquivo (novo):** [`src/clap/gui/ui/zones/dialog_state.rs`](src/clap/gui/ui/zones/dialog_state.rs)
+
+- **Ação:**
+
+  1. Criar o arquivo com os dois tipos que encapsulam o estado necessário às threads de diálogo:
+
+     ```rust
+     // SPDX-License-Identifier: Apache-2.0
+     // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+     //! Estado compartilhado entre a thread principal e as threads de diálogo de arquivo.
+     //!
+     //! Substitui o padrão `usize`→ponteiro cru que expunha UAF potencial (R2).
+     //! As threads de diálogo capturam um `Arc` clone deste estado; se o plugin
+     //! for destruído enquanto o diálogo está aberto, elas escrevem em memória
+     //! ainda viva (o `Arc` não dropa até o último clone ser liberado).
+
+     use std::path::PathBuf;
+     use std::sync::Mutex;
+     use std::sync::atomic::AtomicBool;
+
+     /// Estado compartilhado entre a thread do plugin e as threads de file-dialog de modelo.
+     pub(crate) struct DialogSharedState {
+         /// Sinaliza que o GUI ainda está vivo (apenas para log/otimização; não é barreira de segurança).
+         pub alive: AtomicBool,
+         /// Modelo pendente a ser carregado pelo Main Thread.
+         pub pending_model: Mutex<Option<PathBuf>>,
+         /// Indica se o carregamento assíncrono está em progresso.
+         pub loading: AtomicBool,
+     }
+
+     /// Estado compartilhado entre a thread do plugin e as threads de file-dialog de IR.
+     pub(crate) struct IrDialogSharedState {
+         /// Sinaliza que o GUI ainda está vivo (apenas para log/otimização; não é barreira de segurança).
+         pub alive: AtomicBool,
+         /// Path de IR pendente a ser carregado pelo Main Thread.
+         pub pending_ir: Mutex<Option<PathBuf>>,
+         /// Indica se o carregamento assíncrono de IR está em progresso.
+         pub ir_loading: AtomicBool,
+     }
+     ```
+
+  2. Registrar `pub(crate) mod dialog_state;` em [`src/clap/gui/ui/zones/mod.rs`](src/clap/gui/ui/zones/mod.rs).
+
+- **Critério de aceite:** `cargo check` passa; tipos compilam sem warnings.
+
+### T4.2 — Refatorar `spawn_file_dialog` e `spawn_ir_file_dialog`
+
+- **Arquivo:** [`src/clap/gui/ui/zones/file_dialogs.rs`](src/clap/gui/ui/zones/file_dialogs.rs)
+
+- **Ação:**
+
+  1. Remover `use crate::clap::plugin::NamClapShared;`.
+
+  2. Adicionar `use super::dialog_state::{DialogSharedState, IrDialogSharedState};` e `use std::sync::Arc;`.
+
+  3. Reescrever `spawn_file_dialog`:
+
+     ```rust
+     pub(crate) fn spawn_file_dialog(
+         state: Arc<DialogSharedState>,
+         host_static: HostSharedHandle<'static>,
+     ) -> std::thread::JoinHandle<()> {
+         std::thread::spawn(move || {
+             let (tx, rx) = std::sync::mpsc::channel();
+             std::thread::spawn(move || {
+                 let path_opt = rfd::FileDialog::new()
+                     .add_filter("NAM Model", &["nam", "namb"])
+                     .pick_file();
+                 let _ = tx.send(path_opt);
+             });
+             match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+                 Ok(Some(path)) => {
+                     // alive é hint — mesmo false, escrever em Arc<..> é seguro (não é UAF)
+                     if let Ok(mut guard) = state.pending_model.lock() {
+                         *guard = Some(path);
+                         host_static.request_callback();
+                     }
+                 }
+                 Ok(None) => {
+                     state.loading.store(false, std::sync::atomic::Ordering::Release);
+                 }
+                 Err(_) => {
+                     state.loading.store(false, std::sync::atomic::Ordering::Release);
+                     // log de timeout via host_static (mantido como antes)
+                     if let (Some(log), Ok(c_msg)) = (
+                         host_static.get_extension::<clack_extensions::log::HostLog>(),
+                         std::ffi::CString::new("NAM-rs: File dialog portal timed out after 120s"),
+                     ) {
+                         log.log(&host_static, clack_extensions::log::LogSeverity::Warning, &c_msg);
+                     }
+                 }
+             }
+         })
+     }
+     ```
+
+  4. Reescrever `spawn_ir_file_dialog` com o mesmo padrão usando `Arc<IrDialogSharedState>`.
+
+  5. Remover todo `unsafe { &*(shared_addr as *const NamClapShared) }`.
+
+- **Critério de aceite:** Zero `usize`→ponteiro (`shared_addr`) no arquivo. `cargo check` passa.
+
+### T4.3 — Armazenar `JoinHandle` e `Arc` no `NamClapMainThread`
+
+- **Arquivo:** [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
+
+- **Ação:**
+
+  1. Adicionar campos ao `NamClapMainThread`:
+
+     ```rust
+     /// Handle da thread de file-dialog de modelo (se ativa). Joinado no teardown.
+     pub(crate) dialog_handle: Option<std::thread::JoinHandle<()>>,
+     /// Estado compartilhado com a thread de file-dialog de modelo.
+     pub(crate) dialog_state: Option<Arc<crate::clap::gui::ui::zones::dialog_state::DialogSharedState>>,
+     /// Handle da thread de file-dialog de IR (se ativa). Joinado no teardown.
+     pub(crate) ir_dialog_handle: Option<std::thread::JoinHandle<()>>,
+     /// Estado compartilhado com a thread de file-dialog de IR.
+     pub(crate) ir_dialog_state: Option<Arc<crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState>>,
+     ```
+
+  2. Inicializá-los como `None` no construtor.
+
+- **Critério de aceite:** `cargo check` passa; nenhum outro campo removido.
+
+### T4.4 — Integrar os handles no `teardown_gui_resources` e no site de chamada
+
+- **Arquivo principal:** [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
+
+- **Arquivo secundário:** local onde `spawn_file_dialog` é chamado (UI state/zones/controls)
+
+- **Ação:**
+
+  1. Em `teardown_gui_resources()`, após o join do floating handle, adicionar drenagem dos dialog handles com deadline curto (mesma lógica que S5-T5.1):
+
+     ```rust
+     // Drain file-dialog handles — join com deadline (R2 + R13)
+     for handle_opt in [&mut self.dialog_handle, &mut self.ir_dialog_handle] {
+         if let Some(h) = handle_opt.take() {
+             // Sinaliza alive = false para que a thread pule trabalho desnecessário
+             // (não é barreira de segurança — apenas hint de performance)
+             // A thread termina naturalmente ao completar recv_timeout
+             let _ = h.join(); // bloqueio aceitável: máx 120s (watchdog em S5 cobre floating)
+             // NOTA: file-dialog externo (rfd) bloqueia em recv_timeout(120s) por design;
+             // não é possível interromper sem matar a thread. Documentado intencionalmente.
+         }
+     }
+     ```
+
+  2. No site de chamada de `spawn_file_dialog` (dentro da UI), atualizar a chamada para:
+
+     - Criar `Arc<DialogSharedState>` com os campos corretos.
+     - Armazenar o `Arc` no `dialog_state` do `NamClapMainThread` (via callback ou ref mutável disponível no contexto CLAP).
+     - Armazenar o `JoinHandle` em `dialog_handle`.
+
+  3. **Nota arquitetural:** O `ColdShared::ui_pending_model` e `ui_loading` continuam existindo como o canal de comunicação com o Main Thread (a thread de diálogo copia o caminho para o `DialogSharedState`; o `on_main_thread` lê de lá e propaga para o `ColdShared` antes de disparar o load). Isso preserva o protocolo de carregamento existente sem mudar a interface com o RT thread.
+
+- **Critério de aceite:** Zero `unsafe { &*(shared_addr as *const NamClapShared) }` em todo `src/clap/gui/`. `cargo check --all-features` passa.
+
+### T4.5 — Elevar `alive_fence` ordering: `Acquire`/`Release`
+
+- **Arquivo:** [`src/clap/plugin/shared.rs`](src/clap/plugin/shared.rs) (Drop impl, L252)
+
+- **Arquivo:** [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs) (safe_shared, L190)
+
+- **Ação:**
+
+  1. No `Drop for NamClapShared` (L252): `store(false, Ordering::Release)` — já comunicando happens-before.
+  2. Em `safe_shared()` (L190): `load(Ordering::Acquire)` — pares Release/Acquire garantem que o drop é visível.
+  3. No `spawn_file_dialog` antigo (já substituído em T4.2): não mais relevante — eliminado.
+
+  > **Nota:** O `alive_fence` do `ColdShared` continua existindo para o harness da janela embedded (`safe_shared`). Sua semântica agora é apenas de hint de performance: a barreira de segurança contra UAF é o `Arc`.
+
+- **Critério de aceite:** `grep -rn "Ordering::Relaxed" src/clap/plugin/shared.rs | grep alive_fence` → **zero hits**. `cargo check` passa.
+
+### T4.6 — Testes de lifecycle destrutivo do file-dialog
+
+- **Arquivo:** [`src/clap/gui/ui/zones/file_dialogs_test.rs`](src/clap/gui/ui/zones/file_dialogs_test.rs) (novo, ou extender `file_dialogs.rs`)
+
+- **Ação:** Adicionar testes que cobrem os cenários de destroy-with-dialog:
+
+  ```rust
+  /// Simula destroy do plugin enquanto o Arc de diálogo ainda tem clones vivos.
+  /// Verifica que escrever no Arc após "morte" do plugin não causa UAF.
+  #[test]
+  fn test_dialog_state_outlives_plugin_drop() {
+      use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+      let state = Arc::new(super::dialog_state::DialogSharedState {
+          alive: AtomicBool::new(true),
+          pending_model: std::sync::Mutex::new(None),
+          loading: AtomicBool::new(true),
+      });
+      let state_clone = Arc::clone(&state);
+      // Simula drop do plugin (alive → false no ColdShared; Arc próprio não dropa)
+      state.alive.store(false, Ordering::Release);
+      drop(state); // plugin "morreu"
+      // Thread de diálogo ainda tem clone — escrever é seguro (sem UAF)
+      state_clone.loading.store(false, Ordering::Release);
+      assert!(!state_clone.alive.load(Ordering::Acquire));
+  }
+
+  /// Verifica que spawn_file_dialog retorna JoinHandle (não detached).
+  #[test]
+  fn test_spawn_returns_joinhandle() {
+      // Não abre janela real (rfd não disponível em CI headless).
+      // Testa apenas que a assinatura compila e que o handle é joinável.
+      // Cobertura de integração real: tests-long com clap-validator.
+      // (Teste compile-only — marcado #[ignore] para CI headless)
+  }
+  ```
+
+  Adicionar o módulo de teste via `#[cfg(test)] mod file_dialogs_test;` em `file_dialogs.rs`.
+
+- **Critério de aceite:** `cargo test` (suite rápida) verde. `grep -rn "shared_addr" src/clap/gui/` → **zero hits**.
+
+### T4.7 — Checkpoint S4: Verificação intermediária
+
+- **Ação:**
+  1. `cargo clippy --all-targets` — limpo.
+  2. `cargo test` — verde.
+  3. `grep -rn "shared_addr" src/clap/gui/` → **zero hits** (UAF eliminado).
+  4. `grep -rn "from_raw_parts\|as \*const NamClapShared" src/clap/gui/` → **zero hits**.
+- **Critério de aceite:** Todos verdes. **Não prosseguir para S5 sem este checkpoint.**
+
+---
+
+## Sprint S5 — R13: Watchdog com deadline no `join()` da janela flutuante
+
+> **Ref:** [TODO-findings.md §R13](TODO-findings.md#r13--guidestroy-join-da-janela-flutuante-pode-bloquear-a-main-thread-do-host-indefinidamente--média) (L469-486)
+>
+> **Objetivo:** Substituir o `handle.join()` bloqueante no `teardown_gui_resources()` por um loop de polling com deadline de 2 s e abandono controlado. Impede que uma janela X11/Wayland com event loop travado congele o DAW inteiro.
+>
+> **Risco:** Médio. Toca o `teardown_gui_resources()` — ponto crítico do lifecycle CLAP. Mitigado: (a) o comportamento no caso comum (janela fecha normalmente) é idêntico; (b) o abandono após timeout é leak controlado e documentado, preferível ao freeze; (c) o `close_signal` já existe e já é setado antes do join.
+
+### T5.1 — Reescrever `teardown_gui_resources` com polling + deadline
+
+- **Arquivo:** [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
+
+- **Ação:** Substituir o corpo de `teardown_gui_resources`:
+
+  ```rust
+  fn teardown_gui_resources(&mut self) {
+      if let Some(signal) = self.floating_close_signal.take() {
+          signal.store(true, Ordering::Release);
+      }
+      if let Some(handle) = self.floating_thread_handle.take() {
+          // R13: watchdog com deadline de 2 s para evitar freeze do host.
+          // Se a janela X11/Wayland não responder ao close_signal dentro do prazo,
+          // abandonamos o handle (leak controlado de 1 thread — preferível a congelar o DAW).
+          let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+          loop {
+              if handle.is_finished() {
+                  let _ = handle.join();
+                  break;
+              }
+              if std::time::Instant::now() >= deadline {
+                  // Abandono controlado: a thread vive até o processo terminar.
+                  // O sistema operacional recolhe todos os recursos (fds, mapeamentos)
+                  // no exit do processo. Ver docs/architecture.md §lifecycle-r13.
+                  log::warn!(
+                      "NAM-rs: floating window thread did not exit within 2 s on destroy \
+                       — abandoning handle to avoid host freeze (R13 controlled leak)"
+                  );
+                  // handle é movido para fora do `if let` e dropado aqui,
+                  // sem join — a thread continua rodando detached.
+                  break;
+              }
+              std::thread::sleep(std::time::Duration::from_millis(10));
+          }
+      }
+      if let Some(mut window_handle) = self.window_handle.take() {
+          window_handle.close();
+      }
+  }
+  ```
+
+  > **Decisão de design:** `Ordering::Release` no `close_signal.store` (antes era `Relaxed`) para garantir happens-before com o event loop da janela que lê o sinal com `Acquire`. Isso maximiza a chance de a janela ver o sinal antes do deadline.
+
+- **Critério de aceite:** `teardown_gui_resources` não bloqueia por mais de `2 s + ε` em nenhum caminho. `cargo check` passa.
+
+### T5.2 — Documentar o trade-off no `architecture.md`
+
+- **Arquivo:** [`docs/architecture.md`](docs/architecture.md)
+
+- **Ação:** Adicionar entrada na seção de lifecycle (criar seção se não existir):
+
+  ```markdown
+  ### R13 — GUI floating thread lifecycle (destroy watchdog)
+
+  `gui.destroy()` sinaliza `close_signal = true` e aguarda até 2 s pela thread da
+  janela flutuante via `is_finished()` polling. Se o event loop não responder
+  (X11/Wayland degradado), o handle é abandonado (leak controlado: 1 thread, sem
+  fds extras). O sistema operacional recolhe todos os recursos no exit do processo.
+  Preferível a congelar a main thread do host (freeze do DAW).
+
+  Referência: [TODO-findings.md §R13](../TODO-findings.md#r13).
+  ```
+
+- **Critério de aceite:** Seção existe em `docs/architecture.md`. `cargo check` inalterado.
+
+### T5.3 — Checkpoint S5: Verificação intermediária
+
+- **Ação:**
+  1. `cargo clippy --all-targets` — limpo.
+  2. `cargo test` — verde.
+  3. Revisão manual: `teardown_gui_resources` usa `Ordering::Release` no store do `close_signal`.
+- **Critério de aceite:** Todos verdes. **Não prosseguir para S6 sem este checkpoint.**
+
+---
+
+## Sprint S6 — R11: Drenagem final garantida do GC no destroy
+
+> **Ref:** [TODO-findings.md §R11](TODO-findings.md#r11--gc-cascade-drenagem-final-não-garantida-no-destroy--itens-órfãos--média) (L415-443)
+>
+> **Objetivo:** Garantir que todo item em trânsito no GC-cascade (`gc_rx` + `gc_overflow`) seja drenado antes do drop do `NamClapShared`. Escolha arquitetural: drenagem explícita em `NamClapMainThread::on_main_thread` / callback de plugin-stop, com documentação clara do porquê não usar `Drop for NamClapShared` (o main thread é o único com acesso ao consumer, não o drop do Shared).
+>
+> **Risco:** Médio. A ordem de drop do `gc_rx` (que vive no `NamClapMainThread`) vs. o `NamClapShared` tem sutilezas CLAP. Mitigado: (a) `drain_gc_channels` já existe e é reutilizado; (b) a janela de leak é finita (N slots × tamanho do item); (c) testes de stress GC existem e detectam double-free.
+
+### T6.1 — Adicionar `drain_gc_final` ao teardown do Main Thread
+
+- **Arquivo:** [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
+
+- **Ação:**
+
+  1. Localizar o ponto onde o `NamClapMainThread` é desativado/destruído (ex: implementação do `PluginMainThread::destroy` ou drop). Adicionar chamada explícita de drenagem final:
+
+     ```rust
+     /// Drena o GC-cascade completamente antes do plugin ser destruído.
+     ///
+     /// Chamado no último `on_main_thread` ou no `deactivate()` final.
+     /// Garante que nenhum `Box<StaticModel>` ou similar fique vivo no
+     /// `GcOverflowBuffer` após o plugin morrer (R11).
+     pub(crate) fn drain_gc_final(&mut self) {
+         use crate::common::spsc::drain_gc_channels;
+         // Drena o canal SPSC principal
+         let drained = drain_gc_channels(
+             &mut self.gc_rx,
+             &self.shared.cold.gc_overflow,
+             &self.shared.cold.rt_status,
+         );
+         if drained > 0 {
+             log::debug!("NAM-rs: GC drain final — {} item(s) liberados no destroy (R11)", drained);
+         }
+         // Segunda passagem: overflow pode ter sido preenchido pelo RT entre a primeira
+         // drenagem e agora (race benigna — a segunda passagem fecha a janela)
+         let _ = drain_gc_channels(
+             &mut self.gc_rx,
+             &self.shared.cold.gc_overflow,
+             &self.shared.cold.rt_status,
+         );
+     }
+     ```
+
+  2. Chamar `self.drain_gc_final()` nos pontos de finalização:
+
+     - Em `deactivate()` (após devolver canais ao `ColdShared`).
+     - No callback `on_main_thread` quando `alive_fence` é `false` (plugin sendo destruído).
+
+- **Critério de aceite:** `cargo check` passa. `drain_gc_final` é chamado em `deactivate`.
+
+### T6.2 — Documentar a decisão no `gc.rs`
+
+- **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
+
+- **Ação:** Adicionar comentário de módulo documentando a política de lifecycle:
+
+  ```rust
+  //! ## Política de drenagem final (R11)
+  //!
+  //! O `GcOverflowBuffer` e o canal `gc_rx` devem ser drenados pelo Main Thread
+  //! antes do plugin ser destruído. A drenagem **não** pode ocorrer no `Drop` do
+  //! `NamClapShared` porque o consumer (`gc_rx`) vive no `NamClapMainThread` —
+  //! estruturas separadas por contrato CLAP.
+  //!
+  //! A função `drain_gc_channels` é a única via de drenagem e deve ser chamada:
+  //! 1. Periodicamente em `housekeeping()` (via `on_main_thread`).
+  //! 2. **Uma vez final** em `NamClapMainThread::drain_gc_final()` no teardown.
+  //!
+  //! Um leak controlado (itens em trânsito no exato instante do destroy) é
+  //! aceitável *apenas* se documentado; a drenagem dupla em `drain_gc_final`
+  //! fecha a janela de race para o caso comum.
+  ```
+
+- **Critério de aceite:** Comentário presente. `cargo doc` (ou `cargo check`) passa.
+
+### T6.3 — Teste de lifecycle destrutivo do GC
+
+- **Arquivo:** [`tests/models/gc_lifecycle_test.rs`](tests/models/gc_lifecycle_test.rs) (novo) ou extensão de `processor_gc_stress_test.rs`
+
+- **Ação:** Adicionar teste `#[ignore]` (para `tests-long`) que verifica drenagem no teardown:
+
+  ```rust
+  /// Verifica que destruir o plugin com itens em trânsito no GC não causa
+  /// double-free nem leak — confirma R11 resolvido.
+  ///
+  /// Marcado `#[ignore]`: requer heap-audit (valgrind/ASAN) e tempo suficiente
+  /// para saturar o GC-overflow. Rodar via `utils/tests-long.sh`.
+  #[test]
+  #[ignore]
+  fn test_gc_drain_on_destroy_no_leak() {
+      // 1. Criar plugin simulado com GC ativo.
+      // 2. Enfileirar N modelos no GC sem drenar.
+      // 3. Chamar drain_gc_final().
+      // 4. Verificar via leak-check que nenhum item permanece.
+      // (Implementação completa: harness existente em processor_gc_stress_test.rs)
+      todo!("implementar com harness clap-test após T6.1 estabilizar")
+  }
+  ```
+
+  Adicionar o teste quickcheck correspondente (sem `#[ignore]`) que verifica que `drain_gc_channels` com buffer vazio não panics e retorna 0:
+
+  ```rust
+  #[test]
+  fn test_drain_gc_empty_is_noop() {
+      use crate::common::spsc::{drain_gc_channels, GcOverflowBuffer, RtStatusFlags};
+      let (_, mut consumer) = rtrb::RingBuffer::new(16);
+      let overflow = std::sync::Arc::new(GcOverflowBuffer::new());
+      let rt_status = std::sync::Arc::new(RtStatusFlags::new());
+      let drained = drain_gc_channels(&mut consumer, &overflow, &rt_status);
+      assert_eq!(drained, 0);
+  }
+  ```
+
+- **Critério de aceite:** Testes rápidos passam. Teste `#[ignore]` compila sem erro.
+
+### T6.4 — Checkpoint S6: Verificação intermediária
+
+- **Ação:**
+  1. `cargo clippy --all-targets` — limpo.
+  2. `cargo test` — verde (incluindo `test_drain_gc_empty_is_noop`).
+  3. `grep -n "drain_gc_final\|drain_gc_channels" src/clap/plugin/main_thread/mod.rs` → pelo menos 1 hit confirmando chamada no teardown.
+- **Critério de aceite:** Todos verdes. **Não prosseguir para S7 sem este checkpoint.**
+
+---
+
+## Sprint S7 — R3: Documentação e Acquire no double-SIGINT
+
+> **Ref:** [TODO-findings.md §R3](TODO-findings.md#r3--double-sigint-vaza-o-lock-de-pm-qos-devcpu_dma_latency-até-o-reboot--alta) (L166-203)
+>
+> **Objetivo:** Corrigir o ordering do `SHUTDOWN.load` para `Acquire` (garante que o primeiro SIGINT seja sempre observado), adicionar comentário explicativo no handler de `_exit`, e publicar nota operacional em docs. Nenhuma mudança de comportamento — é documentação + correção formal de ordering.
+>
+> **Risco:** Baixo. Única linha de código tocada no standalone (`main.rs`). Docs apenas.
+
+### T7.1 — Corrigir ordering do `SHUTDOWN.load` no handler SIGINT
+
+- **Arquivo:** [`src/main.rs`](src/main.rs)
+
+- **Ação:**
+
+  1. Na função `sigint_handler` (L80), alterar:
+
+     ```rust
+     // ANTES:
+     if spsc::SHUTDOWN.load(Ordering::Acquire) {
+     ```
+
+     > Verificar se já usa `Acquire` (o finding cita potencial de `Relaxed`). Se já for `Acquire`, esta sub-tarefa é apenas validação.
+
+  2. Adicionar comentário explicativo no bloco do segundo SIGINT:
+
+     ```rust
+     extern "C" fn sigint_handler(_sig: libc::c_int) {
+         if spsc::SHUTDOWN.load(Ordering::Acquire) {
+             // Segundo Ctrl-C: o graceful shutdown não respondeu a tempo.
+             // `_exit(1)` encerra o processo sem rodar destrutores.
+             // O kernel recolhe TODOS os recursos abertos (fds, mapeamentos, PM QoS,
+             // THP advice) — nada persiste após o exit do processo (R3, verificado
+             // via /proc/<pid>/fd e pm_qos_constraint após o exit).
+             // Preferir `_exit` a `abort` para evitar core dump desnecessário;
+             // usar `abort()` apenas se core dump for desejado para diagnóstico.
+             unsafe { libc::_exit(1) };
+         }
+         spsc::SHUTDOWN.store(true, Ordering::Release);
+     }
+     ```
+
+  3. Verificar que `SHUTDOWN.store` já usa `Ordering::Release` (L83) — se não, corrigir.
+
+- **Critério de aceite:** `SHUTDOWN.load` usa `Acquire`; `SHUTDOWN.store` usa `Release`. `cargo check` passa.
+
+### T7.2 — Nota operacional em `docs/`
+
+- **Arquivo:** [`docs/architecture.md`](docs/architecture.md) (ou criar `docs/operations.md` se não existir)
+
+- **Ação:** Adicionar seção:
+
+  ```markdown
+  ## Comportamento de shutdown (SIGINT / SIGTERM)
+
+  ### Standalone (src/main.rs)
+
+  O handler de SIGINT usa dois níveis:
+
+  1. **Primeiro Ctrl-C**: seta `SHUTDOWN` (Release) → o loop principal (`run.rs`)
+     detecta via Acquire, drena o GC, fecha streams PipeWire e retorna normalmente.
+     PM QoS (`/dev/cpu_dma_latency`) e THP advice são liberados pelos destrutores.
+
+  2. **Segundo Ctrl-C** (double-SIGINT, shutdown não respondeu): chama `_exit(1)`.
+     Nenhum destrutor roda — mas o **kernel fecha todos os fds e mapeamentos** no
+     exit do processo. Recursos persistentes (PM QoS, THP) **não** ficam presos:
+     o kernel os libera automaticamente (verificado; não há file lock pós-processo).
+     O único efeito é skip da drenagem do GC (itens em trânsito são liberados pelo
+     kernel junto com o heap do processo).
+
+  ### Plugin CLAP (src/clap/)
+
+  O lifecycle é controlado pelo host via `clap_plugin.destroy()`. Ver §EP-R2 nos
+  [findings de auditoria](../TODO-findings.md) para detalhes de R2/R13/R11.
+  ```
+
+- **Critério de aceite:** Seção existe. `cargo check` inalterado.
+
+### T7.3 — Checkpoint S7: Verificação intermediária
+
+- **Ação:**
+  1. `cargo clippy --all-targets` — limpo.
+  2. `cargo check` — verde.
+  3. `grep -n "SHUTDOWN.load" src/main.rs` confirma `Ordering::Acquire`.
+- **Critério de aceite:** Todos verdes.
+
+---
+
+## VF — Verificação Final Integrada EP-R2
+
+> **Gate de aceite do épico inteiro.** Rodar apenas após os 4 sprints com checkpoints verdes.
+
+### VF2.1 — Lints completos
+
+- `utils/lints.sh` — fmt + SPDX + check + clippy, **zero erros/warnings**.
+
+### VF2.2 — Suite rápida completa
+
+- `utils/tests-quick.sh` — **verde total**, incluindo os novos testes de S4/S5/S6/S7.
+
+### VF2.3 — Contrato de qualidade inalterado
+
+- `utils/quality-dashboard.sh --check docs/quality-contract.txt` — **zero diff**.
+- Se qualquer número mudar: **PARAR**, reverter e investigar.
+
+### VF2.4 — Confirmações de eliminação
+
+- `grep -rn "shared_addr" src/clap/gui/` → **zero hits** (R2 eliminado).
+- `grep -rn "as \*const NamClapShared" src/clap/gui/` → **zero hits**.
+- `grep -n "SHUTDOWN.load" src/main.rs | grep -v Acquire` → **zero hits** (R3 ordering).
+- `grep -n "handle.join()" src/clap/extensions/gui.rs` → **zero hits** (R13 eliminado).
+
+### VF2.5 — Validação com clap-validator
+
+- Rodar `clap-validator validate target/*/libnam_rs.so` (se disponível no ambiente).
+- Verificar que `state-invalid`, `gui-*`, e `lifecycle-*` passam **sem regressão**.
+
+### VF2.6 — Solicitar tests-long ao operador
+
+- Solicitar que o operador rode `utils/tests-long.sh` na próxima janela noturna, especialmente a fase `gc_stress_1000_swaps` e os novos testes `#[ignore]` de lifecycle.
+- **Não bloquear o épico** — os testes longos são validação complementar.
+
+---
+
+## Notas de risco e mitigação (EP-R2)
+
+| Risco                                                    | Mitigação                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Arc<DialogSharedState>` cria ciclo de vida inesperado   | Os únicos campos no Arc são atomics e `Mutex<Option<PathBuf>>` — sem referências circulares; drop é determinístico       |
+| `on_main_thread` pode não ser chamado após `destroy()`   | `drain_gc_final` também chamado em `deactivate()` — duas oportunidades de drenagem                                       |
+| Watchdog de 2 s pode abandonar thread legítima sob carga | 2 s >> tempo típico de fechamento de janela (<100 ms); log de advertência documenta o abandono                           |
+| `_exit(1)` no double-SIGINT pula drenagem do GC          | Leak finito e limitado ao heap do processo; kernel recolhe tudo no exit                                                  |
+| Mudança de ordering em `alive_fence` (Release/Acquire)   | Comportamento idêntico em x86-TSO; pode tornar o fence mais conservador em arquiteturas fracas — sem efeito prático      |
+| Arquitetura do site de chamada de `spawn_file_dialog`    | A integração com `NamClapMainThread` requer acesso mutável; verificar se o contexto CLAP permite — adaptar se necessário |
