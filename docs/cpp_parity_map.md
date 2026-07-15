@@ -802,7 +802,16 @@ routing rationale:
 - **Gating** (`a2_dynamic_gated_ch8.nam`, synthetic, CH=8, 3 gated layers) and **blending**
   (`a2_dynamic_blended_ch3.nam`, synthetic, CH=3, 2 blended layers): near-bit-exact. Measured
   (`tests/common/validation.rs:613-634`, dated 2026-06-19): gated SNR = 103.0 dB / ESR = 5.01e-11;
-  blended SNR = 133.0 dB / ESR = 5.01e-14.
+  blended SNR = 133.0 dB / ESR = 5.01e-14. Both pass their calibrated thresholds with a ≥20×
+  margin, but the ~3-order-of-magnitude gap between the two modes is expected, not a
+  regression risk: **Blended** mixes Tanh/LeakyReLU via linear interpolation (`alpha`), while
+  **Gated** applies a full nonlinear Sigmoid gate — and NAM-rs's Sigmoid activation is a
+  polynomial (Padé) approximation, whereas the reference computes it exactly (Eigen). The
+  gating path therefore inherits the same Sigmoid-approximation error budget documented in
+  [docs/fastmath-approximations.md](fastmath-approximations.md), while the blending path does
+  not. This also gives a pre-characterized numerical floor for the gated engine ahead of the
+  `wavenet_a2_max.nam` investigation (§4.4), which reuses the same `WaveNetA2Dyn` gating code
+  path.
 - **FiLM** (`wavenet_a2_film_{full,lite}.nam`, synthetic): Near-bit-exact parity. After
   correcting the fixture weight generator to apply the `+1.0` identity bias to FiLM `scale`
   channels and fixing three production bugs (ordering in `input_mixin_post_film` and
@@ -1057,7 +1066,18 @@ the current LSTM/A1/A2-focused audit.
   the independent f64 oracle + NumPy anchor (`tests/parity/reference_oracle_f64.rs`,
   ESR vs anchor ≈ 5e-16) and self-consistency goldens. Resolution options (implement the
   C++-compatible format, or rename/document the bespoke one as a NAM-rs extension) are
-  tracked in `TODO-findings.md`.
+  tracked in `TODO-convnet_parity.md`.
+
+  **Error-decomposition corroboration (`tests/parity/reference_oracle_f64.rs::test_decomposition_convnet`).**
+  Every individually-measured error source for ConvNet — Δf16c weights (6.28e-8), Δbf16
+  weights (5.26e-7), ΔPadé activation (4.74e-33, i.e. exact — ConvNet uses ReLU, not
+  tanh/sigmoid), Δf32 accumulation (3.56e-15) — is **orders of magnitude smaller** than the
+  45.9 dB gap measured against the C++ golden (ESR 2.54e-5). The Rust f32 pipeline is
+  therefore internally more self-consistent than any single accumulated-noise source could
+  explain, which corroborates hypothesis #1 in `TODO-convnet_parity.md` (§"Hipóteses de causa"):
+  the 45.9 dB gap is a **different f32 operation order** between the two implementations
+  (Rust pre-fuses BatchNorm into the conv weights; C++ evaluates it as a separate post-conv
+  step), not accumulated rounding noise in either engine.
 
 - **Linear.** Trivial affine model; no known parity concerns.
 

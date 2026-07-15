@@ -14,7 +14,7 @@ NAM-rs targets low-latency DSP processing and neural inference for audio equipme
 - **Virtual Sink (Audio/Sink):** NAM-rs declares itself as the default sound output via `pw_stream`. Apps connect automatically via WirePlumber.
 - **Playback Stream (Stream/Output):** A second stream reads the processed audio and delivers it to the physical hardware, bypassing the limitations of monitor ports on virtual sinks.
 - **DspBridge (Lock-Free Double-Buffer):** An aligned structure (128B) that isolates the streams. Capture writes to the inactive buffer (Release); playback reads from the active one (Acquire), synchronized by `AtomicU64` (generation).
-- **True Stereo and Bypass:** Symmetric L/R inference in Standalone/Pipewire mode. Since the NAM standard is mono by definition, stereo operation is a convenience feature implemented in standalone. If R is silent or identical to L, the system skips R inference (saving ~50% CPU).
+- **True Stereo and Bypass:** Symmetric L/R inference in Standalone/Pipewire mode. Since the NAM standard is mono by definition, stereo operation is a convenience feature implemented in standalone. If R is silent or identical to L, the system skips R inference (saving ~50% CPU). Because each channel owns an independent model instance, `load_and_build_model()` (`src/loader/build.rs`) calls the dispatcher twice — once per channel — so seeing each `[Dispatcher] ... built` line twice in the log for a single model load is expected in stereo mode, not a duplicated parse.
 
 > **Note:** The Dual-Stream topology is preferred over `pw_filter` because it guarantees automatic "plug-and-play" routing by WirePlumber and due to the maturity of the safe wrappers in the `pipewire` crate.
 
@@ -131,6 +131,12 @@ For multi-array WaveNet models, the head accumulator of the second layer array (
 > **Decision:** The `MirroredBuffer` structure performs virtual memory mirroring by mapping the same physical block twice consecutively to avoid logical wrap-around in the DSP hot-path. On Linux, it attempts allocating 2 MB explicit HugeTLB pages (MAP_HUGETLB / MFD_HUGETLB) to reduce TLB pressure, falling back to regular pages with THP (madvise MADV_HUGEPAGE + MADV_COLLAPSE), and finally standard 4 KB pages. For non-Linux platforms, a fallback (stub) is provided that returns an incompatibility error (`Unsupported`).
 >
 > **Trade-off:** Using `memfd_create` on Linux offers an ideal way to allocate mirrored buffers without creating files on physical disk and without requiring complex cleanup on the filesystem. Buffer sizing is rounded up to the least common multiple of standard/huge page sizes and `elem_multiple * sizeof(T)` to keep ring arithmetic correct. Since the production ecosystem of NAM-rs is exclusively focused on Linux (Standalone PipeWire and CLAP plugin), the implementation of stubs for other platforms is sufficient for static compilation portability of the crate.
+>
+> **Note:** `MirroredBuffer::new_aligned` (`src/dsp/mirror_buf/alloc.rs`) calls `libc::close(fd)`
+> immediately after both `mmap(MAP_SHARED)` calls succeed. This is intentional and safe on
+> Linux ≥ 4.0: `MAP_SHARED` mappings keep the underlying pages resident independently of the
+> file descriptor's lifetime, so closing the fd early frees a kernel resource without
+> invalidating either mapping. The mappings themselves are released in `Drop` via `munmap`.
 
 ## 3. Time Management and Isolation (Strict RT)
 

@@ -239,6 +239,13 @@ The following table maps every test suite, target, or binary to the features it 
 | **`clap_multi_instance`**           | Integration | `clap-plugin`               | No                        | No                       | No                              | **Yes** (Phase 5)                    | Multi-instance safety, proving host parameters and state do not bleed                                                                                                    |
 | **`clap-validator`**                | External    | CLAP dynamic plugin         | No                        | No                       | No                              | **Yes** (Phase 5)                    | Strict validation of the `.so` binary against official CLAP interface rules                                                                                              |
 
+> **Expected validator noise:** `clap-validator`'s `state-invalid` test intentionally loads an
+> empty state buffer and asserts the plugin returns `false`. The `[CLAP_PLUGIN_ERROR] Empty
+> state buffer` line this produces in the validator's own output is emitted by the validator
+> host-side logger reacting to that `false`, not by NAM-rs — the plugin itself logs the same
+> condition at `LogSeverity::Debug` (`src/clap/extensions/state.rs:92-93`). Seeing this line
+> with the `state-invalid` sub-test `PASSED` is the expected, correct outcome.
+
 ---
 
 ## 4. Summary of Decoupled Sprints (Long Audits)
