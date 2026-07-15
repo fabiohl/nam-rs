@@ -92,6 +92,15 @@ impl WaveNetLayerState {
         })
     }
 
+    /// Fallible clone for activation paths where panic must not cross FFI.
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(Self {
+            layer_buffer: self.layer_buffer.try_clone()?,
+            buffer_start: self.buffer_start,
+            receptive_field_size: self.receptive_field_size,
+        })
+    }
+
     /// Executes one Ring Buffer pointer step. If it reaches the margin, it wraps back to the start.
     pub fn advance_frames(&mut self, num_frames: usize, channels: usize) {
         self.buffer_start += num_frames;

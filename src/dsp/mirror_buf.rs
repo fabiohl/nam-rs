@@ -173,18 +173,23 @@ impl<T> Drop for MirroredBuffer<T> {
     }
 }
 
+impl<T: Clone> MirroredBuffer<T> {
+    /// Fallible clone — returns `Err` on allocation failure instead of panicking.
+    ///
+    /// Preferred over `Clone::clone()` in CLAP activation paths where panic
+    /// would cross the FFI boundary.
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        let mut new_buf = Self::new(self.size_elements)?;
+        new_buf[..self.size_elements].clone_from_slice(&self[..self.size_elements]);
+        Ok(new_buf)
+    }
+}
+
 impl<T: Clone> Clone for MirroredBuffer<T> {
     #[cold]
     fn clone(&self) -> Self {
-        match Self::new(self.size_elements) {
-            Ok(mut new_buf) => {
-                new_buf[..self.size_elements].clone_from_slice(&self[..self.size_elements]);
-                new_buf
-            }
-            Err(err) => {
-                std::panic::panic_any(format!("Failed to clone MirroredBuffer: {:?}", err));
-            }
-        }
+        self.try_clone()
+            .expect("MirroredBuffer::clone: allocation failed (use try_clone for fallible path)")
     }
 }
 

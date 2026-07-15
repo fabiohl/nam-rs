@@ -201,7 +201,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Caminho off-RT (ativação/reconfiguração).
 
-### T3.1 — Adicionar `try_clone()` ao `MirroredBuffer`
+### T3.1 — Adicionar `try_clone()` ao `MirroredBuffer` [DONE]
 
 - **Arquivo:** [`src/dsp/mirror_buf.rs`](src/dsp/mirror_buf.rs)
 
@@ -238,7 +238,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Zero `panic_any` no arquivo. `cargo check` passa.
 
-### T3.2 — Adicionar `try_clone()` ao `WaveNetLayerState`
+### T3.2 — Adicionar `try_clone()` ao `WaveNetLayerState`[DONE]
 
 - **Arquivo:** [`src/models/wavenet/common.rs`](src/models/wavenet/common.rs)
 
@@ -257,7 +257,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa; `WaveNetLayerState` continua derivando `Clone` (para usos não-FFI), mas agora tem `try_clone` disponível para ativação CLAP.
 
-### T3.3 — Teste de fault injection para `try_clone`
+### T3.3 — Teste de fault injection para `try_clone` [DONE]
 
 - **Arquivo:** [`tests/models/mirror_buf_fault_injection.rs`](tests/models/mirror_buf_fault_injection.rs)
 
@@ -284,7 +284,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Teste novo passa. Teste existente `test_mirror_buf_mmap_failure_injection` inalterado.
 
-### T3.4 — Checkpoint S3: Verificação intermediária
+### T3.4 — Checkpoint S3: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo.
