@@ -24,6 +24,16 @@ impl<'a> NamClapMainThread<'a> {
         if let Some(handle) = self.floating_thread_handle.take() {
             let _ = handle.join();
         }
+        for sink in [
+            &self.shared.cold.dialog_handle_sink,
+            &self.shared.cold.ir_dialog_handle_sink,
+        ] {
+            if let Ok(mut guard) = sink.lock()
+                && let Some(h) = guard.take()
+            {
+                let _ = h.join();
+            }
+        }
         if let Some(mut window_handle) = self.window_handle.take() {
             window_handle.close();
         }

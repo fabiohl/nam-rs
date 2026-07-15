@@ -23,7 +23,7 @@ mod simd;
 pub mod state;
 mod status_bar;
 mod vsep;
-mod zones;
+pub(crate) mod zones;
 
 pub use colors::{
     COL_ACCENT, COL_AMBER, COL_BG, COL_BORDER, COL_BYPASS_OFF, COL_MUTED, COL_PANEL, COL_TEXT,

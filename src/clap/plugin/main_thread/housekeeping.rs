@@ -159,6 +159,15 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
+        // Propagate dialog_state → ui_pending_model (R2: Arc-backed, UAF-safe)
+        if let Some(dialog_state) = self.shared.cold.dialog_state.as_ref()
+            && let Ok(mut dialog_guard) = dialog_state.pending_model.lock()
+            && let Some(path) = dialog_guard.take()
+            && let Ok(mut ui_guard) = self.shared.cold.ui_pending_model.lock()
+        {
+            *ui_guard = Some(path);
+        }
+
         // Check if there is a pending model sent by the UI
         let pending_model = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock()
         {
@@ -201,6 +210,16 @@ impl<'a> NamClapMainThread<'a> {
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         {
             use crate::clap::plugin::ClapParamPayload;
+
+            // Propagate ir_dialog_state → ui_pending_ir (R2: Arc-backed, UAF-safe)
+            if let Some(ir_dialog_state) = self.shared.cold.ir_dialog_state.as_ref()
+                && let Ok(mut dialog_guard) = ir_dialog_state.pending_ir.lock()
+                && let Some(path) = dialog_guard.take()
+                && let Ok(mut ui_guard) = self.shared.cold.ui_pending_ir.lock()
+            {
+                *ui_guard = Some(path);
+            }
+
             let pending_ir = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_ir.lock() {
                 pending_guard.take()
             } else {

@@ -140,6 +140,10 @@ impl DefaultPluginFactory for NamClapPlugin {
                 slimmable_rx: Mutex::new(Some(slimmable_rx)),
                 full_wavenet_model: Mutex::new(None),
                 pending_model: Mutex::new(None),
+                dialog_state: None,
+                ir_dialog_state: None,
+                dialog_handle_sink: Mutex::new(None),
+                ir_dialog_handle_sink: Mutex::new(None),
             },
         })
     }
@@ -211,6 +215,14 @@ impl DefaultPluginFactory for NamClapPlugin {
             floating_thread_handle: None,
             #[cfg(feature = "clap-plugin")]
             floating_close_signal: None,
+            #[cfg(feature = "clap-plugin")]
+            dialog_handle: None,
+            #[cfg(feature = "clap-plugin")]
+            dialog_state: None,
+            #[cfg(feature = "clap-plugin")]
+            ir_dialog_handle: None,
+            #[cfg(feature = "clap-plugin")]
+            ir_dialog_state: None,
         };
 
         Ok(main_thread)

@@ -202,6 +202,16 @@ pub struct ColdShared {
     /// deferred to avoid heap allocation on the audio thread (F3 fix).
     /// See `flush_pending_model()` in load.rs and housekeeping.rs.
     pub pending_model: Mutex<Option<PendingModel>>,
+    /// Dialog state for model file-dialog (Arc-backed, UAF-safe). Initialized on main thread.
+    pub(crate) dialog_state:
+        Option<Arc<crate::clap::gui::ui::zones::dialog_state::DialogSharedState>>,
+    /// Dialog state for IR file-dialog (Arc-backed, UAF-safe). Initialized on main thread.
+    pub(crate) ir_dialog_state:
+        Option<Arc<crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState>>,
+    /// Sink for model dialog thread handle (written by UI, read by main thread for join).
+    pub(crate) dialog_handle_sink: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Sink for IR dialog thread handle (written by UI, read by main thread for join).
+    pub(crate) ir_dialog_handle_sink: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 /// Model payload deferred from the main thread until `buffer_size` is known

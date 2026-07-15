@@ -48,6 +48,24 @@ pub struct NamClapMainThread<'a> {
     /// Close signal for the floating window.
     #[cfg(feature = "clap-plugin")]
     pub floating_close_signal: Option<Arc<AtomicBool>>,
+    /// Handle da thread de file-dialog de modelo (se ativa). Joinado no teardown.
+    #[cfg(feature = "clap-plugin")]
+    #[allow(dead_code)]
+    pub(crate) dialog_handle: Option<std::thread::JoinHandle<()>>,
+    /// Estado compartilhado com a thread de file-dialog de modelo.
+    #[cfg(feature = "clap-plugin")]
+    #[allow(dead_code)]
+    pub(crate) dialog_state:
+        Option<Arc<crate::clap::gui::ui::zones::dialog_state::DialogSharedState>>,
+    /// Handle da thread de file-dialog de IR (se ativa). Joinado no teardown.
+    #[cfg(feature = "clap-plugin")]
+    #[allow(dead_code)]
+    pub(crate) ir_dialog_handle: Option<std::thread::JoinHandle<()>>,
+    /// Estado compartilhado com a thread de file-dialog de IR.
+    #[cfg(feature = "clap-plugin")]
+    #[allow(dead_code)]
+    pub(crate) ir_dialog_state:
+        Option<Arc<crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState>>,
 }
 
 impl<'a> NamClapMainThread<'a> {

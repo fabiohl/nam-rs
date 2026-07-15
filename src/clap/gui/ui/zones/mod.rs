@@ -3,6 +3,7 @@
 
 mod bypass_zone;
 mod controls;
+pub(crate) mod dialog_state;
 mod file_dialogs;
 mod identity;
 mod meters;

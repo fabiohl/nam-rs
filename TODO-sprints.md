@@ -368,7 +368,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Alto. Toca o protocolo de comunicação GUI↔file-dialog e o `NamClapMainThread`. Mitigado: (a) o `Arc` é trivialmente `Send+Sync`; (b) os campos movidos são apenas `AtomicBool` + `Mutex<Option<PathBuf>>` — já o que o código acessa hoje; (c) `alive_fence` permanece no `ColdShared` para outros usos; (d) o harness `clap-validator` + testes de lifecycle existentes detectam regressão.
 
-### T4.1 — Criar `DialogSharedState` e `IrDialogSharedState`
+### T4.1 — Criar `DialogSharedState` e `IrDialogSharedState` [DONE]
 
 - **Arquivo (novo):** [`src/clap/gui/ui/zones/dialog_state.rs`](src/clap/gui/ui/zones/dialog_state.rs)
 
@@ -415,7 +415,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa; tipos compilam sem warnings.
 
-### T4.2 — Refatorar `spawn_file_dialog` e `spawn_ir_file_dialog`
+### T4.2 — Refatorar `spawn_file_dialog` e `spawn_ir_file_dialog` [DONE]
 
 - **Arquivo:** [`src/clap/gui/ui/zones/file_dialogs.rs`](src/clap/gui/ui/zones/file_dialogs.rs)
 
@@ -472,7 +472,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Zero `usize`→ponteiro (`shared_addr`) no arquivo. `cargo check` passa.
 
-### T4.3 — Armazenar `JoinHandle` e `Arc` no `NamClapMainThread`
+### T4.3 — Armazenar `JoinHandle` e `Arc` no `NamClapMainThread` [DONE]
 
 - **Arquivo:** [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
 
@@ -495,7 +495,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa; nenhum outro campo removido.
 
-### T4.4 — Integrar os handles no `teardown_gui_resources` e no site de chamada
+### T4.4 — Integrar os handles no `teardown_gui_resources` e no site de chamada [DONE]
 
 - **Arquivo principal:** [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
 
@@ -545,7 +545,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `grep -rn "Ordering::Relaxed" src/clap/plugin/shared.rs | grep alive_fence` → **zero hits**. `cargo check` passa.
 
-### T4.6 — Testes de lifecycle destrutivo do file-dialog
+### T4.6 — Testes de lifecycle destrutivo do file-dialog [DONE]
 
 - **Arquivo:** [`src/clap/gui/ui/zones/file_dialogs_test.rs`](src/clap/gui/ui/zones/file_dialogs_test.rs) (novo, ou extender `file_dialogs.rs`)
 
@@ -585,7 +585,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo test` (suite rápida) verde. `grep -rn "shared_addr" src/clap/gui/` → **zero hits**.
 
-### T4.7 — Checkpoint S4: Verificação intermediária
+### T4.7 — Checkpoint S4: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo.

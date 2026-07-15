@@ -112,12 +112,15 @@ pub(crate) fn draw_zone1_identity(
 
             if load_clicked && !shared.cold.ui_loading.load(Ordering::Relaxed) {
                 shared.cold.ui_loading.store(true, Ordering::Relaxed);
-                let shared_addr = shared as *const NamClapShared as usize;
                 let host_static: clack_plugin::host::HostSharedHandle<'static> =
                     // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                     unsafe { crate::clap::gui::extend_host_lifetime(*host) };
-                let alive_fence = Arc::clone(&shared.cold.alive_fence);
-                spawn_file_dialog(shared_addr, host_static, alive_fence);
+                if let Some(dialog_state_arc) = shared.cold.dialog_state.as_ref() {
+                    let handle = spawn_file_dialog(Arc::clone(dialog_state_arc), host_static);
+                    if let Ok(mut guard) = shared.cold.dialog_handle_sink.lock() {
+                        *guard = Some(handle);
+                    }
+                }
             }
 
             ui.add_space(6.0);
@@ -261,12 +264,15 @@ pub(crate) fn draw_zone1_identity(
 
             if load_ir_clicked && !ir_loading {
                 shared.cold.ui_ir_loading.store(true, Ordering::Relaxed);
-                let shared_addr = shared as *const NamClapShared as usize;
                 let host_static: clack_plugin::host::HostSharedHandle<'static> =
                     // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                     unsafe { crate::clap::gui::extend_host_lifetime(*host) };
-                let alive_fence = Arc::clone(&shared.cold.alive_fence);
-                spawn_ir_file_dialog(shared_addr, host_static, alive_fence);
+                if let Some(ir_dialog_state_arc) = shared.cold.ir_dialog_state.as_ref() {
+                    let handle = spawn_ir_file_dialog(Arc::clone(ir_dialog_state_arc), host_static);
+                    if let Ok(mut guard) = shared.cold.ir_dialog_handle_sink.lock() {
+                        *guard = Some(handle);
+                    }
+                }
             }
 
             ui.add_space(4.0);
