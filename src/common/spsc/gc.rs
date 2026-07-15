@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! ## Política de drenagem final (R11)
+//!
+//! O `GcOverflowBuffer` e o canal `gc_rx` devem ser drenados pelo Main Thread
+//! antes do plugin ser destruído. A drenagem **não** pode ocorrer no `Drop` do
+//! `NamClapShared` porque o consumer (`gc_rx`) vive no `NamClapMainThread` —
+//! estruturas separadas por contrato CLAP.
+//!
+//! A função `drain_gc_channels` é a única via de drenagem e deve ser chamada:
+//! 1. Periodicamente em `housekeeping()` (via `on_main_thread`).
+//! 2. **Uma vez final** em `NamClapMainThread::drain_gc_final()` no teardown.
+//!
+//! Um leak controlado (itens em trânsito no exato instante do destroy) é
+//! aceitável *apenas* se documentado; a drenagem dupla em `drain_gc_final`
+//! fecha a janela de race para o caso comum.
+
 use rtrb::Consumer;
 use std::sync::atomic::{AtomicU64, Ordering};
 

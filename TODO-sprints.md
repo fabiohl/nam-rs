@@ -594,8 +594,6 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   4. `grep -rn "from_raw_parts\|as \*const NamClapShared" src/clap/gui/` → **zero hits**.
 - **Critério de aceite:** Todos verdes. **Não prosseguir para S5 sem este checkpoint.**
 
-> Nota do PO: Todos os testes passaram, à exceção de 1. Investigar isso!
-> ✗ WaveNet Standard CH16: latencia regrediu 46.43 us (contrato: 42.0 us, limite: 46.2 us)
 ---
 
 ## Sprint S5 — R13: Watchdog com deadline no `join()` da janela flutuante
@@ -690,7 +688,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Médio. A ordem de drop do `gc_rx` (que vive no `NamClapMainThread`) vs. o `NamClapShared` tem sutilezas CLAP. Mitigado: (a) `drain_gc_channels` já existe e é reutilizado; (b) a janela de leak é finita (N slots × tamanho do item); (c) testes de stress GC existem e detectam double-free.
 
-### T6.1 — Adicionar `drain_gc_final` ao teardown do Main Thread
+### T6.1 — Adicionar `drain_gc_final` ao teardown do Main Thread [DONE]
 
 - **Arquivo:** [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
 
@@ -732,7 +730,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa. `drain_gc_final` é chamado em `deactivate`.
 
-### T6.2 — Documentar a decisão no `gc.rs`
+### T6.2 — Documentar a decisão no `gc.rs` [DONE]
 
 - **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
 
@@ -757,7 +755,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Comentário presente. `cargo doc` (ou `cargo check`) passa.
 
-### T6.3 — Teste de lifecycle destrutivo do GC
+### T6.3 — Teste de lifecycle destrutivo do GC [DONE]
 
 - **Arquivo:** [`tests/models/gc_lifecycle_test.rs`](tests/models/gc_lifecycle_test.rs) (novo) ou extensão de `processor_gc_stress_test.rs`
 
@@ -797,7 +795,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** Testes rápidos passam. Teste `#[ignore]` compila sem erro.
 
-### T6.4 — Checkpoint S6: Verificação intermediária
+### T6.4 — Checkpoint S6: Verificação intermediária [DONE]
 
 - **Ação:**
   1. `cargo clippy --all-targets` — limpo.

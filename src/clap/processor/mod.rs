@@ -274,6 +274,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         *slimmable_rx_guard = Some(self.slimmable_rx);
+
+        _main_thread.drain_gc_final();
     }
 
     fn process(

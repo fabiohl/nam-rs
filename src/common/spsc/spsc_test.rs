@@ -248,3 +248,12 @@ fn test_gc_concurrent_push_drain() {
         }
     }
 }
+
+#[test]
+fn test_drain_gc_empty_is_noop() {
+    let (_, mut consumer) = RingBuffer::<GcItem>::new(16);
+    let overflow = GcOverflowBuffer::new(16);
+    let rt_status = RtStatusFlags::new();
+    let drained = drain_gc_channels(&mut consumer, &overflow, &rt_status);
+    assert_eq!(drained, 0);
+}

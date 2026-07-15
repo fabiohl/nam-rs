@@ -287,4 +287,88 @@ mod tests {
             "GC overflow / leak occurred during the remaining model swaps!"
         );
     }
+
+    #[test]
+    #[ignore]
+    fn test_gc_drain_on_destroy_no_leak() {
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
+
+        let state_ext = test_util::get_state_ext(&mut plugin_instance);
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 64,
+            max_frames_count: 64,
+        };
+
+        let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
+        let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        model_dir.push("tests/fixtures/models");
+
+        let models = [
+            "BossWN-nano.nam",
+            "BossWN-feather.nam",
+            "BossWN-standard.nam",
+        ];
+
+        let n = 64;
+        let mut bufs = StereoTestBuffers::new(n, 0.0, 0.0);
+
+        let _shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
+
+        // Swap models multiple times without calling housekeeping/drain on main thread
+        // to accumulate items in the GC-cascade channels.
+        for i in 0..5 {
+            let model_name = models[i % models.len()];
+            let mut path = model_dir.clone();
+            path.push(model_name);
+
+            let params = test_util::make_default_params(Some(path));
+            let state_bytes = serde_json::to_vec(&params).unwrap();
+            let mut handle = plugin_instance.plugin_handle();
+
+            state_ext
+                .load(&mut handle, &mut state_bytes.as_slice())
+                .expect("Failed to load state");
+
+            let mut input_channels = [bufs.in_l.as_mut_slice(), bufs.in_r.as_mut_slice()];
+            let input_audio = bufs.input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_channels.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            let output_channels = [bufs.out_l.as_mut_slice(), bufs.out_r.as_mut_slice()];
+            let mut output_audio = bufs.output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+            }]);
+
+            let input_events = InputEvents::empty();
+            let mut output_events = OutputEvents::from_buffer(&mut bufs.output_events_buffer);
+
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .unwrap();
+        }
+
+        // Deactivating and dropping the plugin instance.
+        // deactivation calls `_main_thread.drain_gc_final()`, which drains the channels.
+        let stopped = started_processor.stop_processing();
+        plugin_instance.deactivate(stopped);
+
+        // Under ASAN/Valgrind or leak checks (tests-long), dropping plugin_instance here
+        // will verify that all models in transit are fully released and do not leak.
+        drop(plugin_instance);
+    }
 }

@@ -191,12 +191,50 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
     }
+
+    /// Drena o GC-cascade completamente antes do plugin ser destruído.
+    ///
+    /// Chamado no último `on_main_thread` ou no `deactivate()` final.
+    /// Garante que nenhum `Box<StaticModel>` ou similar fique vivo no
+    /// `GcOverflowBuffer` após o plugin morrer (R11).
+    pub(crate) fn drain_gc_final(&mut self) {
+        use crate::common::spsc::drain_gc_channels;
+        // Drena o canal SPSC principal
+        let drained = drain_gc_channels(
+            &mut self.gc_rx,
+            &self.shared.cold.gc_overflow,
+            &self.shared.cold.rt_status,
+        );
+        if drained > 0 {
+            log::debug!(
+                "NAM-rs: GC drain final — {} item(s) liberados no destroy (R11)",
+                drained
+            );
+        }
+        // Segunda passagem: overflow pode ter sido preenchido pelo RT entre a primeira
+        // drenagem e agora (race benigna — a segunda passagem fecha a janela)
+        let _ = drain_gc_channels(
+            &mut self.gc_rx,
+            &self.shared.cold.gc_overflow,
+            &self.shared.cold.rt_status,
+        );
+    }
+}
+
+impl<'a> Drop for NamClapMainThread<'a> {
+    fn drop(&mut self) {
+        self.drain_gc_final();
+    }
 }
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     /// Called periodically or in response to host events.
     /// Delegates to concern-specific sub-module methods.
     fn on_main_thread(&mut self) {
+        if !self.shared.cold.alive_fence.load(Ordering::Relaxed) {
+            self.drain_gc_final();
+            return;
+        }
         self.housekeeping();
         self.emit_pending_logs();
     }
