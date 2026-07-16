@@ -1129,13 +1129,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## EP-R4 — Sumário dos Sprints
 
-| Sprint  | Finding                                              | Risco | Arquivos tocados | Estimativa |
-| ------- | ---------------------------------------------------- | ----- | ---------------- | ---------- |
-| **S11** | R6 — Contrato de qualidade: matching exato           | Baixo | 2                | ~45 min    |
-| **S12** | R7 — tests-long: Gate "≥1 passed" obrigatório        | Baixo | 1                | ~30 min    |
-| **S13** | R4 — Panic hook zero-alloc e deadlock-free           | Médio | 2                | ~60 min    |
-| **S14** | R5 — Zero logs em RT & Meta-testes estruturais       | Médio | 8                | ~90 min    |
-| **VF**  | Verificação final integrada EP-R4                    | —     | 0                | ~15 min    |
+| Sprint  | Finding                                        | Risco | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------------- | ----- | ---------------- | ---------- |
+| **S11** | R6 — Contrato de qualidade: matching exato     | Baixo | 2                | ~45 min    |
+| **S12** | R7 — tests-long: Gate "≥1 passed" obrigatório  | Baixo | 1                | ~30 min    |
+| **S13** | R4 — Panic hook zero-alloc e deadlock-free     | Médio | 2                | ~60 min    |
+| **S14** | R5 — Zero logs em RT & Meta-testes estruturais | Médio | 8                | ~90 min    |
+| **VF**  | Verificação final integrada EP-R4              | —     | 0                | ~15 min    |
 
 ---
 
@@ -1311,8 +1311,311 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Notas de risco e mitigação (EP-R4)
 
-| Risco | Mitigação |
-| --- | --- |
-| Buffer de pânico de 4096 bytes é insuficiente | O `LimitWriter` trunca de forma silenciosa e limpa, mantendo o início do report intacto, sem risco de estourar a pilha ou falhar por erro de alocação. |
-| Remoção do matching por prefixo quebrar compatibilidade | As chaves salvas são geradas exatamente a partir da mesma fonte JSONL de dados, garantindo equivalência exata de strings. |
-| Alteração no trait SlimmableModel causar regressions em plugins de terceiros | O trait é marcado como interno do módulo de modelos (`pub(crate)` ou não exportado para FFI), sendo seguro alterar internamente. |
+| Risco                                                                        | Mitigação                                                                                                                                              |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Buffer de pânico de 4096 bytes é insuficiente                                | O `LimitWriter` trunca de forma silenciosa e limpa, mantendo o início do report intacto, sem risco de estourar a pilha ou falhar por erro de alocação. |
+| Remoção do matching por prefixo quebrar compatibilidade                      | As chaves salvas são geradas exatamente a partir da mesma fonte JSONL de dados, garantindo equivalência exata de strings.                              |
+| Alteração no trait SlimmableModel causar regressions em plugins de terceiros | O trait é marcado como interno do módulo de modelos (`pub(crate)` ou não exportado para FFI), sendo seguro alterar internamente.                       |
+
+---
+
+## Épico EP-R5 — Higiene e superfície
+
+> **Origem:** [TODO-findings.md §EP-R5](TODO-findings.md#ep-r5--higiene-e-superfície-r12--r14--r15--r16--p3) (Auditoria de Resiliência & Robustez, 2026-07-14)
+>
+> **Escopo:** R12 (Higiene de unsafe, **MÉDIA**) + R14 (Código morto/duplicado, **BAIXA**) + R15 (Separação de testing feature, **BAIXA**) + R16 (Higiene de saída de ferramentas, **BAIXA**) + P3 (assert_unchecked / as_chunks, **Inovação/Proposta**).
+>
+> **Pré-requisito:** EP-R4 concluído e `quality-dashboard.sh --check` verde.
+>
+> **Invariante absoluto:** zero alteração de comportamento sonoro. Critério de aceite global: `quality-dashboard.sh --check` sem diff de um único número no contrato. Risco: mínimo. Ideal para ser executado com as skills `refatora-rust` e `refatora-doc`.
+
+---
+
+## EP-R5 — Sumário dos Sprints
+
+| Sprint  | Finding                                             | Risco | Arquivos tocados | Estimativa |
+| ------- | --------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S15** | R12 + P3 — Higiene de `unsafe` e `assert_unchecked` | Baixo | 9                | ~90 min    |
+| **S16** | R14 — Remoção de código morto e duplicações         | Baixo | 8                | ~75 min    |
+| **S17** | R15 — Feature `testing` fora de default             | Baixo | 3                | ~45 min    |
+| **S18** | R16 — Higiene de saída de logs e referências        | Baixo | 5                | ~45 min    |
+| **VF**  | Verificação final integrada EP-R5                   | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S15 — R12 & P3: Higiene de `unsafe` e `assert_unchecked`
+
+> **Ref:** [TODO-findings.md §R12](TODO-findings.md#r12--higiene-de-unsafe-comentários-safety-genéricos-get_unchecked-substituível-e-invariantes-não-escritas--média) (L446-466) e [TODO-findings.md §P3](TODO-findings.md#p3--reduzir-unsafe-mantendo-codegen-corehintassert_unchecked-stable-181-e-sliceas_chunks-stable-188) (L592-607)
+>
+> **Objetivo:** Reduzir blocos `unsafe` e formalizar invariantes SAFETY específicas no codebase, adotando `core::hint::assert_unchecked` para manter o codegen do LLVM sem bounds checks ao usar indexação segura.
+>
+> **Risco:** Mínimo. Alteração focada em documentação e otimizações locais.
+
+### T15.1 — Reescrever comentários SAFETY em `src/dsp/mirror_buf.rs` [ ]
+
+- **Arquivo:** [`src/dsp/mirror_buf.rs`](src/dsp/mirror_buf.rs) (L153, 161, 171, 192, 194)
+- **Ação:** Substituir comentários SAFETY genéricos por explicações das invariantes reais de manipulação de memória virtual, citando a validade do ponteiro para `size_elements * 2` e os buffers espelhados.
+- **Critério de aceite:** `cargo check` passa; comentários revisados.
+
+### T15.2 — Alinhar SAFETY de `huge_alloc.rs` com padrão de `aligned.rs` [ ]
+
+- **Arquivo:** [`src/math/common/huge_alloc.rs`](src/math/common/huge_alloc.rs) (L369, 380, 389)
+- **Ação:** Substituir o comentário genérico "upheld by caller invariants" por documentação precisa citando o porquê de o ponteiro ser válido e não-nulo, e a relação com o tamanho da alocação de huge pages.
+- **Critério de aceite:** `cargo check` passa.
+
+### T15.3 — Formalizar invariantes e SAFETY no delay line do stage [ ]
+
+- **Arquivo:** [`src/dsp/stage.rs`](src/dsp/stage.rs) (L130-152, 169-198)
+- **Ação:**
+  1. Introduzir invariante estática `const { assert!(UP_DELAY_LINE_LEN >= HB_TAPS) }`.
+  2. Adicionar documentação SAFETY explicando por que o loop garante acessos válidos e em limites de bounds.
+- **Critério de aceite:** Código compila com a nova asserção estática.
+
+### T15.4 — Otimizar `get_unchecked` no FFT usando `assert_unchecked` [ ]
+
+- **Arquivo:** [`src/math/dsp/fft.rs`](src/math/dsp/fft.rs) (L228, 258, 320-324)
+- **Ação:**
+  1. Substituir acessos `get_unchecked` por indexação segura precedida de `unsafe { core::hint::assert_unchecked(idx < len) }` nos loops de bit-reversal e butterfly scalar path.
+  2. Verificar que o assembly gerado em `target/dsp_hotpath.asm` não regrediu e mantém a eliminação de bounds checks.
+- **Critério de aceite:** `cargo check` passa e o quick suite passa.
+
+### T15.5 — Documentar SAFETY de ponteiros em ConvNet [ ]
+
+- **Arquivo:** [`src/models/convnet/model.rs`](src/models/convnet/model.rs) (L105-140)
+- **Ação:** Adicionar blocos de comentário SAFETY explicativos sobre a aritmética de ponteiros com `Vec::as_mut_ptr()`, detalhando que `&mut self` impede realocações simultâneas e que os índices estão contidos em `blocks.len()`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T15.6 — Adicionar `debug_assert!` e SAFETY no `copy_nonoverlapping` de WaveNet [ ]
+
+- **Arquivo:** [`src/models/wavenet/conv1d.rs`](src/models/wavenet/conv1d.rs) (L56-62)
+- **Ação:** Adicionar `debug_assert!` validando que o offset `isize` convertido para `usize` não causa underflow ou transborda, documentando a segurança da operação em relação à invariante `max_lookback_cols`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T15.7 — Documentar transmute de lifetime na GUI do CLAP [ ]
+
+- **Arquivo:** [`src/clap/gui/mod.rs`](src/clap/gui/mod.rs) (L33)
+- **Ação:** Documentar de forma expressa a segurança do `transmute` de lifetime em tipo sem `repr(transparent)`, detalhando a dependência de layout ou encapsulando em wrapper limpo de forma equivalente.
+- **Critério de aceite:** Compila sem alertas.
+
+### T15.8 — Comentário SAFETY para transmute de `__m512` em GEMV [ ]
+
+- **Arquivo:** [`src/math/gemm/gemv_bf16.rs`](src/math/gemm/gemv_bf16.rs) (L62-63, 99-100)
+- **Ação:** Adicionar anotação SAFETY de uma linha justificando a conversão de `__m512` para `__m512bh` como "no-op de 512 bits entre tipos com ABI idêntica".
+- **Critério de aceite:** Comentários adicionados.
+
+### T15.9 — Limpar cast duplo de handler de sinal em `src/main.rs` [ ]
+
+- **Arquivo:** [`src/main.rs`](src/main.rs) (L85-89)
+- **Ação:** Substituir o cast duplo via `*const ()` para `sighandler_t` atribuindo o handler `sigint_handler` diretamente ao campo correto (`sa_handler` ou equivalente via struct) do `sigaction`.
+- **Critério de aceite:** `cargo check --features standalone` passa sem warnings.
+
+---
+
+## Sprint S16 — R14: Remoção de código morto e duplicações
+
+> **Ref:** [TODO-findings.md §R14](TODO-findings.md#r14--código-morto-e-duplicações--baixa-limpeza-mecânica-750-linhas-recuperáveis) (L490-507)
+>
+> **Objetivo:** Higienizar o repositório removendo declarações mortas, consolidando funções duplicadas e eliminando atalhos não utilizados que incham a base de código.
+>
+> **Risco:** Baixo. Modificações mecânicas e limpezas simples.
+
+### T16.1 — Condicionar `FftPlannerRadix4` para testes/benches [ ]
+
+- **Arquivo:** [`src/math/dsp/fft_radix4.rs`](src/math/dsp/fft_radix4.rs) (L59)
+- **Ação:** Adicionar `#[cfg(any(test, feature = "long_bench"))]` sobre a struct pública `FftPlannerRadix4` para evitar sua compilação em builds normais de produção, pois ela não possui consumidores em produção.
+- **Critério de aceite:** `cargo check` passa.
+
+### T16.2 — Consolidar a função `median` em local comum de testes [ ]
+
+- **Arquivos:**
+  - [`src/testing/aliasing.rs`](src/testing/aliasing.rs) (L289-301)
+  - [`src/testing/spectral.rs`](src/testing/spectral.rs) (L57-69)
+- **Ação:** Consolidar a função duplicada `median` (e seus testes associados) em um local comum sob `src/testing/` e atualizar os locais de chamada.
+- **Critério de aceite:** `cargo test --features testing` compila e passa.
+
+### T16.3 — Integrar estratégia proptest órfã de `NamModelData` num teste real [ ]
+
+- **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs) (L270-512)
+- **Ação:** Criar um teste proptest real (ex: `prop_model_data_serialization_roundtrip`) que utiliza a estratégia `arbitrary_nam_model_data` para gerar dados arbitrários, serializá-los para JSON e desserializá-los de volta, validando a equivalência e o parse robusto.
+- **Critério de aceite:** Novo teste integrado e verde na suite rápida.
+
+### T16.4 — Remover `#[allow(dead_code)]` espúrios [ ]
+
+- **Arquivos:**
+  - [`src/models/a2/model/set_weights.rs`](src/models/a2/model/set_weights.rs) (L276-289)
+  - [`src/testing/spectral.rs`](src/testing/spectral.rs) (L56)
+- **Ação:** Remover as anotações `#[allow(dead_code)]` desnecessárias, ajustando para `#[cfg_attr(not(test), allow(dead_code))]` ou removendo se as funções puderem ser expostas limpas.
+- **Critério de aceite:** Lints limpos.
+
+### T16.5 — Eliminar `CatalogGap` e exceções vazias [ ]
+
+- **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs) (L21-29)
+- **Ação:** Apagar a declaração da struct `CatalogGap` e o vetor estático `CATALOG_EXCEPTIONS` vazios, já que não há discrepâncias pendentes no catálogo de QA.
+- **Critério de aceite:** `cargo test` verde.
+
+### T16.6 — Implementar asserção e verificação de `max_frames_count` [ ]
+
+- **Arquivos:**
+  - [`src/clap/processor/dsp/orchestrator.rs`](src/clap/processor/dsp/orchestrator.rs)
+  - [`src/clap/processor/state.rs`](src/clap/processor/state.rs) (L122-123)
+- **Ação:**
+  1. Em `orchestrator.rs`, adicionar asserção em tempo de execução validando `n_samples <= self.max_frames_count`.
+  2. Em builds release, se violado, setar `self.rt_status.set_flag(RT_STATUS_HOST_CONTRACT_VIOLATION)` e limitar `n_samples` de forma segura.
+  3. Remover o `#[allow(dead_code)]` sobre `max_frames_count` em `state.rs`.
+- **Critério de aceite:** O campo `max_frames_count` deixa de ser código morto.
+
+### T16.7 — Centralizar ajudantes `generate_sine` redundantes [ ]
+
+- **Arquivos:**
+  - `benches/common.rs:20`, `tests/common/signals.rs:13`, `benches/linear.rs:48`, `tests/models/namb_v2_*.rs`
+- **Ação:** Centralizar as funções duplicadas `generate_sine`/`generate_sine_440hz` em um local comum de testes (ex: `tests/common/signals.rs`) e reusar os helpers.
+- **Critério de aceite:** Todos os testes e benchmarks continuam compilando normalmente.
+
+### T16.8 — Adicionar documentação na feature `pgo` no Cargo.toml [ ]
+
+- **Arquivo:** [`Cargo.toml`](Cargo.toml) (L124)
+- **Ação:** Adicionar um comentário explicativo ao lado da feature `pgo` esclarecendo que ela serve como tag para o script de compilação de release, justificando sua presença embora esteja vazia de CFG.
+- **Critério de aceite:** Comentário adicionado ao Cargo.toml.
+
+---
+
+## Sprint S17 — R15: Separação fina de superfície de teste (testing feature)
+
+> **Ref:** [TODO-findings.md §R15](TODO-findings.md#r15--feature-testing-em-default-embarca-instrumentação-em-builds-de-produção--baixa) (L510-533)
+>
+> **Objetivo:** Evitar que a feature `testing` (que embarca o oráculo f64 e código off-RT pesado) compile por padrão em builds normais de desenvolvimento e distribuição, diminuindo a superfície de ataque e o tamanho dos binários.
+>
+> **Risco:** Baixo. Requer apenas ajustes finos no `Cargo.toml` e nos scripts de QA.
+
+### T17.1 — Remover `testing` de default features no Cargo.toml [ ]
+
+- **Arquivo:** [`Cargo.toml`](Cargo.toml) (L117)
+- **Ação:** Mudar a linha de defaults para: `default = ["standalone"]`.
+- **Critério de aceite:** `cargo build --release` não compila mais os módulos sob a feature `testing`.
+
+### T17.2 — Medir impacto do bloat com cargo bloat [ ]
+
+- **Ação:** Executar `cargo bloat --release` antes e após a remoção da feature `testing` dos defaults para registrar no commit/walkthrough o ganho real de tamanho binário (redução de superfície do .so CLAP).
+- **Critério de aceite:** Relatório estatístico gerado.
+
+### T17.3 — Atualizar scripts para explicitar `--features testing` [ ]
+
+- **Arquivos:**
+  - [`utils/tests-quick.sh`](utils/tests-quick.sh)
+  - [`utils/tests-long.sh`](utils/tests-long.sh)
+- **Ação:** Adicionar `--features testing` em todas as invocações de `cargo test`/`cargo bench` que dependam do oráculo matemático ou da instrumentação de testes.
+- **Critério de aceite:** Ambas as suítes (quick e long) executam com sucesso.
+
+### T17.4 — Feature-gate a flag global `DISABLE_GATE` [ ]
+
+- **Arquivo:** [`src/dsp/pipeline/stages/input.rs`](src/dsp/pipeline/stages/input.rs) (L23)
+- **Ação:** Assegurar que `DISABLE_GATE` e o atalho `NAM_DISABLE_GATE` estão rigidamente protegidos sob `#[cfg(feature = "testing")]` e não vazam no pipeline de produção.
+- **Critério de aceite:** Zero referências não-condicionadas a `DISABLE_GATE`.
+
+---
+
+## Sprint S18 — R16: Higiene de saída de logs e referências
+
+> **Ref:** [TODO-findings.md §R16](TODO-findings.md#r16--higiene-de-saída-e-referências-obsoletas--baixa) (L536-558)
+>
+> **Objetivo:** Melhorar a legibilidade dos painéis de qualidade e remover notas antigas/obsoletas sobre arquivos temporários deletados.
+>
+> **Risco:** Baixo. Alterações puras de UI e cosméticos nos relatórios.
+
+### T18.1 — Corrigir referências a arquivos transitórios [ ]
+
+- **Arquivo:** [`utils/quality-dashboard.sh`](utils/quality-dashboard.sh) (L1451)
+- **Ação:** Substituir o texto que cita `TODO-findings.md Achado F3` por uma referência ao documento canônico estável: `docs/perceptual_validation.md#decomposition-cold-start`. Adotar a regra de não citar `TODO-*.md` em logs permanentes.
+- **Critério de aceite:** Relatório limpo de referências transitórias.
+
+### T18.2 — Esconder dumps de depuração sob `NAM_ORACLE_VERBOSE=1` [ ]
+
+- **Ação:** Alterar o formatador do oráculo para somente imprimir os dumps de depuração `PROD FIRST 10` e `ORACLE FIRST 10` se a variável de ambiente `NAM_ORACLE_VERBOSE=1` estiver ativada, despoluindo a tabela de resumo.
+- **Critério de aceite:** Visualização padrão do dashboard exibe apenas a tabela sem intercalações.
+
+### T18.3 — Explicitar motivo de `#[ignore]` no teste do gate [ ]
+
+- **Arquivo:** [`src/dsp/gate_test.rs`](src/dsp/gate_test.rs) (L300)
+- **Ação:** Atualizar a anotação para `#[ignore = "proptest 10k casos; roda no tests-long (gate_envelope_continuity_proptest)"]` para esclarecer ao desenvolvedor por que este teste foi ignorado no quick loop.
+- **Critério de aceite:** Comentário atualizado.
+
+### T18.4 — Alinhar colunas no log de `isa_matrix_header_info` [ ]
+
+- **Ação:** Ajustar os espaçamentos na string formatada impressa pelo cabeçalho `isa_matrix_header_info` para corrigir o desalinhamento cosmético das colunas.
+- **Critério de aceite:** Tabela impressa perfeitamente alinhada.
+
+### T18.5 — Renomear teste de política em golden vectors [ ]
+
+- **Arquivo:** [`tests/models/golden_vectors.rs`](tests/models/golden_vectors.rs) (L1133)
+- **Ação:** Renomear o teste `test_golden_vectors_wavenet_condition_lstm` para `test_policy_reject_condition_lstm`, refletindo sua real natureza de política fail-closed.
+- **Critério de aceite:** Teste renomeado e funcional.
+
+---
+
+## VF — Verificação Final Integrada EP-R5
+
+> **Gate de aceite do épico inteiro.**
+
+### VF5.1 — Lints e Compilações
+
+- `utils/lints.sh` deve passar totalmente limpo com 0 erros/warnings.
+
+### VF5.2 — Suite rápida verde
+
+- `utils/tests-quick.sh` deve reportar sucesso em todas as fases.
+
+---
+
+## Épico EP-R6 (opcional/contínuo) — Guardas de segunda ordem [ADIADO]
+
+> Nota do PO: Guardado para o futuro.
+>
+> **Origem:** [TODO-findings.md §EP-R6](TODO-findings.md#ep-r6-opcionalcontínuo--guardas-de-segunda-ordem-p2--p4) (Auditoria de Resiliência & Robustez, 2026-07-14)
+>
+> **Escopo:** P2 (Mutation testing com cargo-mutants, **Proposta**) + P4 (asm-gate com dsp_hotpath.asm, **Proposta**).
+>
+> **Pré-requisito:** EP-R5 concluído.
+>
+> **Invariante absoluto:** sem custo ou impacto em tempo de compilação ou execução de produção. Risco: zero.
+
+---
+
+## EP-R6 — Sumário dos Sprints
+
+| Sprint  | Finding                                             | Risco | Arquivos tocados | Estimativa |
+| ------- | --------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S19** | P2 + P4 — Guardas e portões estatísticos de codegen | Baixo | 2                | ~90 min    |
+| **VF**  | Verificação final integrada EP-R6                   | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S19 — P2 & P4: Guardas e portões estatísticos de codegen
+
+> **Ref:** [TODO-findings.md §P2](TODO-findings.md#p2--mutation-testing-com-cargo-mutants-como-extensão-da-filosofia-anti-placebo) (L579-590) e [TODO-findings.md §P4](TODO-findings.md#p4-aproveitar-o-targetdsphotpathasm-como-gate-de-regressão-de-codegen) (L608-616)
+>
+> **Objetivo:** Adicionar ferramentas externas de proteção offline para prevenir regressões de cobertura de teste (mutants) e inlining quebrado (asm-gate) sem afetar a produção.
+
+### T19.1 — Criar script de testes de mutação offline `mutants.sh` [ ]
+
+- **Arquivo (novo):** [`utils/mutants.sh`](utils/mutants.sh)
+- **Ação:**
+  1. Criar o script contendo chamadas recomendadas de `cargo mutants` focadas nos módulos-fortaleza: `src/loader/`, `src/common/spsc/`, `src/dsp/gate.rs` e `src/dsp/adaptive.rs`.
+  2. Adicionar documentação operacional esclarecendo que este teste é de execução periódica off-line (mensal) e não deve rodar no Quick ou Long CI devido ao alto custo computacional.
+- **Critério de aceite:** Script criado, com cabeçalho SPDX e permissão de execução.
+
+### T19.2 — Criar portão de assembly `asm-gate.sh` [ ]
+
+- **Arquivo (novo):** [`utils/asm-gate.sh`](utils/asm-gate.sh)
+- **Ação:**
+  1. Criar um script bash que inspeciona o arquivo assembly gerado `target/dsp_hotpath.asm` (produzido pelo pipeline).
+  2. Extrair métricas estáticas básicas (número de `call` nos símbolos de DSP quente para detectar inlines quebrados; contagem de `vzeroupper` excessivos; contagem de acessos a stack `mov [rsp...]` para spills excessivos).
+  3. Comparar com limites aceitáveis e falhar com mensagens instrutivas se houver desvio, agindo como um gate de codegen.
+- **Critério de aceite:** Script criado com cabeçalho SPDX e testado contra um arquivo assembly real.
+
+---
+
+## VF — Verificação Final Integrada EP-R6
+
+### VF6.1 — Execução dos scripts
+
+- Validar que ambos os scripts rodam sem erros e geram saída legível quando invocados localmente.

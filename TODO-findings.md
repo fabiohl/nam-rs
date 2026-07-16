@@ -687,7 +687,7 @@ estado **atual** (deve falhar em R8-a/b/f — prova do achado), depois as corre�
 Critério: `cargo test --cfg loom` (job novo no tests-long) verde; zero mudança de asm nos hot
 paths x86 (conferir com P4/dsp_hotpath.asm). Risco: baixo.
 
-### EP-R4 — Blindagem da malha de QA (R6 + R7 + R4 + R5) [DOING]
+### EP-R4 — Blindagem da malha de QA (R6 + R7 + R4 + R5) [DONE]
 
 Escopo: chave composta exata no contrato + meta-teste de prefixo (R6); gate "≥1 passed" em
 todas as fases do tests-long (R7); panic hook zero-alloc com snapshot pré-capturado (R4);
@@ -697,7 +697,7 @@ Critério: regravar contrato com `--save` e conferir manualmente as linhas A2-Fu
 distintas; teste do panic hook com alloc_audit = 0; fase PipeWire falhando artificialmente com
 filtro vazio (teste do gate). Risco: baixo.
 
-### EP-R5 — Higiene e superfície (R12 + R14 + R15 + R16 + P3)
+### EP-R5 — Higiene e superfície (R12 + R14 + R15 + R16 + P3) [DOING]
 
 Escopo: sprint mecânico de documentação SAFETY (tabela R12), remoção de mortos/duplicados
 (R14), `testing` fora do default com medição `cargo bloat` (R15), limpezas de log/refs (R16),
@@ -706,7 +706,9 @@ e adoção incremental de `assert_unchecked`/`as_chunks` onde reduzir unsafe sem
 `unsafe` em produção reduzida e 100% com SAFETY específico, quick suite verde. Risco: mínimo —
 ideal para absorver com as skills `refatora-rust`/`refatora-doc`.
 
-### EP-R6 (opcional/contínuo) — Guardas de segunda ordem (P2 + P4)
+### EP-R6 (opcional/contínuo) — Guardas de segunda ordem (P2 + P4) [ADIADO]
+
+> Nota do PO: Guardado para o futuro.
 
 Escopo: `utils/mutants.sh` (rodada mensal off-line, módulos-fortaleza) e `utils/asm-gate.sh`
 (baseline de codegen sobre o dsp_hotpath.asm já gerado). Nenhum bloqueio sobre os demais
