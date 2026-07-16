@@ -59,6 +59,9 @@ pub const RT_STATUS_NEEDS_OS_REBUILD: u64 = 1 << 19;
 /// Flag indicating that PipeWire provided a buffer violating the FFI contract
 /// (misaligned byte count, offset out of bounds). Set by the RT callback.
 pub const RT_STATUS_HOST_CONTRACT_VIOLATION: u64 = 1 << 20;
+/// Flag indicating that `ContainerModel::set_slimmable_size` failed to reset a submodel.
+/// Replaces `log::error!` for RT-zero-IO compliance. Set by RT callback, read by main thread.
+pub const RT_STATUS_SLIMMABLE_RESET_FAILED: u64 = 1 << 21;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -91,6 +94,7 @@ pub const RT_STATUS_HOST_CONTRACT_VIOLATION: u64 = 1 << 20;
 /// | 18 | `THP_ACTIVE` | Transparent huge pages(madvise) active — not explicit HugeTLB |
 /// | 19 | `NEEDS_OS_REBUILD` | DSP thread requests oversampling engine rebuild |
 /// | 20 | `HOST_CONTRACT_VIOLATION` | PipeWire buffer FFI contract violated (misaligned or OOB) |
+/// | 21 | `SLIMMABLE_RESET_FAILED` | ContainerModel submodel reset failed on RT thread |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

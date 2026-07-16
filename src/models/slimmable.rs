@@ -63,7 +63,14 @@ pub trait SlimmableModel {
     /// Sets the slimmable quality/size level.
     ///
     /// `val` is in `[0.0, 1.0]` where `0.0` = minimum quality and `1.0` = full quality.
-    fn set_slimmable_size(&mut self, val: f32);
+    ///
+    /// `rt_status` — when called from the RT hot-path, pass `Some(&rt_status)` so
+    /// that errors from reset can be signaled atomically without I/O.
+    fn set_slimmable_size(
+        &mut self,
+        val: f32,
+        rt_status: Option<&crate::common::spsc::RtStatusFlags>,
+    );
 
     /// Returns the breakpoints at which slimmable quality transitions occur.
     ///

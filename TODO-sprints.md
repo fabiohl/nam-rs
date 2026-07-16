@@ -1254,13 +1254,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Médio. Altera a assinatura do pipeline de DSP e os tratamentos de erro.
 
-### T14.1 — Definir novo bit `RT_STATUS_SLIMMABLE_RESET_FAILED`
+### T14.1 — Definir novo bit `RT_STATUS_SLIMMABLE_RESET_FAILED` [x]
 
 - **Arquivo:** [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
 - **Ação:** Adicionar `pub const RT_STATUS_SLIMMABLE_RESET_FAILED: u64 = 1 << 21;`.
 - **Critério de aceite:** Nova flag compilável no módulo de status.
 
-### T14.2 — Alterar assinatura e comportamento do quality scaling do DSP
+### T14.2 — Alterar assinatura e comportamento do quality scaling do DSP[x]
 
 - **Arquivos:**
   - [`src/models/slimmable.rs`](src/models/slimmable.rs)
@@ -1273,7 +1273,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. No `ContainerModel::set_slimmable_size`, remover o `log::error!` e substituí-lo por `rt_status.map(|s| s.set_flag(RT_STATUS_SLIMMABLE_RESET_FAILED));` caso o `reset` do submodelo falhe.
 - **Critério de aceite:** O pipeline compila normalmente com a nova assinatura e sem logs ativos na inferência do container.
 
-### T14.3 — Emitir o log de erro assincronamente na thread principal
+### T14.3 — Emitir o log de erro assincronamente na thread principal [x]
 
 - **Arquivos:**
   - [`src/clap/plugin/main_thread/housekeeping.rs`](src/clap/plugin/main_thread/housekeeping.rs)
@@ -1283,7 +1283,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Em caso positivo, disparar o log de erro correspondente com o log do host CLAP ou `log::error!` standalone.
 - **Critério de aceite:** Falhas de reset no container são notificadas ao usuário a partir de threads seguras.
 
-### T14.4 — Adicionar meta-teste estrutural de logging RT-safe
+### T14.4 — Adicionar meta-teste estrutural de logging RT-safe [x]
 
 - **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs)
 - **Ação:**

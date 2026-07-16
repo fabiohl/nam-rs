@@ -23,6 +23,7 @@ fn configure_adaptive_model(
     model_l: &mut Option<Box<crate::models::StaticModel>>,
     model_r: &mut Option<Box<crate::models::StaticModel>>,
     adaptive: &AdaptiveCompute,
+    rt_status: &crate::common::spsc::RtStatusFlags,
 ) -> bool {
     if adaptive.mode() == crate::dsp::adaptive::AdaptiveComputeMode::Off
         && adaptive.slim_override() == crate::dsp::adaptive::SlimOverride::Auto
@@ -39,14 +40,14 @@ fn configure_adaptive_model(
                 if !hold_layers {
                     m.set_effective_layers(layers);
                 }
-                m.set_slimmable_size(adaptive.slimmable_size());
+                m.set_slimmable_size(adaptive.slimmable_size(), Some(rt_status));
             }
             if let Some(m) = model_r {
                 let layers = m.layer_count();
                 if !hold_layers {
                     m.set_effective_layers(layers);
                 }
-                m.set_slimmable_size(adaptive.slimmable_size());
+                m.set_slimmable_size(adaptive.slimmable_size(), Some(rt_status));
             }
             false
         }
@@ -59,7 +60,7 @@ fn configure_adaptive_model(
                 }
             }
             if let Some(m) = model_l {
-                m.set_slimmable_size(adaptive.slimmable_size());
+                m.set_slimmable_size(adaptive.slimmable_size(), Some(rt_status));
             }
             if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
@@ -69,7 +70,7 @@ fn configure_adaptive_model(
                 }
             }
             if let Some(m) = model_r {
-                m.set_slimmable_size(adaptive.slimmable_size());
+                m.set_slimmable_size(adaptive.slimmable_size(), Some(rt_status));
             }
             false
         }
@@ -86,7 +87,7 @@ fn configure_adaptive_model(
                 }
             }
             if let Some(m) = model_l {
-                m.set_slimmable_size(adaptive.slimmable_size());
+                m.set_slimmable_size(adaptive.slimmable_size(), Some(rt_status));
             }
             if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
@@ -96,7 +97,7 @@ fn configure_adaptive_model(
                 }
             }
             if let Some(m) = model_r {
-                m.set_slimmable_size(adaptive.slimmable_size());
+                m.set_slimmable_size(adaptive.slimmable_size(), Some(rt_status));
             }
             false
         }
@@ -243,8 +244,12 @@ pub(crate) fn run_inference(
     let n = n_samples.min(MAX_RESAMP_BUF);
 
     // Soft-degrade: configure model layers based on CPU pressure
-    let lstm_passthrough =
-        configure_adaptive_model(ctx.active_model_l, ctx.active_model_r, ctx.adaptive);
+    let lstm_passthrough = configure_adaptive_model(
+        ctx.active_model_l,
+        ctx.active_model_r,
+        ctx.adaptive,
+        ctx.rt_status,
+    );
 
     let supports_skip = ctx
         .active_model_l

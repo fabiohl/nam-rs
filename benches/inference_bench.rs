@@ -537,7 +537,7 @@ fn bench_container_crossfade_64samp(c: &mut Criterion) {
     let mut container = ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sr)
         .expect("Failed to create ContainerModel benchmark");
 
-    container.set_slimmable_size(0.25);
+    container.set_slimmable_size(0.25, None);
     assert!(container.is_crossfading());
 
     let input = generate_sine_440hz(64);

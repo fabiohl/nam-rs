@@ -286,7 +286,7 @@ fn test_zero_alloc_set_slimmable_size() {
     let count = {
         let _guard = TrackingGuard::new();
         if let StaticModel::Container(ref mut c) = model {
-            c.set_slimmable_size(0.25);
+            c.set_slimmable_size(0.25, None);
         }
         get_alloc_count()
     };
@@ -339,7 +339,7 @@ fn test_zero_alloc_container_transition() {
         let _guard = TrackingGuard::new();
         if let StaticModel::Container(ref mut c) = model {
             // Trigger transition: switch from Full to Lite
-            c.set_slimmable_size(0.25);
+            c.set_slimmable_size(0.25, None);
         }
         // Run several blocks to process through the entire crossfade duration
         for _ in 0..30 {

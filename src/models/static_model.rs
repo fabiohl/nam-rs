@@ -105,10 +105,17 @@ impl StaticModel {
     /// Sets the slimmable quality level for `SlimmableModel` variants.
     ///
     /// Only applies to `Container`. Other variants are a no-op.
+    ///
+    /// `rt_status` — when on the RT hot-path, pass `Some(&rt_status)` so errors
+    /// can be signaled atomically. Pass `None` in tests or off-RT contexts.
     #[inline(always)]
-    pub fn set_slimmable_size(&mut self, val: f32) {
+    pub fn set_slimmable_size(
+        &mut self,
+        val: f32,
+        rt_status: Option<&crate::common::spsc::RtStatusFlags>,
+    ) {
         if let Self::Container(c) = self {
-            c.set_slimmable_size(val);
+            c.set_slimmable_size(val, rt_status);
         }
     }
 
@@ -156,6 +163,7 @@ impl StaticModel {
     ///
     /// Used by `nondist_validation.rs` to cross-check against the manifest's
     /// `expected_class` field and detect dispatcher routing errors.
+    #[cold]
     pub fn class_label(&self) -> String {
         match self {
             Self::WavenetStandard(_) => "WaveNet A1 Standard (CH=16)".into(),

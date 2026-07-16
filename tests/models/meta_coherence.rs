@@ -445,3 +445,244 @@ fn test_quality_contract_uniqueness() {
         labels.len()
     );
 }
+
+/// Structural test: ensures the DSP hot-path (`src/dsp/`, `src/models/`, `src/math/`)
+/// contains no blocking I/O patterns (`log::`, `println!`, `eprintln!`, `format!`)
+/// outside of test modules, `#[cold]`-annotated functions, or constructor paths.
+///
+/// This prevents regression of R5-class bugs where I/O sneaks into the
+/// real-time audio callback — the #1 rule of the project.
+///
+/// ## Exemptions
+///
+/// Known false-positives or intentional cold-path uses can be listed in
+/// `RT_LOG_SAFETY_EXEMPTIONS` with a `file:line` key and documented reason.
+#[test]
+fn test_rt_logging_safety() {
+    use std::collections::BTreeSet;
+
+    const HOT_PATH_DIRS: &[&str] = &["src/dsp", "src/models", "src/math"];
+    const BANNED: &[&str] = &["log::", "println!", "eprintln!", "format!"];
+
+    let known_exempt: BTreeSet<String> = BTreeSet::new();
+
+    let cold_path_files: &[&str] = &[
+        "src/dsp/cabsim/loader.rs",
+        "src/models/slicing.rs",
+        "src/models/a2/model/set_weights.rs",
+        "src/models/a2/model/dynamic/build.rs",
+        "src/models/convnet/block.rs",
+        "src/models/wavenet/post_stack_head.rs",
+        "src/models/wavenet/common.rs",
+    ];
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut violations: Vec<(String, usize, String)> = Vec::new();
+
+    for dir in HOT_PATH_DIRS {
+        let full_dir = manifest_dir.join(dir);
+        if !full_dir.is_dir() {
+            continue;
+        }
+
+        let mut files: Vec<PathBuf> = Vec::new();
+        walk_rs_files(&full_dir, &mut files);
+
+        for file_path in &files {
+            let content = match fs::read_to_string(file_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let rel_path = file_path
+                .strip_prefix(&manifest_dir)
+                .unwrap_or(file_path)
+                .display()
+                .to_string();
+
+            // Skip test-only files — they do not run on the RT thread
+            if rel_path.ends_with("_test.rs") {
+                continue;
+            }
+
+            // Skip known cold-path files (loaders, builders, weight-setters)
+            if cold_path_files.contains(&rel_path.as_str()) {
+                continue;
+            }
+
+            let violations_in_file =
+                scan_rt_logging_violations(&rel_path, &content, BANNED, &known_exempt);
+            violations.extend(violations_in_file);
+        }
+    }
+
+    if !violations.is_empty() {
+        let mut msg = String::from("Banned I/O patterns found in DSP hot-path sources:\n\n");
+        for (file, line, detail) in &violations {
+            msg.push_str(&format!("  {file}:{line} — {detail}\n"));
+        }
+        msg.push_str(
+            "\nThese patterns cause blocking I/O on the real-time audio thread. \
+             Replace with atomic flag setting (RtStatusFlags) and deferred logging \
+             in the main thread (housekeeping.rs / telemetry.rs).\n",
+        );
+        panic!("{msg}");
+    }
+
+    eprintln!("  ✓ RT logging safety: no banned patterns in hot-path sources.");
+}
+
+fn walk_rs_files(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk_rs_files(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+fn scan_rt_logging_violations(
+    rel_path: &str,
+    content: &str,
+    banned: &[&str],
+    known_exempt: &std::collections::BTreeSet<String>,
+) -> Vec<(String, usize, String)> {
+    let mut violations = Vec::new();
+
+    let mut in_cfg_test = false;
+    let mut in_test_mod = false;
+    let mut test_mod_brace_depth: u32 = 0;
+    let mut in_cold_fn = false;
+    let mut cold_fn_brace_depth: u32 = 0;
+    let mut block_comment = false;
+    let mut saw_cold_attr = false;
+    let mut cold_attr_line: usize = 0;
+
+    for (line_idx, raw_line) in content.lines().enumerate() {
+        let lineno = line_idx + 1;
+        let trimmed = raw_line.trim();
+
+        if block_comment {
+            if trimmed.contains("*/") {
+                block_comment = false;
+            }
+            continue;
+        }
+        if trimmed.starts_with("/*") {
+            if !trimmed.contains("*/") {
+                block_comment = true;
+            }
+            continue;
+        }
+        if trimmed.starts_with("//") || trimmed.starts_with("///") {
+            continue;
+        }
+
+        // Track #[cfg(test)] gates
+        if trimmed.starts_with("#[cfg(test)]") {
+            in_cfg_test = true;
+            continue;
+        }
+        if in_cfg_test {
+            if trimmed.starts_with("#[cfg(") && trimmed.contains("test") {
+                continue;
+            }
+            if trimmed.starts_with("mod ") || trimmed.starts_with("fn ") {
+                in_cfg_test = false;
+            } else if trimmed.starts_with('#') || trimmed.is_empty() {
+                continue;
+            } else {
+                in_cfg_test = false;
+            }
+        }
+
+        // Track test modules
+        if trimmed.starts_with("mod tests") || trimmed.starts_with("pub mod tests") {
+            in_test_mod = true;
+            test_mod_brace_depth = 0;
+            continue;
+        }
+        if in_test_mod {
+            test_mod_brace_depth += trimmed.matches('{').count() as u32;
+            test_mod_brace_depth =
+                test_mod_brace_depth.saturating_sub(trimmed.matches('}').count() as u32);
+            if test_mod_brace_depth == 0 && trimmed.contains('}') {
+                in_test_mod = false;
+            }
+            continue;
+        }
+
+        // Track #[cold] annotated functions
+        if trimmed == "#[cold]" {
+            saw_cold_attr = true;
+            cold_attr_line = lineno;
+            continue;
+        }
+        if saw_cold_attr
+            && (trimmed.starts_with("fn ")
+                || trimmed.starts_with("pub fn ")
+                || trimmed.starts_with("pub(crate) fn ")
+                || trimmed.starts_with("pub(super) fn ")
+                || trimmed.starts_with("unsafe fn ")
+                || trimmed.starts_with("extern ")
+                || trimmed.starts_with("const fn "))
+            && trimmed.contains('{')
+        {
+            saw_cold_attr = false;
+            in_cold_fn = true;
+            cold_fn_brace_depth = trimmed.matches('{').count() as u32;
+            cold_fn_brace_depth =
+                cold_fn_brace_depth.saturating_sub(trimmed.matches('}').count() as u32);
+            if cold_fn_brace_depth == 0 {
+                in_cold_fn = false;
+            }
+            continue;
+        }
+        if saw_cold_attr && (lineno - cold_attr_line > 3) {
+            saw_cold_attr = false;
+        }
+
+        if in_cold_fn {
+            cold_fn_brace_depth += trimmed.matches('{').count() as u32;
+            cold_fn_brace_depth =
+                cold_fn_brace_depth.saturating_sub(trimmed.matches('}').count() as u32);
+            if cold_fn_brace_depth == 0 {
+                in_cold_fn = false;
+                cold_fn_brace_depth = 0;
+            }
+            continue;
+        }
+
+        // `use` imports of `log::` macros are cold-path metadata, not calls
+        if trimmed.starts_with("use ") && trimmed.contains("log::") {
+            continue;
+        }
+
+        // `.map_err(|e| ... format!(...))` are error construction, not hot-path I/O
+        if trimmed.contains(".map_err") && trimmed.contains("format!") {
+            continue;
+        }
+
+        let exempt_key = format!("{rel_path}:{lineno}");
+        if known_exempt.contains(&exempt_key) {
+            continue;
+        }
+
+        for pattern in banned {
+            if trimmed.contains(pattern) {
+                violations.push((
+                    rel_path.to_string(),
+                    lineno,
+                    format!("found `{pattern}` in `{trimmed}`"),
+                ));
+                break;
+            }
+        }
+    }
+
+    violations
+}

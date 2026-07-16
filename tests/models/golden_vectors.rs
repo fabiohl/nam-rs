@@ -726,7 +726,7 @@ fn test_golden_vectors_container_a2_full() {
 
     if let StaticModel::Container(ref mut c) = model {
         // Use set_active_index to skip crossfade and match existing golden
-        c.set_slimmable_size(0.75);
+        c.set_slimmable_size(0.75, None);
     } else {
         unreachable!("Expected Container variant");
     }
@@ -887,7 +887,7 @@ fn test_golden_vectors_wavenet_a2_container() {
             read_golden_bin(&full_golden_path).expect("Failed to read golden_wavenet_a2_full.bin");
 
         if let StaticModel::Container(ref mut c) = *model {
-            c.set_slimmable_size(0.75);
+            c.set_slimmable_size(0.75, None);
         } else {
             unreachable!("Expected Container variant");
         }

@@ -23,6 +23,7 @@ use std::cmp::Ordering;
 
 use super::slimmable::SlimmableModel;
 use super::{NamModel, StaticModel};
+use crate::common::spsc::RT_STATUS_SLIMMABLE_RESET_FAILED;
 
 const CROSSFADE_DURATION_MS: f32 = 32.0;
 
@@ -244,7 +245,11 @@ impl SlimmableModel for ContainerModel {
             .collect()
     }
 
-    fn set_slimmable_size(&mut self, val: f32) {
+    fn set_slimmable_size(
+        &mut self,
+        val: f32,
+        rt_status: Option<&crate::common::spsc::RtStatusFlags>,
+    ) {
         let mut next = self.submodels.len() - 1;
 
         for (i, (max_value, _)) in self.submodels.iter().enumerate() {
@@ -273,15 +278,13 @@ impl SlimmableModel for ContainerModel {
             self.active_index = idx;
         }
 
-        if let Err(e) = self.submodels[next]
+        if let Err(_e) = self.submodels[next]
             .1
             .reset(self.sample_rate, self.max_buffer_size)
         {
-            log::error!(
-                "ContainerModel::set_slimmable_size: reset(submodel {}) failed: {}",
-                next,
-                e
-            );
+            if let Some(s) = rt_status {
+                s.set_flag(RT_STATUS_SLIMMABLE_RESET_FAILED);
+            }
             return;
         }
 

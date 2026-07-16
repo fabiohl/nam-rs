@@ -252,7 +252,7 @@ fn test_container_switch_rt_safety() {
     let cycles = if cfg!(debug_assertions) { 2 } else { 10 };
     for _ in 0..cycles {
         if let StaticModel::Container(ref mut c) = model {
-            c.set_slimmable_size(0.25);
+            c.set_slimmable_size(0.25, None);
         }
         process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
         for (i, &s) in output.iter().enumerate() {
@@ -263,7 +263,7 @@ fn test_container_switch_rt_safety() {
         }
 
         if let StaticModel::Container(ref mut c) = model {
-            c.set_slimmable_size(0.75);
+            c.set_slimmable_size(0.75, None);
         }
         process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
         for (i, &s) in output.iter().enumerate() {
@@ -352,7 +352,7 @@ fn test_container_crossfade_continuity() {
         } else {
             unreachable!()
         };
-        c.set_slimmable_size(0.25);
+        c.set_slimmable_size(0.25, None);
         assert!(c.is_crossfading());
     }
 
@@ -628,7 +628,7 @@ fn test_set_slimmable_size_resets_target() {
     }
 
     // Trigger transition to Lite (index 0). This must call reset() on Lite.
-    container.set_slimmable_size(0.25);
+    container.set_slimmable_size(0.25, None);
 
     // Verify Lite (target/pending) was reset:
     //   - head_accum must NOT be 0.5 (dirty value was overwritten)

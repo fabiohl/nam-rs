@@ -54,6 +54,22 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
+        // Slimmable reset failure: RT thread sets flag, main thread emits log.
+        if self
+            .shared
+            .cold
+            .rt_status
+            .check_and_clear_flag(spsc::RT_STATUS_SLIMMABLE_RESET_FAILED)
+            && let Some(log) = self.host.get_extension::<HostLog>()
+        {
+            let shared = self.host.shared();
+            let msg = CString::new(
+                "NAM-rs: ContainerModel submodel reset failed — model may run in previous state.",
+            )
+            .unwrap_or_default();
+            log.log(&shared, LogSeverity::Error, &msg);
+        }
+
         // WaveNet slimmable rebuild: main thread performs all allocation,
         // prewarm, and mmap outside the audio-thread callback.
         if self

@@ -207,7 +207,7 @@ fn test_rt_deadline_adaptive_states() {
     model.prewarm(2048);
 
     // Full — quality = 1.0
-    model.set_slimmable_size(1.0);
+    model.set_slimmable_size(1.0, None);
     // Process a few blocks to settle crossfade if any
     let input = generate_sine_440hz(BLOCK_SIZE);
     let mut output = vec![0.0f32; BLOCK_SIZE];
@@ -217,14 +217,14 @@ fn test_rt_deadline_adaptive_states() {
     assert_rt_deadline("Container-Full", &mut model);
 
     // Reduced — quality = 0.25
-    model.set_slimmable_size(0.25);
+    model.set_slimmable_size(0.25, None);
     for _ in 0..64 {
         model.process(&input, &mut output);
     }
     assert_rt_deadline("Container-Reduced", &mut model);
 
     // Minimal — quality = 0.0
-    model.set_slimmable_size(0.0);
+    model.set_slimmable_size(0.0, None);
     for _ in 0..64 {
         model.process(&input, &mut output);
     }

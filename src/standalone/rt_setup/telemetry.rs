@@ -63,6 +63,10 @@ pub fn poll_rt_status(
         );
     }
 
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_SLIMMABLE_RESET_FAILED) {
+        log::error!("ContainerModel submodel reset failed — model may run in previous state.");
+    }
+
     // 2. RATE CHANGE (Sample Rate):
     // Warns when the audio server (PipeWire) changes the sampling frequency
     // (e.g. changed from 44.100 to 48.000 beats per second).
