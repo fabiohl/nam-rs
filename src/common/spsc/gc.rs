@@ -301,8 +301,9 @@ pub fn gc_cascade(
         item = i_opt;
     }
 
-    if let Some(i) = item.take() {
-        let _overwrote = gc_overflow.push(i);
+    if let Some(i) = item.take()
+        && gc_overflow.push(i)
+    {
         rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW);
     }
 }

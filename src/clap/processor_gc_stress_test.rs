@@ -103,8 +103,10 @@ mod tests {
 
         // Perform 1 more swap (the 25th swap). This pushes 2 more items.
         // Total items pushed = 47 + 2 = 49 items.
-        // This exceeds SPSC + parking lot limit of 48 items, so 1 item must spill into the overflow buffer,
-        // which triggers the RT_STATUS_GC_OVERFLOW flag.
+        // This exceeds SPSC + parking lot limit of 48 items, so 1 item spills into the
+        // overflow buffer. RT_STATUS_GC_OVERFLOW is NOT triggered here: the flag is
+        // conditioned on `push` returning `true` (actual overwrite/leak), and the 64-slot
+        // buffer is still far from full.
         {
             let model_name = models[24 % models.len()];
             let mut path = model_dir.clone();
@@ -154,10 +156,11 @@ mod tests {
                 .unwrap();
         }
 
-        // Verify that the GC overflow flag is indeed set now
+        // Verify that the GC overflow flag is NOT set: the overflow buffer has 64 slots,
+        // so a single spill doesn't cause an overwrite.
         assert!(
-            rt_status.check_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW),
-            "Expected GC overflow flag to be set after exceeding SPSC + parking lot capacity"
+            !rt_status.check_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW),
+            "GC overflow flag was set prematurely — only 1 item entered the 64-slot overflow buffer!"
         );
 
         // Perform a complete drain to reclaim all 49 items from the channels and overflow buffer

@@ -2082,12 +2082,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Resolver as cinco pendências de robustez e testes residuais acumuladas nas primeiras rodadas de auditoria.
 
-### T27.1 — R8-h: Condicionar flag de overflow da GC [ ]
+### T27.1 — R8-h: Condicionar flag de overflow da GC [x]
 
 - **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
 - **Ação:** Condicionar a ativação do flag `rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW)` ao retorno `true` do método `gc_overflow.push(i)`.
 
-### T27.2 — R10: Caso de teste de block-size acima do máximo negociado [ ]
+### T27.2 — R10: Caso de teste de block-size acima do máximo negociado [x]
 
 - **Arquivo:** [`src/clap/processor_stress_test.rs`](src/clap/processor_stress_test.rs)
 - **Ação:** Adicionar o caso de teste `test_host_contract_violation_block_size` forçando o envio de blocos de 600 frames em uma configuração com `max_frames_count = 512`. O teste deve esperar pânico com mensagem específica em compilação `debug` (via `#[cfg_attr(debug_assertions, should_panic(expected = "Host contract violation"))]`) e, em `release`, verificar se `RT_STATUS_HOST_CONTRACT_VIOLATION` é setado corretamente.

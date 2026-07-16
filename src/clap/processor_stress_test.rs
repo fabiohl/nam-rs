@@ -516,4 +516,79 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_host_contract_violation_block_size() {
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 64,
+            max_frames_count: 512,
+        };
+
+        let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
+        let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
+        let rt_status = &shared.cold.rt_status;
+        #[cfg(debug_assertions)]
+        let _ = rt_status;
+
+        let n = 600_usize;
+        let mut in_l = vec![0.1f32; n];
+        let mut in_r = vec![0.2f32; n];
+        let mut out_l = vec![0.0f32; n];
+        let mut out_r = vec![0.0f32; n];
+
+        let mut input_ports = AudioPorts::with_capacity(2, 1);
+        let mut output_ports = AudioPorts::with_capacity(2, 1);
+
+        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_input_only(
+                input_channels.iter_mut().map(InputChannel::constant),
+            ),
+        }]);
+
+        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
+        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+        }]);
+
+        let input_events = InputEvents::empty();
+        let mut output_events_buffer = EventBuffer::new();
+        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+        let result = started_processor.process(
+            &input_audio,
+            &mut output_audio,
+            &input_events,
+            &mut output_events,
+            None,
+            None,
+        );
+
+        #[cfg(debug_assertions)]
+        {
+            assert!(
+                result.is_err(),
+                "Expected ProcessFailed in debug builds: host sent 600 frames with max_frames_count=512"
+            );
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            assert!(
+                result.is_ok(),
+                "Expected success in release builds (debug_assert compiled out)"
+            );
+            assert!(
+                rt_status.check_flag(crate::common::spsc::RT_STATUS_HOST_CONTRACT_VIOLATION),
+                "RT_STATUS_HOST_CONTRACT_VIOLATION should be set when host sends buffer exceeding max_frames_count"
+            );
+        }
+    }
 }
