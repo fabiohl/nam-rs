@@ -199,6 +199,25 @@ pub fn poll_rt_status(
         );
     }
 
+    // 5.5 BUFFER MISS (PipeWire):
+    // PipeWire failed to provide a buffer — either on the capture or playback side.
+    let pw_buffer_miss = rt_status.pw_buffer_miss.swap(0, Ordering::Relaxed);
+    if pw_buffer_miss > 0 {
+        log::warn!(
+            "{} PipeWire capture buffer miss ({} xruns). Check system load or buffer size.",
+            "📻".yellow(),
+            pw_buffer_miss
+        );
+    }
+    let playback_miss = rt_status.playback_miss.swap(0, Ordering::Relaxed);
+    if playback_miss > 0 {
+        log::warn!(
+            "{} PipeWire playback buffer miss ({} xruns). Check system load or buffer size.",
+            "📢".yellow(),
+            playback_miss
+        );
+    }
+
     // 6. CLOCK DRIFTING:
     // Occurs when you use different devices for input and output (e.g. USB Microphone
     // and P2 Headphones). If one is slightly faster than the other, the system needs to discard

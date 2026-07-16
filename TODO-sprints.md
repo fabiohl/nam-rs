@@ -2004,7 +2004,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - [`src/standalone/pw_host/run.rs`](src/standalone/pw_host/run.rs)
 - **Ação:** Passar `rt_status` para a thread de playback e incrementar o respectivo contador com `Ordering::Relaxed` se `dequeue_buffer()` retornar `None`.
 
-### T24.3 — Expor contadores no dashboard de telemetria [ ]
+### T24.3 — Expor contadores no dashboard de telemetria [X]
 
 - **Arquivo:** [`src/standalone/rt_setup/telemetry.rs`](src/standalone/rt_setup/telemetry.rs)
 - **Ação:** Logar avisos de buffer-miss no `poll_rt_status` se os contadores forem maiores que zero.
