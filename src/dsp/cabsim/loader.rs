@@ -34,6 +34,12 @@ const DATA_ID: [u8; 4] = *b"data";
 const WAV_FORMAT_PCM: u16 = 1;
 const WAV_FORMAT_IEEE_FLOAT: u16 = 3;
 
+/// Minimum IR sample rate to guard against catastrophic upsampling and OOM (4 kHz).
+const MIN_IR_SAMPLE_RATE: u32 = 4_000;
+
+/// Maximum IR sample rate for stability and reasonable mem usage (384 kHz).
+const MAX_IR_SAMPLE_RATE: u32 = 384_000;
+
 /// A loaded impulse response ready for convolution.
 ///
 /// All memory is pre-allocated at load time (outside the audio thread).
@@ -174,10 +180,13 @@ impl CabSimIr {
             ));
         }
 
-        if sample_rate == 0 {
+        if !(MIN_IR_SAMPLE_RATE..=MAX_IR_SAMPLE_RATE).contains(&sample_rate) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "IR WAV: sample rate is zero",
+                format!(
+                    "IR WAV: sample rate {} out of range ({}-{})",
+                    sample_rate, MIN_IR_SAMPLE_RATE, MAX_IR_SAMPLE_RATE
+                ),
             ));
         }
 
@@ -210,7 +219,7 @@ impl CabSimIr {
             ));
         }
 
-        let samples = match audio_format {
+        let mut samples = match audio_format {
             WAV_FORMAT_PCM => match bits_per_sample {
                 16 => Self::read_pcm16(&data[data_start..], data_size),
                 24 => Self::read_pcm24(&data[data_start..], data_size),
@@ -245,7 +254,7 @@ impl CabSimIr {
             ));
         }
 
-        Self::validate_samples(&samples)?;
+        Self::validate_samples(&mut samples)?;
 
         Ok((samples, sample_rate))
     }
@@ -275,16 +284,21 @@ impl CabSimIr {
         })
     }
 
-    /// Validates that all samples are finite (no NaN, +Inf, -Inf).
+    /// Validates samples are finite and flushes denormals (subnormals) to zero.
     ///
-    /// Catches corrupt float32 WAVs that would otherwise propagate NaN
-    /// through the entire DSP pipeline.
-    fn validate_samples(samples: &[f32]) -> io::Result<()> {
-        if samples.iter().any(|&s| !s.is_finite()) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "IR WAV: samples contain NaN or Infinity",
-            ));
+    /// Catches NaN/Inf from corrupt float32 WAVs, and sanitizes denormals that
+    /// would degrade performance in SIMD DSP paths downstream.
+    fn validate_samples(samples: &mut [f32]) -> io::Result<()> {
+        for s in samples.iter_mut() {
+            if !s.is_finite() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "IR WAV: samples contain NaN or Infinity",
+                ));
+            }
+            if !s.is_normal() && *s != 0.0 {
+                *s = 0.0;
+            }
         }
         Ok(())
     }

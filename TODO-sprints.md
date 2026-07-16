@@ -2261,7 +2261,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Adicionar limites mínimo (4.000 Hz) e máximo (384.000 Hz) ao sample rate de arquivos IR WAV e do resampler para evitar alocações gigantescas e instabilidades de filtragem. Além disso, introduzir sanitização de números subnormais (denormais) para defesa em profundidade no loader de IR.
 
-### T31.1 — Definir limites no parser WAV
+### T31.1 — Definir limites no parser WAV [DONE]
 
 - **Arquivo:** [`src/dsp/cabsim/loader.rs`](src/dsp/cabsim/loader.rs)
 - **Ação:**
@@ -2279,19 +2279,19 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Critério de aceite:** `cargo check` passa.
 
-### T31.2 — Flush de subnormais (denormais) no parser WAV
+### T31.2 — Flush de subnormais (denormais) no parser WAV [DONE]
 
 - **Arquivo:** [`src/dsp/cabsim/loader.rs`](src/dsp/cabsim/loader.rs)
 - **Ação:** Refatorar a assinatura de `validate_samples` para aceitar `samples: &mut [f32]`. Na sua implementação, iterar sobre os samples de forma mutável e, caso um sample não seja normal e não seja exatamente zero, realizar o flush para `0.0f32`.
 - **Critério de aceite:** Todos os valores denormais de entrada são reduzidos a zero. `cargo check` passa.
 
-### T31.3 — Adicionar proteção no construtor de resampler
+### T31.3 — Adicionar proteção no construtor de resampler [DONE]
 
 - **Arquivo:** [`src/dsp/resampler/mod.rs`](src/dsp/resampler/mod.rs)
 - **Ação:** Em `NamResampler::new`, adicionar verificação para garantir que tanto `pw_rate` quanto `nam_rate` estão contidos na faixa `4_000..=384_000`. Retornar erro se as taxas forem inválidas.
 - **Critério de aceite:** `cargo check` passa.
 
-### T31.4 — Implementar testes de erro com sample rate extremo
+### T31.4 — Implementar testes de erro com sample rate extremo [DONE]
 
 - **Arquivo:** [`src/dsp/cabsim/loader_test.rs`](src/dsp/cabsim/loader_test.rs) (ou criar [`src/dsp/cabsim/loader_malformed_test.rs`](src/dsp/cabsim/loader_malformed_test.rs))
 - **Ação:** Implementar o teste unitário `test_reject_ir_extreme_sample_rate` gerando cabeçalhos de WAV de 44 bytes com taxas extremas (ex: 1 Hz e `u32::MAX`) e assegurando que `CabSimIr::load` rejeita apropriadamente com `io::ErrorKind::InvalidData`. E testar a sanitização de denormais.

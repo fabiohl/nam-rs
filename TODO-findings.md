@@ -1780,7 +1780,7 @@ dev/testing, nunca no binário de release).
 
 ## Novos épicos (Rodada 3)
 
-### EP-R13 — Robustez de carregamento de IR/WAV (R27) — **primeiro, único achado ALTA desta rodada com exploit trivial**
+### EP-R13 — Robustez de carregamento de IR/WAV (R27) — **primeiro, único achado ALTA desta rodada com exploit trivial** [DONE]
 
 Escopo: adicionar piso (`4_000 Hz`) e teto (`384_000 Hz`) de `sample_rate` no parser WAV de IR
 (`src/dsp/cabsim/loader.rs`), eliminando o vetor de OOM catastrófico via upsampling e o caso

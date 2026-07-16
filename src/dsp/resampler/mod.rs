@@ -38,6 +38,12 @@
 use anyhow::{Result, bail};
 use std::ptr;
 
+/// Minimum sample rate to guard against catastrophic upsampling (4 kHz).
+const MIN_RATE: u32 = 4_000;
+
+/// Maximum sample rate for stability and reasonable mem usage (384 kHz).
+const MAX_RATE: u32 = 384_000;
+
 #[allow(unused_imports)]
 use super::sinc_kernel::{NUM_PHASES, generate_polyphase_bank, generate_polyphase_bank_linear};
 
@@ -80,8 +86,14 @@ impl NamResampler {
     /// - `_chunk_size`: kept for API compatibility (not used internally).
     #[cold]
     pub fn new(pw_rate: u32, nam_rate: u32, _chunk_size: usize) -> Result<Self> {
-        if pw_rate == 0 || nam_rate == 0 {
-            bail!("NamResampler: sample rates must not be null");
+        if !(MIN_RATE..=MAX_RATE).contains(&pw_rate) || !(MIN_RATE..=MAX_RATE).contains(&nam_rate) {
+            bail!(
+                "NamResampler: sample rates must be in range {}-{}, got pw={} nam={}",
+                MIN_RATE,
+                MAX_RATE,
+                pw_rate,
+                nam_rate
+            );
         }
 
         if pw_rate == nam_rate {
@@ -121,8 +133,14 @@ impl NamResampler {
     /// If `pw_rate == nam_rate`, full bypass with no overhead.
     #[cold]
     pub fn new_linear(pw_rate: u32, nam_rate: u32, _chunk_size: usize) -> Result<Self> {
-        if pw_rate == 0 || nam_rate == 0 {
-            bail!("NamResampler: sample rates must not be null");
+        if !(MIN_RATE..=MAX_RATE).contains(&pw_rate) || !(MIN_RATE..=MAX_RATE).contains(&nam_rate) {
+            bail!(
+                "NamResampler: sample rates must be in range {}-{}, got pw={} nam={}",
+                MIN_RATE,
+                MAX_RATE,
+                pw_rate,
+                nam_rate
+            );
         }
 
         if pw_rate == nam_rate {
