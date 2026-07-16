@@ -1307,7 +1307,7 @@ v3.0.0 — momento apropriado para este guard. Proposta: baseline inicial + GitH
 
 ## Novos épicos (Rodada 2)
 
-### EP-R7 — Fechar vetores residuais de UAF e RT-safety (R17 + R18) — **primeiro, mesma classe de bug de R2/R5 já corrigidos**
+### EP-R7 — Fechar vetores residuais de UAF e RT-safety (R17 + R18) — **primeiro, mesma classe de bug de R2/R5 já corrigidos** [DONE]
 
 Escopo: mover a leitura do `alive_fence`/`gui_scale_factor` para antes do `thread::spawn` da
 janela flutuante (R17); mover `configure_realtime_thread` para fora do callback `.process()`
@@ -1317,7 +1317,7 @@ ou substituir seus `log::*` por `RtStatusFlags` (R18). Critério de aceite: zero
 destruição durante criação de janela flutuante. Risco: baixo-médio (toca lifecycle CLAP e RT
 setup; mitigado por serem correções cirúrgicas de reordenação, não redesenho).
 
-### EP-R8 — Blindagem da fronteira CLAP host↔plugin (R19 + R24 + R25)
+### EP-R8 — Blindagem da fronteira CLAP host↔plugin (R19 + R24 + R25) [DOING]
 
 Escopo: eliminar `as_main_thread_unchecked` em `track_info.rs` (R19); registrar extensão
 `thread-check` com `debug_assert!` nos pontos críticos (R24); padronizar tratamento de

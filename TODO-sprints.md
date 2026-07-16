@@ -1744,3 +1744,89 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - Executar `utils/lints.sh` e assegurar 0 erros/avisos.
 - Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.
+
+---
+
+## Épico EP-R8 — Blindagem da fronteira CLAP host↔plugin (R19 + R24 + R25)
+
+> **Origem:** [TODO-findings.md §EP-R8](TODO-findings.md#ep-r8--blindagem-da-fronteira-clap-hostplugin-r19--r24--r25) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R19 (eliminação de `as_main_thread_unchecked` em track_info), R24 (registro/uso de `thread-check` com debug_assert!), R25 (padronização de `PoisonError` em locks de ColdShared).
+>
+> **Invariante absoluto:** sem alteração de comportamento de processamento de áudio, zero impacto de runtime em release (zero overhead no thread RT), assertivas de thread acionadas apenas em debug.
+>
+> **Pré-requisito:** EP-R7 concluído.
+
+---
+
+## EP-R8 — Sumário dos Sprints
+
+| Sprint  | Finding                                                    | Risco | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S21** | R19 + R24 + R25 — Blindagem da fronteira CLAP host↔plugin  | Baixo | 8                | ~45 min    |
+| **VF**  | Verificação final integrada EP-R8                          | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S21 — R19, R24 & R25: Blindagem da fronteira CLAP host↔plugin
+
+> **Ref:** [TODO-findings.md §R19](TODO-findings.md#r19--plugintrackinfoimplchanged-usa-as_main_thread_unchecked-sem-runtime-guard--média), [TODO-findings.md §R24](TODO-findings.md#r24--extensão-clap-thread-check-não-registrada--baixa) e [TODO-findings.md §R25](TODO-findings.md#r25--poisonerror-de-mutex-descartado-silenciosamente-em-preset_loadhousekeeping--baixa)
+>
+> **Objetivo:** Hardening da fronteira FFI do CLAP entre o host e o plugin via thread checking em debug e tratamento resiliente de envenenamento de mutexes.
+
+### T21.1 — Adicionar o feature "thread-check" no Cargo.toml [ ]
+
+- **Arquivo:** [`Cargo.toml`](Cargo.toml)
+- **Ação:** Adicionar `"thread-check"` à lista de features da dependência `clack-extensions`.
+- **Critério de aceite:** `cargo check` passa sem problemas de resolução de dependências.
+
+### T21.2 — Eliminar `as_main_thread_unchecked` em `track_info.rs` [ ]
+
+- **Arquivo:** [`src/clap/extensions/track_info.rs`](src/clap/extensions/track_info.rs)
+- **Ação:**
+  1. Remover o uso de `as_main_thread_unchecked()`.
+  2. Substituir por `unsafe { self.host.with_arbitrary_lifetime() }` para obter um handle mutável seguro mantendo a tipagem sem realizar conversões de thread não-checadas.
+- **Critério de aceite:** `cargo check` passa; sem `as_main_thread_unchecked` no arquivo.
+
+### T21.3 — Adicionar helper de runtime thread checking `debug_assert_main_thread` [ ]
+
+- **Arquivo:** [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
+- **Ação:**
+  1. Implementar o helper `debug_assert_main_thread(host: &HostMainThreadHandle)` usando a extensão `HostThreadCheck`.
+  2. A função deve consultar a extensão via `host.shared().get_extension::<clack_extensions::thread_check::HostThreadCheck>()` e rodar `debug_assert!` validando que `is_main_thread(&host.shared())` retorna `true` ou `None`.
+- **Critério de aceite:** O helper compila com sucesso.
+
+### T21.4 — Inserir `debug_assert_main_thread` nos pontos críticos do CLAP [ ]
+
+- **Arquivos:**
+  - [`src/clap/extensions/state.rs`](src/clap/extensions/state.rs) (save, load)
+  - [`src/clap/extensions/state_context.rs`](src/clap/extensions/state_context.rs) (métodos de save/load/etc.)
+  - [`src/clap/extensions/preset_load.rs`](src/clap/extensions/preset_load.rs) (load)
+  - [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs) (create, destroy, show, hide, etc.)
+  - [`src/clap/extensions/track_info.rs`](src/clap/extensions/track_info.rs) (changed)
+- **Ação:** Invocar o helper `debug_assert_main_thread` no início de cada um dos métodos para assegurar a corretude do threading da chamada vinda do host em builds debug.
+- **Critério de aceite:** `cargo check` passa em todos os arquivos modificados.
+
+### T21.5 — Tratar `PoisonError` graciosamente nos locks de `ColdShared` [ ]
+
+- **Arquivos:**
+  - [`src/clap/plugin/main_thread/housekeeping.rs`](src/clap/plugin/main_thread/housekeeping.rs)
+  - [`src/clap/extensions/preset_load.rs`](src/clap/extensions/preset_load.rs)
+  - [`src/clap/extensions/params/main.rs`](src/clap/extensions/params/main.rs)
+- **Ação:** Substituir locking direto (`if let Ok(...)`) por `.unwrap_or_else(|e| { log::error!(...); e.into_inner() })` para que o dado pendente ainda seja recuperado em caso de lock envenenado e o erro seja devidamente reportado.
+- **Critério de aceite:** Ausência de descartes silenciosos de poison de mutex nos arquivos especificados.
+
+### T21.6 — Adicionar testes unitários/coerência de runtime thread check [ ]
+
+- **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs) (ou unitário adequado)
+- **Ação:** Criar testes estruturados ou estáticos para assegurar que as chamadas críticas do main thread possuem a barreira de thread check e que a falha de envenenamento é tratada corretamente.
+- **Critério de aceite:** `cargo test` passa e novos testes validam as invariantes de hardening.
+
+---
+
+## VF — Verificação Final Integrada EP-R8
+
+### VF8.1 — Lints e Compilação rápida
+
+- Executar `utils/lints.sh` e assegurar 0 erros/avisos.
+- Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.
