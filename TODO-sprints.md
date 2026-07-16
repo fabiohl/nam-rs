@@ -1147,7 +1147,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Modificações limitadas ao script de validação de qualidade e meta-testes.
 
-### T11.1 — Evitar truncamento de colunas ao salvar contrato
+### T11.1 — Evitar truncamento de colunas ao salvar contrato [x]
 
 - **Arquivo:** [`utils/quality-dashboard.sh`](utils/quality-dashboard.sh)
 - **Ação:**
@@ -1155,7 +1155,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Em `render_fidelity_details`, condicionar o cálculo da variável `display_key`: se `IS_SAVING` for igual a `1`, usar a chave completa do modelo (`key`), sem truncar em 38 colunas. Caso contrário, manter o truncamento em `${key:0:38}` para visualização amigável no console.
 - **Critério de aceite:** `quality-dashboard.sh --save` grava as linhas da tabela de fidelidade com os nomes dos modelos completos na primeira coluna.
 
-### T11.2 — Modificar matching para chave exata e composta
+### T11.2 — Modificar matching para chave exata e composta [x]
 
 - **Arquivo:** [`utils/quality-dashboard.sh`](utils/quality-dashboard.sh)
 - **Ação:**
@@ -1163,7 +1163,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Em `quality_check`, fazer a verificação de igualdade exata de strings (`[[ "$dash_key" == "$contract_label" ]]`) em substituição à lógica de prefixo anterior (`[[ "$dash_label" == "$contract_label"* ]]`).
 - **Critério de aceite:** Matching de baseline do contrato opera de forma exata e não confunde mais chaves como `Quick A2-Full` e `Quick A2-Full v2`.
 
-### T11.3 — Adicionar meta-teste de unicidade do contrato
+### T11.3 — Adicionar meta-teste de unicidade do contrato [x]
 
 - **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs)
 - **Ação:**
