@@ -1134,7 +1134,12 @@ render_fidelity_details() {
             esr_f64_colored=$(_esr_color "$esr_f64_short")
             local mode="Live"
             [[ "$key" == *" HQ"* ]] && mode="HQ"
-            local display_key="${key:0:38}"
+            local display_key
+            if [ "${IS_SAVING:-0}" = "1" ]; then
+                display_key="$key"
+            else
+                display_key="${key:0:38}"
+            fi
 
             local tags
             tags=$(_red_zone_tags "$model_label" "$esr_nam" "$esr_f64")
@@ -1188,7 +1193,12 @@ render_fidelity_details() {
             esr_f64_colored=$(_esr_color "$esr_f64_short")
             local mode="Live"
             [[ "$key" == *" HQ"* ]] && mode="HQ"
-            local display_key="${key:0:38}"
+            local display_key
+            if [ "${IS_SAVING:-0}" = "1" ]; then
+                display_key="$key"
+            else
+                display_key="${key:0:38}"
+            fi
 
             local tags
             tags=$(_red_zone_tags "$model_label" "$esr_nam" "$esr_f64")
@@ -1544,9 +1554,11 @@ render_dashboard() {
 # ── Plain-text version (no ANSI) for --save ─────────────────────────────────
 
 render_dashboard_plain() {
+    export IS_SAVING=1
     set +o pipefail
     render_dashboard | sed "s/$(printf '\033')\[[0-9;]*m//g"
     set -o pipefail
+    unset IS_SAVING
 }
 
 # ── Contract baseline storage ──────────────────────────────────────────────
@@ -1675,9 +1687,11 @@ verify_contract() {
             for dash_key in "${!ESR_NAMCORE[@]}"; do
                 local dash_label
                 dash_label=$(echo "$dash_key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
-                # Prefix match: contract labels may be truncated by the 38-char
-                # column width in the plain-text dashboard table.
-                if [[ "$dash_label" == "$contract_label"* ]] || [[ "$contract_label" == "$dash_label"* ]]; then
+                # Exact match: contract labels are now saved with full keys
+                # (T11.1), so prefix matching is no longer needed or safe.
+                # Comparing dash_label (model name stripped of @rate/mode)
+                # against contract_label (full model name from contract).
+                if [[ "$dash_label" == "$contract_label" ]]; then
                     matched=true
                     local esr_cur="${ESR_NAMCORE[$dash_key]:-N/A}"
                     local esr_ctr="${CONTRACT_ESR[$contract_label]}"
