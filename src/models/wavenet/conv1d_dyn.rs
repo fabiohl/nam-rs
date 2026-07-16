@@ -81,7 +81,6 @@ impl Conv1dDyn {
     }
 
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
     unsafe fn process_blocks_4_nocopy<M: SimdMath>(
         &self,
         out_frame: &mut [f32],
@@ -150,7 +149,6 @@ impl Conv1dDyn {
     }
 
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
     unsafe fn process_blocks_8_nocopy<M: SimdMath>(
         &self,
         out_frame: &mut [f32],
@@ -204,7 +202,6 @@ impl Conv1dDyn {
     }
 
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
     unsafe fn process_blocks_16_nocopy<M: SimdMath>(
         &self,
         out_frame: &mut [f32],

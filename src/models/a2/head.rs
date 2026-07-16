@@ -180,7 +180,7 @@ impl A2HeadConv {
 /// - `head_history` deve ter `(ring_mask + 1) * 8` elementos.
 /// - `output` deve ter pelo menos `num_frames` elementos.
 /// - `num_channels` implícito = 8 (chamador deve garantir).
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn head_process_ch8_avx2(
     head_w: &[f32],
@@ -267,7 +267,7 @@ pub unsafe fn head_process_ch8_avx2(
 /// - `head_history` deve ter `(ring_mask + 1) * 3` elementos.
 /// - `output` deve ter pelo menos `num_frames` elementos.
 /// - `num_channels` implícito = 3 (chamador deve garantir).
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 #[target_feature(enable = "fma")]
 pub unsafe fn head_process_ch3_sse(
     head_w: &[f32],
@@ -325,7 +325,7 @@ pub unsafe fn head_process_ch3_sse(
 ///
 /// Matches `A2HeadConv::process` single-frame logic exactly.
 /// Used as an oracle for unit tests and SIMD parity verification.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub fn a2_head_single_frame_scalar_ref(
     head_w: &[f32],
     head_b: f32,
@@ -360,7 +360,7 @@ pub fn a2_head_single_frame_scalar_ref(
 ///
 /// Computes the head output for `num_frames` using the same algorithm
 /// as `A2HeadConv::process`. Useful for validating the block-level path.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub fn a2_head_block_scalar_ref(
     head_w: &[f32],
     head_b: f32,

@@ -26,7 +26,7 @@ use std::sync::atomic::Ordering;
 /// The `process()` closure captures all DSP state by `move` and executes
 /// the full pipeline: resampler draining, command reception,
 /// rate synchronization, and DSP processing via `capture_dsp_pipeline`.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub fn setup_capture_stream<'c>(
     core: &'c pw::core::Core,
     bridge_ptr: BridgeRef,

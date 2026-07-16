@@ -2188,7 +2188,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Substituir as supressões `#[allow(dead_code)]` por `#[expect(dead_code, reason = "...")]` documentando a necessidade específica de cada uma.
 - **Critério de aceite:** `cargo check` passa com sucesso.
 
-### T29.2 — Migrar `clippy::too_many_arguments` para `expect` [ ]
+### T29.2 — Migrar `clippy::too_many_arguments` para `expect` [x]
 
 - **Arquivos:**
   - [`src/dsp/pipeline/stages/inference.rs`](src/dsp/pipeline/stages/inference.rs)

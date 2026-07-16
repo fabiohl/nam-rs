@@ -17,7 +17,7 @@ use std::sync::atomic::Ordering;
 /// 5.1.2. COMMAND RECEPTION (SPSC Channel)
 /// Processes commands from the command-line interface or control system (volume, model, noise gate).
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub fn receive_commands(
     consumer: &mut rtrb::Consumer<ParamPayload>,
     model_input_mult_adj: &mut f32,

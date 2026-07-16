@@ -155,7 +155,7 @@ fn run_stereo_or_mono(
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Processes stereo/mono through neural models with optional half-band oversampling.
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 fn model_process_stereo_with_os(
     os_l: &mut crate::dsp::oversample::OversampleEngine,
     os_r: &mut crate::dsp::oversample::OversampleEngine,
@@ -221,7 +221,7 @@ fn passthru(in_buf: &[f32], out_buf: &mut [f32]) {
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Stage 2: Neural Inference and Resampling.
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub(crate) fn run_inference(
     samples_l: &mut [f32],
     samples_r: &mut [f32],

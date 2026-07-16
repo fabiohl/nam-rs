@@ -18,7 +18,7 @@ use super::input::DENORMAL_DITHER_OFFSET;
 #[cfg(any(test, feature = "clap-plugin"))]
 /// Stage 3: Output Gain, Fading, Clipping Detection, and Degrade Crossfade.
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub(crate) fn apply_output_stage(
     resamp_out_l: &mut [f32],
     resamp_out_r: &mut [f32],
@@ -92,7 +92,7 @@ pub(crate) fn apply_output_stage(
 /// Caller must ensure valid buffer references and that the SIMD backend is
 /// supported by the CPU.
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
 pub(crate) unsafe fn apply_output_stage_inner<M: SimdMath>(
     resamp_out_l: &mut [f32],
     resamp_out_r: &mut [f32],
