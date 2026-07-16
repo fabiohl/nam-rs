@@ -1780,7 +1780,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Adicionar `"thread-check"` à lista de features da dependência `clack-extensions`.
 - **Critério de aceite:** `cargo check` passa sem problemas de resolução de dependências.
 
-### T21.2 — Eliminar `as_main_thread_unchecked` em `track_info.rs` [ ]
+### T21.2 — Eliminar `as_main_thread_unchecked` em `track_info.rs` [x]
 
 - **Arquivo:** [`src/clap/extensions/track_info.rs`](src/clap/extensions/track_info.rs)
 - **Ação:**

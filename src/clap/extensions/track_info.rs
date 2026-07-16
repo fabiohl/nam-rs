@@ -15,8 +15,9 @@ impl<'a> PluginTrackInfoImpl for NamClapMainThread<'a> {
         {
             let mut buffer = clack_extensions::track_info::TrackInfoBuffer::new();
             // SAFETY: The CLAP main thread executes this callback synchronously.
-            // It is safe to create a temporary HostMainThreadHandle since we are on the main thread.
-            let mut host_mut = unsafe { self.host.shared().as_main_thread_unchecked() };
+            // with_arbitrary_lifetime extends the handle's lifetime without bypassing
+            // thread-safety checks — the caller guarantees we are on the main thread.
+            let mut host_mut = unsafe { self.host.with_arbitrary_lifetime() };
             if let Some(info) = track_info_ext.get(&mut host_mut, &mut buffer) {
                 if let Some(color) = info.color() {
                     let packed = pack_argb(color.alpha, color.red, color.green, color.blue);
