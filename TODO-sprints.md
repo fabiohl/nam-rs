@@ -1646,3 +1646,101 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 ### VF6.1 — Execução dos scripts
 
 - Validar que ambos os scripts rodam sem erros e geram saída legível quando invocados localmente.
+
+---
+
+## Épico EP-R7 — Fechar vetores residuais de UAF e RT-safety (R17 + R18)
+
+> **Origem:** [TODO-findings.md §EP-R7](TODO-findings.md#ep-r7--fechar-vetores-residuais-de-uaf-e-rt-safety-r17--r18--primeiro-mesma-classe-de-bug-de-r2r5-já-corrigidos) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R17 (UAF na janela flutuante, **ALTA**) + R18 (log síncrono no callback RT, **ALTA**).
+>
+> **Invariante absoluto:** sem alteração de comportamento sonoro, zero logs síncronos na thread RT, zero UAF no bootstrap de janela flutuante. Critério de aceite global: `utils/tests-quick.sh` verde.
+
+---
+
+## EP-R7 — Sumário dos Sprints
+
+| Sprint  | Finding                                                    | Risco       | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------------------------- | ----------- | ---------------- | ---------- |
+| **S20** | R17 + R18 — Segurança de Lifecycle e RT-safety de thread   | Baixo-Médio | 6                | ~60 min    |
+| **VF**  | Verificação final integrada EP-R7                          | —           | 0                | ~15 min    |
+
+---
+
+## Sprint S20 — R17 & R18: Segurança de Lifecycle e RT-safety de thread
+
+> **Ref:** [TODO-findings.md §R17](TODO-findings.md#r17--uaf-residual-nampluginwindownew-desreferencia-shared0-sem-alive_fence-na-thread-da-janela-flutuante--alta) (L786-857) e [TODO-findings.md §R18](TODO-findings.md#r18--logerrologinfo-alcançáveis-no-thread-rt-do-pipewire-via-configure_realtime_thread--alta) (L861-930)
+>
+> **Objetivo:** Eliminar o UAF na inicialização da janela flutuante passando o `alive_fence` e escala diretamente do main thread, e expurgar chamadas `log::*` síncronas de dentro de `configure_realtime_thread` na thread RT salvando erros em flags atômicas.
+
+### T20.1 — Adicionar campos de erros e telemetria atômicos em `RtStatusFlags` [ ]
+
+- **Arquivo:** [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
+- **Ação:**
+  1. Adicionar campos atômicos ao struct `RtStatusFlags`:
+     - `rt_affinity_err`: `AtomicI32`
+     - `rt_sched_err`: `AtomicI32`
+     - `rt_getsched_err`: `AtomicI32`
+     - `rt_target_cpu`: `AtomicI32`
+  2. Inicializar os campos com seus respectivos valores padrão em `new()`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T20.2 — Remover logs e repassar erros atômicos em `configure_realtime_thread` [ ]
+
+- **Arquivo:** [`src/standalone/rt_setup/thread.rs`](src/standalone/rt_setup/thread.rs)
+- **Ação:**
+  1. Remover importação e uso de macros `log::error!`/`log::info!`.
+  2. Substituir logs por atribuições atômicas de erro:
+     - CPU OOB: registrar `-1` em `rt_affinity_err` e `target_cpu` em `rt_target_cpu`.
+     - `pthread_setaffinity_np` falhou: registrar `ret_aff` (errno) em `rt_affinity_err` e `target_cpu` em `rt_target_cpu`.
+     - `pthread_setschedparam` falhou: registrar `ret_sched` (errno) em `rt_sched_err`.
+     - `pthread_getschedparam` falhou: registrar `ret_getsched` (errno) em `rt_getsched_err`.
+- **Critério de aceite:** Zero ocorrências de `log::` no método `configure_realtime_thread`.
+
+### T20.3 — Consumir erros e telemetria RT de forma segura na thread principal [ ]
+
+- **Arquivo:** [`src/standalone/rt_setup/telemetry.rs`](src/standalone/rt_setup/telemetry.rs)
+- **Ação:**
+  1. No método `poll_rt_status`, realizar a leitura/swap seguro de `rt_affinity_err`, `rt_sched_err`, `rt_getsched_err` e `rt_target_cpu`.
+  2. Emitir as respectivas mensagens de erro formatadas (`log::error!`, etc.) se os valores de erro forem não-nulos.
+  3. No caso de sucesso de escalonamento RT e afinidade, imprimir a mensagem detalhada de otimização de thread clássica com cores adequadas.
+- **Critério de aceite:** Compilação com sucesso e logs de inicialização visíveis e corretos no standalone.
+
+### T20.4 — Extrair `alive_fence` e escala no main thread CLAP [ ]
+
+- **Arquivo:** [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
+- **Ação:**
+  1. Em `set_parent` (embutido) e `set_transient` (flutuante):
+     - Clonar `self.shared.cold.alive_fence` diretamente do main thread.
+     - Obter o fator de escala `scale_factor` a partir de `self.shared.cold.gui_scale_factor.load(...)`.
+  2. Passar ambos como parâmetros para a chamada de `NamPluginWindow::new(...)`.
+- **Critério de aceite:** `cargo check` passa.
+
+### T20.5 — Modificar assinatura de `NamPluginWindow::new` para prevenir UAF [ ]
+
+- **Arquivo:** [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs)
+- **Ação:**
+  1. Alterar `pub fn new(...)` para receber `alive_fence: Arc<AtomicBool>` e `gui_scale: f32` explicitamente.
+  2. Remover as linhas que fazem leituras sem fence (`(*shared.0).cold.gui_scale_factor` e `&*shared.0`).
+  3. Atribuir os parâmetros diretamente nos campos correspondentes da estrutura criada.
+- **Critério de aceite:** `cargo check` passa; sem desreferências cruas e cegas de `shared.0` durante o bootstrap do construtor.
+
+### T20.6 — Adicionar baterias de testes unitários e coerência estrutural [ ]
+
+- **Arquivos:**
+  - [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs)
+  - [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs)
+- **Ação:**
+  1. Adicionar o teste unitário `test_window_safe_shared_boundary` validando que `safe_shared` retorna `None` se a fence estiver desativada.
+  2. Adicionar o meta-teste `test_configure_realtime_thread_no_logging` no coherence.rs assegurando estaticamente que `configure_realtime_thread` não possui logs ativos.
+- **Critério de aceite:** `cargo test` passa limpo.
+
+---
+
+## VF — Verificação Final Integrada EP-R7
+
+### VF7.1 — Lints e Compilação rápida
+
+- Executar `utils/lints.sh` e assegurar 0 erros/avisos.
+- Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.

@@ -12,6 +12,12 @@ quality-dashboard `--check` + build-release PGO/BOLT + tests-long completos, tod
 inspeção direta de código em `src/`, `utils/` e `tests/`, e verificação pontual de cada achado
 de alta severidade (nenhum achado abaixo foi registrado sem confirmação em `file:line`).
 
+> **Rodada 2 (2026-07-16):** os épicos EP-R1 a EP-R5 foram verificados linha a linha contra o
+> código atual (ver "Verificação pós-implementação" após os épicos) — 41 de 44 sub-itens
+> confirmados RESOLVIDOS, 3 com pendência residual. Em seguida, nova rodada completa de
+> auditoria Resilience & Robustness + Pesquisador-Inovador produziu os achados **R17–R26** e as
+> propostas **P5–P10**, organizados nos épicos **EP-R7 a EP-R11** (todos ao final do documento).
+
 **Fora de escopo (por decisão de produto):** `TODO-wavenet_a2_max.md` e
 `TODO-convnet_parity.md`. Nenhum achado abaixo toca esses pântanos; onde a auditoria produziu
 *conhecimento novo* relevante a eles, está registrado na seção "Contribuições de conhecimento"
@@ -56,6 +62,27 @@ colisão de chaves por prefixo no contrato de qualidade) que permitem regressõe
 | P1  | Inovação: `loom` para model-checking do SPSC/GC (stable)                          | proposta    | QA de concorrência  |
 | P2  | Inovação: `cargo-mutants` como extensão anti-placebo (stable)                     | proposta    | Malha de QA         |
 | P3  | Inovação: `hint::assert_unchecked` + `as_chunks` para reduzir `unsafe`            | proposta    | Higiene/perf        |
+
+### Rodada 2 (2026-07-16) — novos achados e propostas
+
+| ID  | Achado                                                                                          | Severidade | Área            |
+| --- | ----------------------------------------------------------------------------------------------- | ---------- | --------------- |
+| R17 | UAF residual: `NamPluginWindow::new` deref `shared.0` sem `alive_fence` em thread flutuante     | **ALTA**   | Lifecycle GUI   |
+| R18 | `log::error!`/`log::info!` alcançáveis no thread RT do PipeWire via `configure_realtime_thread` | **ALTA**   | RT-safety       |
+| R19 | `track_info::changed()` usa `as_main_thread_unchecked` sem runtime guard                        | **MÉDIA**  | Lifecycle CLAP  |
+| R20 | `.expect()` residual em alocações de produção (loader + `activate()` CLAP)                      | **MÉDIA**  | Fail-closed     |
+| R21 | Lacuna de fuzzing: LSTM dinâmico, A2-Dynamic e SlimmableContainer sem estratégia adversarial    | **MÉDIA**  | Malha de QA     |
+| R22 | Ausência de telemetria de xrun/buffer-miss (capture e playback PipeWire)                        | **MÉDIA**  | Observabilidade |
+| R23 | Higiene de `unsafe` remanescente fora da tabela R12 (~20 blocos sem SAFETY específico)          | **BAIXA**  | Auditabilidade  |
+| R24 | Extensão CLAP `thread-check` não registrada                                                     | **BAIXA**  | Lifecycle CLAP  |
+| R25 | `PoisonError` de `Mutex` descartado silenciosamente em preset_load/housekeeping                 | **BAIXA**  | Diagnóstico     |
+| R26 | Campos/flags mortos ou write-only (`os_*` buffers, `alive: AtomicBool`, `mem::zeroed` FFI)      | **BAIXA**  | Coesão          |
+| P5  | Inovação: `#[expect(lint)]` (Rust 1.81) substituindo `#[allow]` acumulado                       | proposta   | Higiene/lint    |
+| P6  | Inovação: `cargo machete` para dependências não usadas                                          | proposta   | Supply-chain    |
+| P7  | Inovação: `typos` como spell-checker de CI                                                      | proposta   | Higiene         |
+| P8  | Inovação: `cargo vet` para auditoria de supply-chain                                            | proposta   | Supply-chain    |
+| P9  | Inovação: `build.warnings = "deny"` (Cargo/Rust 1.97) substituindo `RUSTFLAGS`                  | proposta   | Build/CI        |
+| P10 | Inovação: `cargo semver-checks` para breaking changes de API pública                            | proposta   | Compatibilidade |
 
 ---
 
@@ -714,3 +741,650 @@ Escopo: `utils/mutants.sh` (rodada mensal off-line, módulos-fortaleza) e `utils
 (baseline de codegen sobre o dsp_hotpath.asm já gerado). Nenhum bloqueio sobre os demais
 épicos; entrega valor composto ao longo do tempo. Risco: zero (ferramentas externas, nada em
 produção).
+
+---
+
+## Rodada 2 — Verificação pós-implementação e nova auditoria (2026-07-16)
+
+## Verificação pós-implementação dos EP-R1…EP-R5
+
+Cada sub-item dos cinco épicos marcados `[DONE]` foi reconfirmado nesta data, lendo o código
+atual (não o histórico) e citando `file:line` novo. Resultado: **41 de 44 sub-itens
+RESOLVIDOS** (alguns de forma diferente da proposta original, mas resolvendo o problema real),
+**3 pendências residuais** — nenhuma delas crítica, mas registradas abaixo para rastreabilidade
+e fechadas no épico EP-R11.
+
+| Épico | Sub-item | Status                                    | Nota                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----- | -------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EP-R1 | R1       | ✅ RESOLVIDO                              | Preferência 1 aplicada — scratch pré-alocado em `AlignedVec` (`src/models/wavenet/layer.rs:20,23,55`). Zero `MaybeUninit` não inicializado restante em `src/models/`/`src/dsp/`.                                                                                                                                                                                                                                       |
+| EP-R1 | R9       | ✅ RESOLVIDO (forma diferente)            | `try_clone() -> io::Result<Self>` (`src/dsp/mirror_buf.rs:184-193`); `Clone` delega com `.expect()` documentado; caminho CLAP `activate()` não clona `MirroredBuffer`, elimina o risco de panic cruzar FFI.                                                                                                                                                                                                            |
+| EP-R1 | R10      | ⚠️ PARCIAL                                | Clamp defensivo aplicado (`src/dsp/oversample.rs:189,218-219`) e flag `RT_STATUS_HOST_CONTRACT_VIOLATION` setada — porém no orquestrador (`src/clap/processor/dsp/orchestrator.rs:24-30`), não dentro do oversampler. Falta teste de integração com block-size acima do `max_frames_count` negociado (`processor_stress_test.rs`).                                                                                     |
+| EP-R2 | R2       | ✅ RESOLVIDO (forma diferente)            | `Arc<DialogSharedState>` elimina reconstrução de ponteiro cru nos file-dialogs; `JoinHandle` armazenado e joinado no teardown; `alive_fence` promovido a Release/Acquire. `NamClapSharedRef` continua `pub *const` sem `NonNull` privado (proposta 2 não aplicada) — mas ver R17 abaixo, que encontrou um vetor de UAF concreto residual não coberto por esta correção.                                                |
+| EP-R2 | R3       | ✅ RESOLVIDO                              | Handler documentado (`src/main.rs:80-89`); `SHUTDOWN.load` com `Acquire` nos 3 pontos; nota operacional em `docs/architecture.md:488-492`.                                                                                                                                                                                                                                                                             |
+| EP-R2 | R11      | ✅ RESOLVIDO                              | `drain_gc_final()` com dupla passagem (`src/clap/plugin/main_thread/mod.rs:200-221`), chamada em `deactivate()`, `Drop` e `on_main_thread`; documentado em `src/common/spsc/gc.rs:4-17`.                                                                                                                                                                                                                               |
+| EP-R2 | R13      | ✅ RESOLVIDO                              | Watchdog com deadline de 2s + `is_finished()` polling (`src/clap/extensions/gui.rs:24-48`); abandono controlado com `log::warn!`.                                                                                                                                                                                                                                                                                      |
+| EP-R3 | R8-a..g  | ✅ RESOLVIDO (7/8)                        | Todos os 7 pares Release/Acquire corrigidos com comentários de pareamento cruzado (`main.rs:91`↔`run.rs:141`; `listeners.rs:59`↔`rate_sync.rs:21`; `panic_hook.rs:43`; `telemetry.rs:101-103` com `swap(0)`; `shared.rs:262`↔`window/state.rs:190`; `gc.rs:229` documentado; `run.rs:155,204,235,270,305` com `clear_flag_relaxed`).                                                                                   |
+| EP-R3 | R8-h     | ❌ **NÃO RESOLVIDO**                      | `src/common/spsc/gc.rs:304-306` — `RT_STATUS_GC_OVERFLOW` ainda é setado incondicionalmente; o retorno de `gc_overflow.push(i)` é capturado em `_overwrote` e nunca lido. Fix trivial de 1 linha, zero risco — ver EP-R11.                                                                                                                                                                                             |
+| EP-R3 | P1       | ✅ RESOLVIDO                              | `loom = "0.7"` em dev-deps; `tests/loom_tests.rs` com 4 testes cobrindo os 3 protocolos citados; fase dedicada em `utils/tests-long.sh:683-689`.                                                                                                                                                                                                                                                                       |
+| EP-R4 | R4       | ✅ RESOLVIDO                              | `OnceLock<SystemSnapshot>` pré-capturado; buffer fixo `[u8; 4096]` via `LimitWriter`; `try_read()` com fallback; teste `test_panic_hook_zero_alloc` (`tests/models/diagnostic_bundle.rs:658-682`) com `alloc_audit == 0`.                                                                                                                                                                                              |
+| EP-R4 | R5       | ✅ RESOLVIDO                              | `RT_STATUS_SLIMMABLE_RESET_FAILED` (`src/common/spsc/status.rs:64`) substitui o `log::error!`; consumido nos dois main threads; meta-teste estrutural `test_rt_logging_safety` (`tests/models/meta_coherence.rs:421-493`).                                                                                                                                                                                             |
+| EP-R4 | R6       | ✅ RESOLVIDO                              | Matching exato por chave normalizada (`utils/quality-dashboard.sh:1691-1695`); meta-teste `test_quality_contract_uniqueness` (`tests/models/meta_coherence.rs:346-407`); `docs/quality-contract.txt` com valores A2-Full v1/v2 distintos.                                                                                                                                                                              |
+| EP-R4 | R7       | ✅ RESOLVIDO                              | `assert_ran_tests()` (`utils/tests-long.sh:375-407`) aplicado genericamente a todas as fases via `run_phase()`; heurística antiga de `<1s` removida.                                                                                                                                                                                                                                                                   |
+| EP-R5 | R12 (9)  | ✅ RESOLVIDO (9/9)                        | Todos os 9 locais com SAFETY específico hoje (mirror_buf, huge_alloc, stage.rs com `const` assert, fft.rs migrado para `assert_unchecked`, convnet/model.rs, wavenet/conv1d.rs, gui/mod.rs, gemv_bf16.rs, main.rs com campo correto do union `sigaction`).                                                                                                                                                             |
+| EP-R5 | R14 (8)  | ⚠️ PARCIAL (5/8 + 2 parcial + 1 pendente) | Resolvidos: `FftPlannerRadix4` com cfg-gate, `#[allow(dead_code)]` espúrios, `CatalogGap` removido, `max_frames_count` ativamente usado, feature `pgo` comentada. **Pendente:** `tests/models/proptest_parsers.rs:270-512` continua órfão (zero call-sites). **Parcial:** `median` consolidado em 1 local (ok), mas `generate_sine_440hz` ainda duplicado entre `tests/common/signals.rs:13` e `benches/common.rs:20`. |
+| EP-R5 | R15      | ✅ RESOLVIDO                              | `default = ["standalone"]` (`Cargo.toml:117`); scripts usam `--features testing` explícito.                                                                                                                                                                                                                                                                                                                            |
+| EP-R5 | R16 (5)  | ✅ RESOLVIDO (4/5 + 1 cosmético)          | Referência morta corrigida, `NAM_ORACLE_VERBOSE` aplicado, `#[ignore]` com motivo, teste renomeado. Moldura do `isa_matrix_header_info` já estava ok (item cosmético, sem ação necessária).                                                                                                                                                                                                                            |
+| EP-R5 | P3       | ⚠️ PARCIAL                                | `assert_unchecked` adotado exemplarmente em `fft.rs` (13 ocorrências); `dsp/stage.rs` manteve `get_unchecked` (correto e documentado, mas não migrado); `as_chunks` com **zero adoção**.                                                                                                                                                                                                                               |
+
+**Build/testes de evidência objetiva:** `cargo build --release` limpo; suítes `wavenet`,
+`oversample_test` (16/16), `loom_tests` e `meta_coherence` verdes nas verificações pontuais.
+
+---
+
+## Novos achados (Resilience & Robustness) — Rodada 2
+
+## R17 · UAF residual: `NamPluginWindow::new` desreferencia `shared.0` sem `alive_fence` na thread da janela flutuante — **ALTA**
+
+### R17 · Evidência
+
+* `src/clap/extensions/gui.rs:213-215` — a construção da janela **flutuante** roda numa thread
+  própria, concorrente com o main thread do host:
+
+  ```rust
+  let handle = std::thread::spawn(move || {
+      // ...
+      let window = NamPluginWindow::new(win, shared_ptr, host_static, cs);
+  ```
+
+* `src/clap/gui/window/state.rs:134-142` — dentro de `NamPluginWindow::new`, ANTES de
+  `alive_fence` existir localmente, o ponteiro cru é desreferenciado direto:
+
+  ```rust
+  let stored = unsafe {
+      (*shared.0)
+          .cold
+          .gui_scale_factor
+          .load(std::sync::atomic::Ordering::Relaxed)
+  };
+  ```
+
+* `src/clap/gui/window/state.rs:168` — mesmo padrão, ainda mais crítico: é a leitura que
+  **inicializa** o próprio `alive_fence` local:
+
+  ```rust
+  let alive_fence = unsafe { &*shared.0 }.cold.alive_fence.clone();
+  ```
+
+* Comparar com `safe_shared()` (`state.rs:189-198`), usado em TODO o resto do código, que
+  verifica `alive_fence.load(Acquire)` antes de desreferenciar — exatamente a proteção que
+  falta nestes dois pontos.
+
+### R17 · Diagnóstico
+
+O achado R2 (rodada 1) eliminou o UAF nas threads do file-dialog substituindo o ponteiro cru
+por `Arc<DialogSharedState>`. Porém a thread da **janela flutuante** (`gui.rs:213`, um
+mecanismo diferente, não tocado pela correção de R2) ainda constrói `NamPluginWindow` recebendo
+`shared: NamClapSharedRef` (ponteiro cru) e desreferencia-o duas vezes antes de ter qualquer
+`alive_fence` para proteger o acesso — é o próprio bootstrap do fence que depende do acesso
+desprotegido. Se o host destruir o plugin (ou o `deactivate()`/`Drop` correr) enquanto a thread
+flutuante ainda está em `NamPluginWindow::new()` (cenário plausível: o próprio R13 documenta que
+essa inicialização pode ser lenta — conexão X11/OpenGL degradada, é exatamente o motivo do
+watchdog de 2s no *destroy*), as linhas 137 e 168 leem memória potencialmente já liberada.
+
+### R17 · Impacto
+
+Requer corrida de dois eventos raros simultâneos (destruição do plugin + criação lenta de
+janela flutuante), mas quando ocorre é UAF de leitura sobre `NamClapShared` inteiro — mesma
+classe de bug do R2 original, porém em vetor de ataque diferente e não coberto pela correção
+já aplicada.
+
+### R17 · Proposta de solução
+
+1. Mover a leitura do `alive_fence` para **antes** do `thread::spawn` em `gui.rs`, no main
+   thread (onde a validade de `shared.0` é garantida pelo próprio chamador do `create()`), e
+   passar o `Arc<AtomicBool>` (fence) já clonado para dentro da thread — elimina a
+   desreferência cega em `state.rs:168`.
+2. Para `gui_scale_factor` (`state.rs:137`), mover a leitura para o mesmo ponto (pré-spawn) ou
+   condicioná-la ao fence já recebido por parâmetro.
+3. Após os passos 1-2, `NamPluginWindow::new` nunca mais precisa desreferenciar `shared.0`
+   sem primeiro checar o fence — reaproveitar `safe_shared()` ou uma variante que aceite o
+   fence por parâmetro em vez de `self`.
+4. Estender o teste `test_dialog_state_outlives_plugin_drop` (já existente para file-dialogs)
+   com um equivalente para a janela flutuante, simulando destruição do plugin durante a
+   construção.
+
+Critério de aceite: zero desreferência de `shared.0`/`NamClapSharedRef` fora de `safe_shared()`
+em todo `src/clap/gui/` (`grep -rn "shared\.0\|\*self\.shared" src/clap/gui/`).
+
+---
+
+## R18 · `log::error!`/`log::info!` alcançáveis no thread RT do PipeWire via `configure_realtime_thread` — **ALTA**
+
+### R18 · Evidência
+
+* `src/standalone/pw_host/capture/setup.rs:87-91` — chamado de dentro do closure `.process()`
+  (o próprio callback RT de áudio do PipeWire), condicionado a `!state.thread_configured`:
+
+  ```rust
+  .process(move |stream: &pw::stream::Stream, _info| {
+      if !state.thread_configured {
+          rt_setup::configure_realtime_thread(target_cpu, rt_status_for_process.clone());
+          state.thread_configured = true;
+      }
+  ```
+
+* `src/standalone/rt_setup/thread.rs:65-67,72-74,104-109,135-138,167-173,180-183` —
+  `configure_realtime_thread` é `#[cold] #[inline(never)]` mas contém **5 call-sites** de
+  `log::error!`/`log::info!`, todos executados dentro do thread RT no primeiro frame:
+
+  ```rust
+  #[cold]
+  #[inline(never)]
+  pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
+      // ...
+      log::error!(
+          "CPU {} is out of bounds (CPU_SETSIZE={}). ...", ...
+      );
+  ```
+
+### R18 · Diagnóstico
+
+`src/standalone/pw_host/mod.rs:30-32` declara explicitamente o contrato "Zero I/O — we never
+write to the terminal or files; status is reported via atomic flags", e a rodada 1 (R5) já
+corrigiu exatamente esta classe de violação em `src/models/container.rs`. Este é um segundo
+vetor da MESMA classe de bug que passou pela rodada anterior: `configure_realtime_thread` faz
+`sched_setscheduler`/`pthread_setaffinity_np`/mlockall e, em qualquer ramo de sucesso ou falha,
+loga diretamente via `log::` — inclusive no ramo de **sucesso** (`thread.rs:167-173`, log de
+info sempre emitido). O `#[cold]`/`#[inline(never)]` evita poluir o codegen do hot path
+recorrente, mas **não** evita a execução real do log síncrono na primeira invocação do
+callback RT — que é justamente a que mais importa (é quando o thread está sendo promovido a
+FIFO/prioridade RT, com o áudio já fluindo).
+
+### R18 · Impacto
+
+No primeiro bloco de áudio processado, se o backend de log (`env_logger` ou similar) grava em
+stderr/arquivo de forma síncrona, o thread RT pode sofrer stall de I/O — xrun audível logo na
+inicialização do stream, exatamente o tipo de defeito que a bateria de regras do projeto
+(`.agents/rules/rust.md`) proíbe explicitamente.
+
+### R18 · Proposta de solução
+
+Seguir o mesmo padrão já usado para `configure_process_wide` (que corretamente roda em
+`main()`, fora do RT):
+
+1. Mover toda a chamada de `configure_realtime_thread` para fora do callback `.process()` —
+   idealmente para o `main()`/setup, antes de `thread_loop.start()`, ou para um callback de
+   "thread iniciada" do próprio PipeWire se existir um hook fora do caminho de processamento
+   de áudio.
+2. Se for estruturalmente inevitável rodar dentro do primeiro `.process()` (para garantir que
+   é o thread real do RT-callback que recebe o `SCHED_FIFO`), substituir cada `log::*` por
+   `rt_status.set_flag(RT_STATUS_*)` (o padrão já usado por R5) e consumir os novos flags em
+   `telemetry.rs:115-143`, que já traduz atomics em mensagens no thread principal.
+3. Teste: meta-teste estrutural (extensão do já existente `test_rt_logging_safety` de
+   `tests/models/meta_coherence.rs`) incluindo `src/standalone/rt_setup/` no escopo de módulos
+   proibidos de logar sem `#[cold]` **e sem estar fora do callback RT**.
+
+Critério de aceite: `grep -rn "log::" src/standalone/rt_setup/thread.rs` retorna zero, ou a
+função comprovadamente não é mais chamada de dentro de `.process()`.
+
+---
+
+## R19 · `PluginTrackInfoImpl::changed()` usa `as_main_thread_unchecked` sem runtime guard — **MÉDIA**
+
+### R19 · Evidência
+
+`src/clap/extensions/track_info.rs:19`:
+
+```rust
+let mut host_mut = unsafe { self.host.shared().as_main_thread_unchecked() };
+```
+
+### R19 · Diagnóstico
+
+A spec CLAP garante que `track_info.changed()` é chamado no main thread, mas o código usa a
+variante `_unchecked`, que descarta a verificação de runtime (`clap_host_thread_check`) que
+`as_main_thread()` faria. Além disso, `self.host` já É um `HostMainThreadHandle` válido — não
+há necessidade de reconstruir um segundo handle a partir de `shared()`. Um host não-conformante
+que chamasse este callback de uma thread worker produziria aliasing UB (dois
+`HostMainThreadHandle` simultâneos em threads diferentes).
+
+### R19 · Impacto
+
+Nulo em hosts conformantes (Bitwig, REAPER, Ardour, etc.). UB silencioso apenas em hosts
+CLAP com bug de threading — cenário defensivo, não uma exploração prática hoje.
+
+### R19 · Proposta de solução
+
+Eliminar a reconstrução do handle, reaproveitando `self.host` diretamente:
+
+```rust
+if let Some(info) = track_info_ext.get(&mut self.host, &mut buffer) { ... }
+```
+
+Custo zero, remove o `unsafe` por completo neste ponto.
+
+---
+
+## R20 · `.expect()` residual em alocações de produção (loader + `activate()` CLAP) — **MÉDIA**
+
+### R20 · Evidência
+
+* `src/clap/processor/mod.rs:87-113,144` — 13 ocorrências de
+  `AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of host buffer failed")` e
+  `ConvEngine::new(samples, partition_size).expect("ConvEngine allocation failed")`, todas em
+  `activate()` (main thread do host, mas caminho de produção real).
+* `src/loader/dispatcher/wavenet/standard.rs:168,177,179,181`,
+  `src/loader/dispatcher/wavenet/dynamic.rs:74,88,90,92,233,307,326-327`,
+  `src/loader/dispatcher/lstm/dynamic_builder.rs:44,47`,
+  `src/loader/dispatcher/convnet/mod.rs:144,148,150,278,327,353,357,359` — mesmo padrão
+  (`.expect("allocation should succeed for test-sized buffers")` — mensagem enganosa, é código
+  de produção, não de teste).
+
+### R20 · Diagnóstico
+
+O caminho de `activate()` já usa `?`/`PluginError` corretamente para outras falhas (ex.:
+`NamResampler::new` na mesma função), mas as pré-alocações de buffer de áudio (host, mid,
+model, output, oversample) e o `ConvEngine` ignoram esse padrão e usam `.expect()`. Com o
+alocador padrão do Rust, falha de alocação já causa `abort()` antes de chegar ao `expect` — mas
+com um alocador customizado que retorna `null` (cenário documentado como possível pela própria
+`AlignedVec`), o resultado é panic cru em vez de um `PluginError` estruturado devolvido ao host.
+Mesma classe de fragilidade no loader: os tamanhos são hoje estaticamente limitados
+(`WAVENET_MAX_NUM_FRAMES=64`, bounds de topologia), então nenhum JSON adversário dispara o
+panic — mas viola formalmente a política fail-closed do projeto.
+
+### R20 · Impacto
+
+Um host que ative múltiplas instâncias do plugin sob pressão de memória do sistema recebe um
+crash abrupto em vez de uma falha de ativação limpa (`PluginError`) que o host poderia tratar
+graciosamente (reduzir instâncias, avisar o usuário).
+
+### R20 · Proposta de solução
+
+1. Em `src/clap/processor/mod.rs`, converter os 13+1 `.expect(...)` em
+   `.map_err(|e| PluginError::Message(...))?`, seguindo o padrão já usado para
+   `NamResampler::new` na mesma função.
+2. No loader, substituir `.expect("... test-sized buffers")` por propagação de erro
+   (`?` + `anyhow::Context`), corrigindo também a mensagem enganosa.
+
+Critério de aceite: `grep -rn "\.expect(" src/clap/processor/mod.rs src/loader/dispatcher/` sem
+ocorrências fora de testes; `utils/tests-quick.sh` verde.
+
+---
+
+## R21 · Lacuna de fuzzing: LSTM dinâmico, A2-Dynamic e SlimmableContainer sem estratégia proptest adversarial — **MÉDIA**
+
+### R21 · Evidência
+
+`tests/models/proptest_parsers.rs` cobre `prop_fuzz_adversarial_wavenet_dims` (`:893`),
+`prop_fuzz_adversarial_convnet_dims` (`:938`), `prop_fuzz_adversarial_linear_dims` (`:950`) e
+`prop_fuzz_adversarial_state_budget` (`:964`) — mas não existe estratégia equivalente para o
+caminho LSTM dinâmico (`MAX_LSTM_HIDDEN_SIZE`, `src/loader/nam_json/topology/lstm.rs:65`), nem
+para A2-Dynamic (`MAX_A2_DYN_CHANNELS`, `src/loader/dispatcher/wavenet/mod.rs:185`), nem para
+`SlimmableContainer`.
+
+### R21 · Diagnóstico
+
+Os bounds existem e são testados manualmente (`loader_malformed_test.rs`), mas nunca são
+exercitados por geração aleatória de propriedades. Uma futura alteração que remova ou relaxe
+acidentalmente um desses bounds (ex.: durante uma otimização de `MAX_LSTM_HIDDEN_SIZE`) não
+teria uma rede de segurança de fuzzing para capturar a regressão — apenas os testes unitários
+explícitos que já conhecem o valor correto.
+
+### R21 · Impacto
+
+Risco de regressão silenciosa em validação de bounds para 3 das 6 arquiteturas suportadas.
+Nenhuma vulnerabilidade ativa hoje (validação manual cobre o caso atual).
+
+### R21 · Proposta de solução
+
+Adicionar `adversarial_lstm_json_strategy()`, `adversarial_a2_dynamic_json_strategy()`,
+`adversarial_container_json_strategy()` em `tests/models/proptest_parsers.rs`, nos mesmos
+moldes das estratégias já existentes para WaveNet/ConvNet/Linear.
+
+---
+
+## R22 · Ausência de telemetria de xrun/buffer-miss (capture e playback PipeWire) — **MÉDIA**
+
+### R22 · Evidência
+
+* `src/standalone/pw_host/rt_callback/process.rs:39-42` (capture) e
+  `src/dsp/pipeline/output_pw.rs:66-69` (playback) — ambos retornam silenciosamente quando
+  `stream.dequeue_buffer()` retorna `None`:
+
+  ```rust
+  let mut _buf = match stream.dequeue_buffer() {
+      Some(b) => b,
+      None => return,
+  };
+  ```
+
+* O único contador existente, `dsp_overloads`, mede violação de *budget de CPU*
+  (`elapsed_secs > budget_secs`), não indisponibilidade de buffer do PipeWire.
+
+### R22 · Diagnóstico
+
+Quando o PipeWire não tem buffer disponível (xrun/underrun real do lado do driver/kernel), o
+áudio continua fluindo (PipeWire insere silêncio), mas nenhum contador atômico visível ao
+thread principal é incrementado. O operador não consegue distinguir "estou tendo xrun de
+kernel/PipeWire" de "estou tendo overload de CPU no meu próprio processamento" — são causas
+raiz completamente diferentes que hoje produzem o mesmo sintoma (glitch sem contador).
+
+### R22 · Impacto
+
+Diagnóstico de campo prejudicado: um usuário reportando glitches não tem como o time de
+suporte (`.agents/skills/diagnostico/`) diferenciar as duas causas via telemetria exportada.
+
+### R22 · Proposta de solução
+
+Adicionar `pw_buffer_miss` (capture) e `bridge_read_miss`/`playback_miss` (playback) como
+novos campos em `RtStatusFlags`, incrementados com `fetch_add(1, Ordering::Relaxed)` nos
+branches `None` já existentes; expor ambos em `poll_rt_status`/`telemetry.rs`, ao lado de
+`dsp_overloads`.
+
+---
+
+## R23 · Higiene de `unsafe` remanescente fora da tabela R12 (~20 blocos sem SAFETY específico) — **BAIXA**
+
+### R23 · Evidência (amostra representativa dos ~160 arquivos com `unsafe` revisados nesta rodada)
+
+* `src/clap/plugin/shared.rs:75-76` — `unsafe impl Send/Sync for NamClapSharedRef` sem
+  comentário SAFETY documentando a proveniência do ponteiro (Arc vazado) ou a justificativa de
+  thread-safety.
+* `src/dsp/oversample.rs:200-202`, `src/dsp/resampler/core.rs:82-85`,
+  `src/dsp/cabsim/conv.rs:237-263`, `src/dsp/gate.rs:340-375`,
+  `src/models/a2/grouped_conv1d/simd.rs:317`, `src/models/convnet/batch_norm.rs:171-176` —
+  blocos `unsafe`/`get_unchecked`/`transmute` cujas invariantes SÃO verificáveis pelo contexto
+  imediato (bounds checks adjacentes, buffers pré-dimensionados), mas sem comentário
+  `// SAFETY:` explícito exigido pela política do projeto.
+* `src/standalone/pw_host/bridge.rs:42-48` — `libc::madvise` sem SAFETY e sem verificação do
+  valor de retorno.
+
+### R23 · Diagnóstico
+
+Nenhum dos ~20 blocos amostrados apresenta UB real hoje — todas as invariantes são mantidas por
+construção. O gap é puramente documental: a ausência do comentário `// SAFETY:` explícito
+viola a letra da política (`.agents/rules/rust.md`: unsafe deve ser "tightly bounded, isolated,
+and comprehensively documented") e torna futuras refatorações mais arriscadas, pois um revisor
+pode não perceber uma dependência de bounds-check três linhas acima sem o comentário guiando.
+
+### R23 · Impacto
+
+Nenhum bug hoje. Risco latente de regressão silenciosa em refactors futuros que alterem a
+ordem de verificações sem que o revisor perceba a dependência não documentada.
+
+### R23 · Proposta de solução
+
+Sprint mecânico de documentação (mesmo padrão do R12 original): adicionar `// SAFETY:` em cada
+bloco citando a invariante real. Para `NamClapSharedRef` especificamente:
+
+```rust
+// SAFETY: o ponteiro é obtido de um Arc vazado (leaked) para a vida do
+// plugin — o pointee nunca é liberado enquanto o processo roda. Send é
+// seguro pois toda mutação interior é via Atomic/Mutex; Sync é seguro pois
+// &NamClapSharedRef só permite leitura do ponteiro em si (não do pointee).
+```
+
+Custo zero de runtime. Pode ser absorvido pelas skills `refatora-rust`/`documentador`.
+
+---
+
+## R24 · Extensão CLAP `thread-check` não registrada — **BAIXA**
+
+### R24 · Evidência
+
+`src/clap/plugin/mod.rs:36-50` (lista de extensões declaradas) não inclui
+`clap_host_thread_check`/`HostThreadCheck`. Múltiplas operações assumem main-thread sem
+verificação de runtime: 10+ `Mutex` em `ColdShared`, `HostParams::rescan()`,
+`HostState::mark_dirty()`, I/O de disco em state load/save.
+
+### R24 · Diagnóstico
+
+A spec CLAP garante a thread correta para essas chamadas, então não há bug hoje em hosts
+conformantes. Mas a extensão `thread-check` existe exatamente para permitir defesa-em-
+profundidade via `debug_assert!(is_main_thread())`, e o `clack-extensions` já suporta o feature
+flag correspondente — o custo de habilitar é baixo frente ao ganho de detecção precoce de hosts
+não-conformantes.
+
+### R24 · Impacto
+
+Nulo em hosts conformantes. Em hosts com bug de threading, operações não-thread-safe
+executariam sem qualquer sinal de alerta.
+
+### R24 · Proposta de solução
+
+Registrar `HostThreadCheck` via `clack-extensions` e adicionar
+`debug_assert!(self.host.is_main_thread())` nos pontos críticos citados (locks de `ColdShared`,
+state load/save, rescan de parâmetros).
+
+---
+
+## R25 · `PoisonError` de `Mutex` descartado silenciosamente em preset_load/housekeeping — **BAIXA**
+
+### R25 · Evidência
+
+* `src/clap/extensions/preset_load.rs:36` — retorna `PluginError` em caso de poison (correto).
+
+* `src/clap/plugin/main_thread/housekeeping.rs:188-192,239-243` —
+
+  ```rust
+  let pending_model = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock() {
+      pending_guard.take()
+  } else {
+      None
+  };
+  ```
+
+  em caso de poison, retorna `None` silenciosamente — o modelo/IR pendente do usuário é
+  perdido sem diagnóstico.
+
+* Compare com `processor/mod.rs:59,258`, que já trata poisoning corretamente via
+  `.unwrap_or_else(|e| e.into_inner())`.
+
+### R25 · Diagnóstico
+
+`ColdShared` tem 10+ campos `Mutex<T>`. O tratamento de `PoisonError` é inconsistente entre
+módulos: `preset_load.rs` ao menos comunica a falha ao host; `housekeeping.rs` simplesmente
+segue em frente como se não houvesse nada pendente. Poisoning requer um panic anterior
+segurando o lock (raro, mas exatamente o cenário em que diagnóstico é mais necessário).
+
+### R25 · Impacto
+
+Em caso de poisoning (raro), um carregamento de preset/modelo/IR via GUI é perdido
+silenciosamente, sem log e sem erro visível — degrada UX e dificulta diagnóstico exatamente
+quando mais se precisa dele.
+
+### R25 · Proposta de solução
+
+Padronizar em todos os call-sites de `ColdShared`: `.unwrap_or_else(|e| { log::error!(...);
+e.into_inner() })`, garantindo que o dado pendente ainda é recuperado (o `Mutex` envenenado
+ainda guarda o valor) e que o evento é logado no main thread (RT-safe, pois `housekeeping.rs`
+não roda no thread de áudio).
+
+---
+
+## R26 · Campos/flags mortos ou write-only — **BAIXA**
+
+### R26 · Evidência
+
+* `src/dsp/pipeline/context.rs:87-97` — 4 campos `os_in_l`/`os_in_r`/`os_model_l`/`os_model_r`
+  com `#[allow(unused)]`, alocados em `clap/processor/mod.rs:104-112` (~256 KB por instância)
+  mas nunca lidos — pipeline de oversampling planejado porém não conectado.
+* `src/clap/gui/ui/zones/dialog_state.rs:9,16` — campo `alive: AtomicBool` com
+  `#[allow(dead_code)]`, escrito (`store`) na criação/destruição mas nunca lido (`load`) neste
+  crate.
+* `src/standalone/rt_setup/thread.rs:93,115,128` — `std::mem::zeroed()` para `libc::cpu_set_t`/
+  `libc::sched_param` (funcionalmente correto — todos os padrões de bits são válidos para esses
+  tipos — mas `MaybeUninit::zeroed().assume_init()` ou inicialização direta de campos é mais
+  idiomático e documentaria a intenção).
+* `src/clap/extensions/state.rs:92` — único `CString::new(...).unwrap()` do arquivo; todos os
+  demais (linhas 141,167,178,187) usam `.unwrap_or_default()` — inconsistência de estilo num
+  entry point `extern "C"` (o crate `clack-plugin` 0.1.0 não envolve entry points em
+  `catch_unwind`, então panics cruzando FFI são UB, mesmo que este literal específico nunca
+  possa falhar).
+
+### R26 · Diagnóstico
+
+Nenhum destes é um bug ativo — são sinais de trabalho incompleto (`os_*` buffers) ou pequenas
+inconsistências de estilo (`mem::zeroed`, `.unwrap()` isolado) que aumentam o custo cognitivo
+de manutenção e, no caso do `alive: AtomicBool` write-only, sugerem uma variável que talvez
+devesse ter sido removida ao final da refatoração de R2 (rodada 1) ou que exista um consumidor
+externo não documentado.
+
+### R26 · Proposta de solução
+
+1. `os_*` buffers: implementar o pipeline de oversampling que os consumiria, ou remover a
+   alocação e os campos até a feature ser retomada.
+2. `alive: AtomicBool`: confirmar se há consumidor real (thread de diálogo/FFI); se não houver,
+   remover; se houver, documentar onde é lido.
+3. `mem::zeroed()`: trocar por `libc::CPU_ZERO(&mut cpuset)` (já usado na linha seguinte) e
+   inicialização direta de campos para `sched_param`.
+4. `state.rs:92`: trocar `.unwrap()` por `.unwrap_or_default()` para consistência com o
+   resto do arquivo.
+
+---
+
+## Novas propostas do Pesquisador-Inovador — Rodada 2 (stable-only, pesquisadas via web)
+
+### P5 · Migração de `#[allow(...)]` para `#[expect(...)]` (Rust 1.81, tracked lint suppression) — *ver EP-R12*
+
+O projeto tem **98 atributos `#[allow(...)]`** e zero `#[expect(...)]`. `#[expect(lint)]`
+(estabilizado 1.81, [RFC 2383](https://rust-lang.github.io/rfcs/2383-lint-reason.html)) se
+comporta como `#[allow]` mas emite `unfulfilled_lint_expectations` quando a supressão deixa de
+ser necessária — elimina o bitrot silencioso de `#[allow(dead_code)]`/`#[allow(clippy::...)]`
+acumulado (visto também no achado R26). Suporta `reason = "..."`. Proposta: adicionar
+`#![warn(clippy::allow_attributes)]` em `[lints.clippy]` e migrar gradualmente, priorizando
+`dead_code` e `too_many_arguments`. Custo: ~2h de refactor mecânico; risco zero.
+
+### P6 · `cargo machete` — dependências não usadas [ADIADO]
+
+Ferramenta stable-only ([bnjbvr/cargo-machete](https://github.com/bnjbvr/cargo-machete)),
+detecção textual (não compila, extremamente rápida), suporta
+`[package.metadata.cargo-machete] ignored = [...]` para falsos positivos de `build.rs`/proc
+macros. Proposta: rodar como auditoria inicial e integrar em `utils/lints.sh` ou workflow de CI
+dedicado. Custo ~15min de setup; risco baixo.
+
+### P7 · `typos` — spell-checker de código-fonte em CI [ADIADO]
+
+Ferramenta stable-only ([crate-ci/typos](https://github.com/crate-ci/typos)), verifica apenas
+comentários/strings/prosa (não identificadores), ~0.3s para 10k arquivos, GitHub Action nativa.
+Projeto não tem nenhum spell-checker hoje, com documentação e mensagens de erro extensas
+user-facing. Proposta: `_typos.toml` com dicionário de domínio (wavenet, namb, egui) + CI gate.
+Custo ~30min; risco virtualmente zero.
+
+### P8 · `cargo vet` — auditoria de supply-chain (Mozilla) [ADIADO]
+
+Ferramenta stable-only ([mozilla.github.io/cargo-vet](https://mozilla.github.io/cargo-vet/)),
+permite importar auditorias de organizações confiáveis (Mozilla, Google, Bytecode Alliance) via
+`cargo vet import`. Projeto distribui binário release (PGO) com 14 dependências diretas
+(pipewire, clack-*, rtrb, egui) — superfície de supply-chain que justifica atestação humana de
+revisão, além do que `cargo audit` (CVEs conhecidos) já cobre. Custo ~1-2h de baseline inicial;
+risco baixo (manutenção proporcional a `cargo update`).
+
+### P9 · `build.warnings = "deny"` (Cargo/Rust 1.97) substituindo `RUSTFLAGS=-Dwarnings` — *ver EP-R12*
+
+O `utils/lints.sh:100-110` usa `cargo clippy -- -D warnings`. A opção nativa `build.warnings`
+do Cargo, estabilizada em Rust 1.97 (a toolchain atual do projeto — [tracking issue# 14802](<https://github.com/rust-lang/cargo/issues/14802>)),
+com nível `deny`, **não invalida o cache de build** (diferente de `RUSTFLAGS`, que muda o fingerprint e força rebuild completo) e
+pode ser combinada com `--keep-going` para diagnóstico completo. Proposta: `[build]
+warnings = "deny"` em `.cargo/config.toml` + `CARGO_BUILD_WARNINGS=deny` no CI. Custo ~10min;
+risco zero (comportamento equivalente, melhor ergonomia/cache).
+
+### P10 · `cargo semver-checks` — breaking changes de API pública — *ver EP-R12*
+
+Ferramenta stable-only ([obi1kenobi/cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks),
+projeto de meta do Rust para merge no cargo), usa rustdoc JSON (estável desde ~1.70) para
+detectar breaking changes sem compilar, sem falsos positivos conhecidos. O crate compila como
+`cdylib` + `rlib` com API pública real (`src/models/`, `src/math/`, `src/loader/`) e está em
+v3.0.0 — momento apropriado para este guard. Proposta: baseline inicial + GitHub Action
+`obi1kenobi/cargo-semver-checks-action@v2` em PRs. Custo ~20min; risco baixo.
+
+**Descartadas por exigirem nightly** (violam a política stable-only do projeto):
+`cargo careful` (`-Z build-std`), `kani` verifier (`rustc_private`), `cargo udeps`.
+**Já adotadas pelo projeto** (confirmado, não precisam de proposta): `LazyLock`/`LazyCell`,
+`c"..."` C-string literals, `is_none_or`/`is_some_and`.
+
+---
+
+## Novos épicos (Rodada 2)
+
+### EP-R7 — Fechar vetores residuais de UAF e RT-safety (R17 + R18) — **primeiro, mesma classe de bug de R2/R5 já corrigidos**
+
+Escopo: mover a leitura do `alive_fence`/`gui_scale_factor` para antes do `thread::spawn` da
+janela flutuante (R17); mover `configure_realtime_thread` para fora do callback `.process()`
+ou substituir seus `log::*` por `RtStatusFlags` (R18). Critério de aceite: zero desreferência de
+`shared.0` fora de `safe_shared()` em `src/clap/gui/`; zero `log::` alcançável de dentro de
+`.process()` em `src/standalone/`; testes de lifecycle destrutivo cobrindo o cenário de
+destruição durante criação de janela flutuante. Risco: baixo-médio (toca lifecycle CLAP e RT
+setup; mitigado por serem correções cirúrgicas de reordenação, não redesenho).
+
+### EP-R8 — Blindagem da fronteira CLAP host↔plugin (R19 + R24 + R25)
+
+Escopo: eliminar `as_main_thread_unchecked` em `track_info.rs` (R19); registrar extensão
+`thread-check` com `debug_assert!` nos pontos críticos (R24); padronizar tratamento de
+`PoisonError` em todos os `Mutex` de `ColdShared` (R25). Critério de aceite:
+`clap-validator` completo sem regressão; `grep -rn "as_main_thread_unchecked" src/clap/`
+mostra apenas usos genuinamente necessários (idealmente zero); nenhum `if let Ok(...) else`
+silencioso remanescente em `housekeeping.rs`. Risco: baixo.
+
+### EP-R9 — Robustez de carregamento e cobertura anti-regressão (R20 + R21)
+
+Escopo: substituir `.expect()` por propagação de erro em `activate()` CLAP e nos dispatchers
+do loader (R20); adicionar estratégias proptest adversariais para LSTM dinâmico, A2-Dynamic e
+SlimmableContainer (R21). Critério de aceite: `grep -rn "\.expect(" src/clap/processor/mod.rs
+src/loader/dispatcher/` sem ocorrências fora de testes; novas estratégias proptest rodando no
+`tests-long.sh` sem falso-positivo. Risco: baixo (mudanças mecânicas de propagação de erro +
+testes aditivos).
+
+### EP-R10 — Observabilidade e higiene remanescente (R22 + R23 + R26)
+
+Escopo: novos contadores `pw_buffer_miss`/`playback_miss` em `RtStatusFlags` (R22); sprint de
+documentação SAFETY nos ~20 blocos remanescentes (R23); resolver ou documentar os campos
+mortos/write-only (`os_*` buffers, `alive: AtomicBool`, `mem::zeroed`, `state.rs:92`) (R26).
+Critério de aceite: `poll_rt_status`/dashboard exibindo os novos contadores; 100% dos blocos
+`unsafe` em produção com SAFETY específico (repetir o critério de aceite do R12 original, agora
+sem exceções conhecidas). Risco: mínimo — ideal para as skills `refatora-rust`/`documentador`.
+
+### EP-R11 — Fechar pendências residuais das rodadas EP-R1…EP-R5 (R8-h + R10 + R2/NonNull + R14 + P3)
+
+Escopo mecânico, todos os itens já especificados nas propostas originais e reconfirmados nesta
+verificação:
+
+1. **R8-h** (`src/common/spsc/gc.rs:304-306`): condicionar `rt_status.set_flag(RT_STATUS_GC_OVERFLOW)`
+   ao retorno `true` de `gc_overflow.push(i)` — fix de 1 linha.
+2. **R10**: adicionar caso de block-size acima do `max_frames_count` negociado em
+   `src/clap/processor_stress_test.rs` (harness `clack-host` já suporta).
+3. **R2 (proposta 2 pendente)**: tornar `NamClapSharedRef` com `NonNull` privado — agora
+   reforçado pela urgência de R17 (EP-R7), que encontrou um call-site concreto explorando a
+   fragilidade do ponteiro público.
+4. **R14**: integrar `tests/models/proptest_parsers.rs:270-512` a um teste real ou removê-lo
+   (~240 linhas órfãs); consolidar `generate_sine_440hz` entre `tests/common/signals.rs` e
+   `benches/common.rs`.
+5. **P3**: avaliar migração de `src/dsp/stage.rs` de `get_unchecked` para
+   `hint::assert_unchecked` (mantendo o codegen, validado via `dsp_hotpath.asm`); avaliar
+   adoção de `as_chunks` em pelo menos um kernel novo como prova de conceito.
+
+Critério de aceite: cada sub-item fechado individualmente com o mesmo rigor de teste do épico
+de origem; nenhuma mudança de comportamento sonoro (contrato bit-exact preservado). Risco:
+mínimo — todos os itens já têm solução especificada, é execução, não descoberta.
+
+### EP-R12 — Modernização de lint/build/compat (P5 + P9 + P10)
+
+Escopo: (1) migração gradual de `#[allow(...)]` para `#[expect(...)]` (P5), priorizando
+`dead_code` e `clippy::too_many_arguments` — os dois padrões mais numerosos entre os 98
+`#[allow(...)]` do crate — com `reason = "..."` documentando cada supressão remanescente; (2)
+adoção de `build.warnings = "deny"` via `.cargo/config.toml` + `CARGO_BUILD_WARNINGS=deny` no
+CI (P9), substituindo `cargo clippy -- -D warnings` em `utils/lints.sh:100-110` sem invalidar o
+cache de build; (3) baseline de `cargo semver-checks` + GitHub Action
+`obi1kenobi/cargo-semver-checks-action@v2` em PRs (P10), guardando a API pública do crate
+(`src/models/`, `src/math/`, `src/loader/`) contra breaking changes acidentais a partir da
+v3.0.0 atual.
+
+Critério de aceite: `grep -rn "#\[allow(" src/` reduzido nos dois padrões priorizados, com
+`#[expect(...)]` documentado no lugar; `utils/lints.sh` usando `build.warnings` em vez de
+`RUSTFLAGS=-Dwarnings` sem regressão de cobertura de lint; `cargo semver-checks` executando
+limpo contra a baseline v3.0.0 e integrado ao workflow de CI. Ordem interna recomendada: P9
+primeiro (habilita a infraestrutura de warning-as-error sem custo de cache antes de qualquer
+migração de lint), depois P5 (aproveita o gate já em vigor para não reintroduzir `#[allow]`
+espúrios), por fim P10 (guard independente, sem dependência dos outros dois). Risco: zero —
+as três são ferramentas/atributos Rust stable, puramente aditivos, sem tocar lógica de
+produção nem o hot path de áudio.
