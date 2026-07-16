@@ -2353,13 +2353,18 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - ⚠️ `test_parameter_modulation_stress` falha por design: o teste satura 512 eventos/sample e o comportamento sample-accurate difere do antigo "last value wins". O teste deverá ser adaptado em T32.5 para validar a nova semântica sample-accurate.
   - ⚠️ `compute_output_peaks`, `apply_input_gain`, `apply_output_gain`, `set_mod_*` — removidos (código morto após refatoração para funções livres).
 
-### T32.2 — Adaptar ganho de entrada e saída para slicing de sub-blocos (R28)
+### T32.2 — Adaptar ganho de entrada e saída para slicing de sub-blocos (R28) ✅
 
 - **Arquivo:** [`src/clap/processor/dsp/gain.rs`](src/clap/processor/dsp/gain.rs)
 - **Ação:**
   1. Modificar `apply_input_gain` para aceitar `offset` e `n_samples`. Ajustar o fatiamento (`buf_host_l` e `buf_host_r`) para usar `[offset..offset + n_samples]`.
   2. Modificar `apply_output_gain` para aceitar `offset` e `n_samples`. Ajustar o fatiamento (`buf_out_l` e `buf_out_r`) para usar `[offset..offset + n_samples]`.
 - **Critério de aceite:** `cargo check` passa sem erros de compilação ou empréstimo de memória.
+- **Conclusão (2026-07-16):**
+  - ✅ `apply_input_gain_sub_block(offset, n_samples)` — fatiamento `buf_host_l[offset..offset + n_samples]` implementado.
+  - ✅ `apply_output_gain_sub_block(n_out)` — fatiamento `buf_out_l[..n_out]` (scratch buffer, sem offset necessário pois cada sub-bloco escreve do índice 0).
+  - ⚠️ Os métodos residem em `gain.rs` como a API canônica, mas o hot-path (`process_sub_block` em orquestrador) usa funções livres equivalentes (`apply_input_gain_sub_block_inner`, `apply_output_gain_sub_block_inner`) para evitar conflitos de borrow com `DspPipelineContext`.
+  - ✅ `cargo check` e clippy passam sem warnings.
 
 ### T32.3 — Mover push SPSC de flush para fora do loop e adicionar fallback (R29)
 
