@@ -2131,3 +2131,105 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - Rodar `utils/lints.sh` garantindo zero novos avisos ou erros.
 - Rodar `utils/tests-quick.sh` assegurando que todos os testes passaram e que o novo proptest de serialização foi executado na Fase 3.
+
+---
+
+## Épico EP-R12 — Modernização de lint/build/compat (P5 + P9 + P10)
+
+> **Origem:** [TODO-findings.md §EP-R12](TODO-findings.md#ep-r12--modernização-de-lintbuildcompat-p5--p9--p10) (L1370-1391)
+>
+> **Escopo:** (1) migração de `#[allow(...)]` para `#[expect(...)]` (P5) para dead_code e clippy::too_many_arguments; (2) adoção de `build.warnings = "deny"` via `.cargo/config.toml` (P9); (3) baseline de `cargo semver-checks` + GitHub Action `obi1kenobi/cargo-semver-checks-action@v2` (P10).
+>
+> **Invariante absoluto:** zero alteração de comportamento funcional e de áudio. Risco: virtualmente zero (puramente lints, ferramentas de compilador e CI).
+
+## EP-R12 — Sumário dos Sprints
+
+| Sprint  | Finding                                  | Risco | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------- | ----- | ---------------- | ---------- |
+| **S28** | P9 — warnings-as-errors via Cargo Config | Baixo | 2                | ~15 min    |
+| **S29** | P5 — Migração de allow para expect       | Baixo | ~10              | ~30 min    |
+| **S30** | P10 — cargo semver-checks & GitHub CI    | Baixo | 1                | ~25 min    |
+| **VF**  | Verificação final integrada EP-R12       | —     | 0                | ~10 min    |
+
+---
+
+## Sprint S28 — P9: Warnings-as-errors nativo via Cargo Config
+
+> **Ref:** [TODO-findings.md §P9](TODO-findings.md#p9--buildwarnings--deny-cargorust-197-substituindo-rustflags-dwarnings--ver-ep-r12)
+>
+> **Objetivo:** Configurar `build.warnings = "deny"` no `.cargo/config.toml` para tratar avisos do compilador como erros de forma nativa e eficiente, evitando invalidação desnecessária do cache de compilação (diferente de RUSTFLAGS), e ajustar `utils/lints.sh` para remover `-- -D warnings`.
+
+### T28.1 — Configurar `warnings = "deny"` no Cargo [ ]
+
+- **Arquivo:** [`.cargo/config.toml`](.cargo/config.toml)
+- **Ação:** Adicionar a linha `warnings = "deny"` sob a seção `[build]`.
+- **Critério de aceite:** `cargo check` compila com a nova configuração.
+
+### T28.2 — Ajustar script de lints [ ]
+
+- **Arquivo:** [`utils/lints.sh`](utils/lints.sh)
+- **Ação:** Remover o sufixo `-- -D warnings` de todas as chamadas do Clippy (linhas 100, 104, 107, 110), delegando a checagem de erros ao Cargo Config.
+- **Critério de aceite:** `./utils/lints.sh` executa normalmente sem forçar `-D warnings` pela linha de comando.
+
+---
+
+## Sprint S29 — P5: Migração gradual de #[allow] para #[expect]
+
+> **Ref:** [TODO-findings.md §P5](TODO-findings.md#p5--migração-gradual-de-allow-para-expect-p5-priorizando-dead_code-e-clippytoo_many_arguments)
+>
+> **Objetivo:** Substituir diretivas `#[allow(...)]` por `#[expect(..., reason = "...")]` para os dois padrões mais populosos (`dead_code` e `clippy::too_many_arguments`), garantindo que suppressões não utilizadas acionem erros do compilador.
+
+### T29.1 — Migrar `dead_code` para `expect` [ ]
+
+- **Arquivos:**
+  - [`src/dsp/stage.rs`](src/dsp/stage.rs)
+  - [`src/dsp/pipeline/output_pw.rs`](src/dsp/pipeline/output_pw.rs)
+  - [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
+- **Ação:** Substituir as supressões `#[allow(dead_code)]` por `#[expect(dead_code, reason = "...")]` documentando a necessidade específica de cada uma.
+- **Critério de aceite:** `cargo check` passa com sucesso.
+
+### T29.2 — Migrar `clippy::too_many_arguments` para `expect` [ ]
+
+- **Arquivos:**
+  - [`src/dsp/pipeline/stages/inference.rs`](src/dsp/pipeline/stages/inference.rs)
+  - [`src/dsp/pipeline/stages/output.rs`](src/dsp/pipeline/stages/output.rs)
+  - [`src/standalone/pw_host/run.rs`](src/standalone/pw_host/run.rs)
+  - [`src/standalone/pw_host/capture/setup.rs`](src/standalone/pw_host/capture/setup.rs)
+  - [`src/standalone/pw_host/rt_callback/commands.rs`](src/standalone/pw_host/rt_callback/commands.rs)
+  - [`src/models/wavenet/conv1d_dyn.rs`](src/models/wavenet/conv1d_dyn.rs)
+  - [`src/models/a2/head.rs`](src/models/a2/head.rs)
+- **Ação:** Substituir `#[allow(clippy::too_many_arguments)]` por `#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]` nos principais pontos de entrada.
+- **Critério de aceite:** O código compila sem gerar erros por expectativas não atendidas (`unfulfilled_lint_expectations`).
+
+---
+
+## Sprint S30 — P10: Integração de cargo semver-checks & Pipeline de CI
+
+> **Ref:** [TODO-findings.md §P10](TODO-findings.md#p10--cargo-semver-checks--breaking-changes-de-api-pública--ver-ep-r12)
+>
+> **Objetivo:** Adicionar configuração de integração contínua (CI) e salvaguardar a API pública do crate (`src/models/`, `src/math/`, `src/loader/`) contra alterações incompatíveis acidentais a partir da v3.0.0.
+
+### T30.1 — Criar workflow do GitHub Actions [ ]
+
+- **Arquivo:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+- **Ação:** Criar um arquivo de CI padrão contendo:
+  - Variável de ambiente `CARGO_BUILD_WARNINGS: deny`.
+  - Instalação de dependências do sistema (`libpipewire-0.3-dev` e `libclang-dev`).
+  - Job para linting: executa `./utils/lints.sh`.
+  - Job para testes rápidos: executa `./utils/tests-quick.sh`.
+  - Job para semver checks: executa a action `obi1kenobi/cargo-semver-checks-action@v2`.
+- **Critério de aceite:** Arquivo de workflow YAML criado com sintaxe correta.
+
+---
+
+## VF — Verificação Final Integrada EP-R12
+
+### VF12.1 — Lints e Cobertura de Verificação
+
+- Executar `./utils/lints.sh` e assegurar que tudo compila sem warnings e sem erros (e que o clippy passa com o Cargo Config configurado).
+- Executar `./utils/tests-quick.sh` para atestar a estabilidade e funcionamento de todas as suítes rápidas de testes.
+- Rodar o semver-checks localmente para garantir a integridade da API pública:
+
+  ```bash
+  PATH=$PWD/target/bin:$PATH cargo semver-checks check-release --baseline-version 0.3.0
+  ```

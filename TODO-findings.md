@@ -1344,7 +1344,7 @@ Critério de aceite: `poll_rt_status`/dashboard exibindo os novos contadores; 10
 `unsafe` em produção com SAFETY específico (repetir o critério de aceite do R12 original, agora
 sem exceções conhecidas). Risco: mínimo — ideal para as skills `refatora-rust`/`documentador`.
 
-### EP-R11 — Fechar pendências residuais das rodadas EP-R1…EP-R5 (R8-h + R10 + R2/NonNull + R14 + P3) [DOING]
+### EP-R11 — Fechar pendências residuais das rodadas EP-R1…EP-R5 (R8-h + R10 + R2/NonNull + R14 + P3) [DONE]
 
 Escopo mecânico, todos os itens já especificados nas propostas originais e reconfirmados nesta
 verificação:
@@ -1367,7 +1367,7 @@ Critério de aceite: cada sub-item fechado individualmente com o mesmo rigor de 
 de origem; nenhuma mudança de comportamento sonoro (contrato bit-exact preservado). Risco:
 mínimo — todos os itens já têm solução especificada, é execução, não descoberta.
 
-### EP-R12 — Modernização de lint/build/compat (P5 + P9 + P10)
+### EP-R12 — Modernização de lint/build/compat (P5 + P9 + P10) [DOING]
 
 Escopo: (1) migração gradual de `#[allow(...)]` para `#[expect(...)]` (P5), priorizando
 `dead_code` e `clippy::too_many_arguments` — os dois padrões mais numerosos entre os 98
