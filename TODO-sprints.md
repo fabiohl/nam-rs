@@ -2073,3 +2073,61 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - Executar `utils/lints.sh` e assegurar 0 erros/avisos.
 - Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.
+
+---
+
+## Sprint S27 — EP-R11: Fechar pendências residuais das rodadas EP-R1…EP-R5
+
+> **Ref:** [TODO-findings.md §EP-R11](TODO-findings.md#ep-r11--fechar-pendências-residuais-das-rodadas-ep-r1ep-r5-r8-h--r10--r2nonnull--r14--p3) (L1347-1369)
+>
+> **Objetivo:** Resolver as cinco pendências de robustez e testes residuais acumuladas nas primeiras rodadas de auditoria.
+
+### T27.1 — R8-h: Condicionar flag de overflow da GC [ ]
+
+- **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
+- **Ação:** Condicionar a ativação do flag `rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW)` ao retorno `true` do método `gc_overflow.push(i)`.
+
+### T27.2 — R10: Caso de teste de block-size acima do máximo negociado [ ]
+
+- **Arquivo:** [`src/clap/processor_stress_test.rs`](src/clap/processor_stress_test.rs)
+- **Ação:** Adicionar o caso de teste `test_host_contract_violation_block_size` forçando o envio de blocos de 600 frames em uma configuração com `max_frames_count = 512`. O teste deve esperar pânico com mensagem específica em compilação `debug` (via `#[cfg_attr(debug_assertions, should_panic(expected = "Host contract violation"))]`) e, em `release`, verificar se `RT_STATUS_HOST_CONTRACT_VIOLATION` é setado corretamente.
+
+### T27.3 — R2: NamClapSharedRef com NonNull privado [ ]
+
+- **Arquivos:**
+  - [`src/clap/plugin/shared.rs`](src/clap/plugin/shared.rs)
+  - [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs)
+  - [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
+  - [`src/clap/gui/window/window_test.rs`](src/clap/gui/window/window_test.rs)
+- **Ação:**
+  1. Em `shared.rs`, mudar `NamClapSharedRef` para encapsular `std::ptr::NonNull<NamClapShared>` em vez de `*const NamClapShared` de forma privada (remover o modificador `pub` interno).
+  2. Fornecer os métodos `pub unsafe fn new(ptr: *const NamClapShared) -> Self`, `pub fn as_ptr(&self) -> *const NamClapShared` e `pub unsafe fn as_ref(&self) -> &'static NamClapShared`.
+  3. Atualizar todos os pontos de consumo e instanciamento de `NamClapSharedRef` nos arquivos listados acima.
+
+### T27.4 — R14: Roundtrip de serialização e consolidação de sinal senoidal [ ]
+
+- **Arquivos:**
+  - [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
+  - [`tests/common/signals.rs`](tests/common/signals.rs)
+  - [`benches/common.rs`](benches/common.rs)
+- **Ação:**
+  1. Em `proptest_parsers.rs`, marcar `prop_model_data_serialization_roundtrip` com o atributo `#[ignore]` para que seja ativamente exercitado no fuzzing ágil da Fase 3 de `tests-quick.sh`.
+  2. Em `signals.rs` e `common.rs`, remover a lógica duplicada de geração matemática senoidal em `generate_sine_440hz` e delegar diretamente para `nam_rs::testing::aliasing::generate_sine(440.0, 48000, num_samples, 1.0)`.
+
+### T27.5 — P3: Avaliação de assert_unchecked no DSP e as_chunks no FiLM [ ]
+
+- **Arquivos:**
+  - [`src/dsp/stage.rs`](src/dsp/stage.rs)
+  - [`src/models/a2/film.rs`](src/models/a2/film.rs)
+- **Ação:**
+  1. Em `stage.rs`, avaliar e testar a migração do uso de `get_unchecked` e `get_unchecked_mut` para asserções seguras via `core::hint::assert_unchecked` seguidas por indexações padrão (ex. `core::hint::assert_unchecked(p < self.up_ring.len()); self.up_ring[p] = x;`).
+  2. Em `film.rs`, avaliar a adoção de `as_chunks_mut()` no loop de SIMD de FiLM (`apply_modulation`) como prova de conceito para chunks estáticos do Rust stable.
+
+---
+
+## VF — Verificação Final Integrada EP-R11
+
+### VF11.1 — Lints e Validação de Cobertura
+
+- Rodar `utils/lints.sh` garantindo zero novos avisos ou erros.
+- Rodar `utils/tests-quick.sh` assegurando que todos os testes passaram e que o novo proptest de serialização foi executado na Fase 3.

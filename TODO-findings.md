@@ -1335,7 +1335,7 @@ src/loader/dispatcher/` sem ocorrências fora de testes; novas estratégias prop
 `tests-long.sh` sem falso-positivo. Risco: baixo (mudanças mecânicas de propagação de erro +
 testes aditivos).
 
-### EP-R10 — Observabilidade e higiene remanescente (R22 + R23 + R26) [DOING]
+### EP-R10 — Observabilidade e higiene remanescente (R22 + R23 + R26) [DONE]
 
 Escopo: novos contadores `pw_buffer_miss`/`playback_miss` em `RtStatusFlags` (R22); sprint de
 documentação SAFETY nos ~20 blocos remanescentes (R23); resolver ou documentar os campos
@@ -1344,7 +1344,7 @@ Critério de aceite: `poll_rt_status`/dashboard exibindo os novos contadores; 10
 `unsafe` em produção com SAFETY específico (repetir o critério de aceite do R12 original, agora
 sem exceções conhecidas). Risco: mínimo — ideal para as skills `refatora-rust`/`documentador`.
 
-### EP-R11 — Fechar pendências residuais das rodadas EP-R1…EP-R5 (R8-h + R10 + R2/NonNull + R14 + P3)
+### EP-R11 — Fechar pendências residuais das rodadas EP-R1…EP-R5 (R8-h + R10 + R2/NonNull + R14 + P3) [DOING]
 
 Escopo mecânico, todos os itens já especificados nas propostas originais e reconfirmados nesta
 verificação:
