@@ -1181,7 +1181,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Alteração puramente do harness de testes.
 
-### T12.1 — Implementar validador `assert_ran_tests` em `tests-long.sh`
+### T12.1 — Implementar validador `assert_ran_tests` em `tests-long.sh` [x]
 
 - **Arquivo:** [`utils/tests-long.sh`](utils/tests-long.sh)
 - **Ação:**
@@ -1190,7 +1190,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Falhar se a soma for zero, com mensagem descritiva de "seleção de testes vazia".
 - **Critério de aceite:** A função é capaz de determinar corretamente se testes reais rodaram e passaram.
 
-### T12.2 — Integrar o gate de testes em todas as fases do `tests-long.sh`
+### T12.2 — Integrar o gate de testes em todas as fases do `tests-long.sh` [x]
 
 - **Arquivo:** [`utils/tests-long.sh`](utils/tests-long.sh)
 - **Ação:**

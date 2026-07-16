@@ -372,6 +372,40 @@ extract_top_benches() {
     done
 }
 
+assert_ran_tests() {
+    local log_file="$1"
+    local min_count="${2:-1}"
+
+    local total_passed=0
+
+    local passed
+    if passed=$(grep -oP 'test result: ok\.\s+\K\d+(?=\s+passed)' "target/logs/$log_file" 2>/dev/null); then
+        for p in $passed; do
+            total_passed=$((total_passed + p))
+        done
+    fi
+
+    local measured
+    if measured=$(grep -oP '\K\d+(?=\s+measured)' "target/logs/$log_file" 2>/dev/null); then
+        for m in $measured; do
+            total_passed=$((total_passed + m))
+        done
+    fi
+
+    if [ "$total_passed" -eq 0 ]; then
+        local bench_count
+        bench_count=$(grep -cP '^\S.*time:\s+\[' "target/logs/$log_file" 2>/dev/null || true)
+        total_passed=$bench_count
+    fi
+
+    if [ "$total_passed" -lt "$min_count" ]; then
+        echo -e "${RED}${BOLD}❌ Gate falhou: fase executou 0 testes/benchmarks (seleção vazia ou filtro não casou).${NC}"
+        return 1
+    fi
+    echo -e "  Gate: ${total_passed} teste(s)/benchmark(s) executados ≥ ${min_count}  ✓"
+    return 0
+}
+
 run_phase() {
     local name="$1"
     local cmd="$2"
@@ -407,8 +441,11 @@ run_phase() {
         echo -e "${GREEN}✓ Sucesso (${duration}s)${NC}"
         PHASE_STATUS[$PHASE_COUNT]="PASSED"
 
-        if [ "$duration" -lt 1 ]; then
-            echo -e "${YELLOW}${BOLD}⚠ AVISO: Fase '${name}' completou com PASSED em < 1s — fase possivelmente vazia/falso-verde.${NC}"
+        if ! assert_ran_tests "$log_file"; then
+            echo -e "${RED}❌ Gate \"≥1 executado\" falhou (${duration}s) — status promovido a FAILED.${NC}"
+            PHASE_STATUS[$PHASE_COUNT]="FAILED"
+            PHASE_COUNT=$((PHASE_COUNT + 1))
+            return 1
         fi
     else
         echo -e "${RED}❌ Falha (${duration}s) - Status: $status${NC}"
