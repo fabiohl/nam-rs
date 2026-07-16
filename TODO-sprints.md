@@ -2024,7 +2024,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - [`src/clap/gui/ui/zones/file_dialogs.rs`](src/clap/gui/ui/zones/file_dialogs.rs)
 - **Ação:** Eliminar o campo `alive` de ambas as structs e simplificar os testes unitários removendo as asserções de `alive`.
 
-### T25.2 — Ajustar buffers `os_*` em `DspBuffers` [ ]
+### T25.2 — Ajustar buffers `os_*` em `DspBuffers` [X]
 
 - **Arquivo:** [`src/dsp/pipeline/context.rs`](src/dsp/pipeline/context.rs)
 - **Ação:** Remover `#[allow(unused)]` dos buffers `os_` já que eles são consumidos ativamente no pipeline de oversampling.

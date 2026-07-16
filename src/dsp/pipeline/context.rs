@@ -84,15 +84,11 @@ pub struct DspBuffers<'a> {
     /// Model output buffer R.
     pub model_out_r: &'a mut [f32],
     /// Oversampled input buffer L (pre-model, at 2×/4× rate).
-    #[allow(unused)]
     pub os_in_l: &'a mut [f32],
     /// Oversampled input buffer R.
-    #[allow(unused)]
     pub os_in_r: &'a mut [f32],
     /// Oversampled model output buffer L (post-model, at 2×/4× rate).
-    #[allow(unused)]
     pub os_model_l: &'a mut [f32],
     /// Oversampled model output buffer R.
-    #[allow(unused)]
     pub os_model_r: &'a mut [f32],
 }
