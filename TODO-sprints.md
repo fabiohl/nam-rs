@@ -2017,7 +2017,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Limpeza de campos não utilizados (ou redundantes), inicializações unidiomáticas e panic no FFI.
 
-### T25.1 — Remover `alive` de `DialogSharedState` e `IrDialogSharedState` [ ]
+### T25.1 — Remover `alive` de `DialogSharedState` e `IrDialogSharedState` [X]
 
 - **Arquivos:**
   - [`src/clap/gui/ui/zones/dialog_state.rs`](src/clap/gui/ui/zones/dialog_state.rs)

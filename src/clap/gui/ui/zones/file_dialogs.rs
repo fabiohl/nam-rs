@@ -96,38 +96,36 @@ mod file_dialogs_test {
     #[allow(unused_imports)]
     use super::*;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::AtomicBool;
 
     #[test]
     fn test_dialog_state_outlives_plugin_drop() {
         let state = Arc::new(super::super::dialog_state::DialogSharedState {
-            alive: AtomicBool::new(true),
             pending_model: std::sync::Mutex::new(None),
             loading: AtomicBool::new(true),
         });
         let state_clone = Arc::clone(&state);
 
-        state.alive.store(false, Ordering::Release);
         drop(state);
 
-        state_clone.loading.store(false, Ordering::Release);
-        assert!(!state_clone.alive.load(Ordering::Acquire));
+        state_clone
+            .loading
+            .store(false, std::sync::atomic::Ordering::Release);
     }
 
     #[test]
     fn test_ir_dialog_state_outlives_plugin_drop() {
         let state = Arc::new(super::super::dialog_state::IrDialogSharedState {
-            alive: AtomicBool::new(true),
             pending_ir: std::sync::Mutex::new(None),
             ir_loading: AtomicBool::new(true),
         });
         let state_clone = Arc::clone(&state);
 
-        state.alive.store(false, Ordering::Release);
         drop(state);
 
-        state_clone.ir_loading.store(false, Ordering::Release);
-        assert!(!state_clone.alive.load(Ordering::Acquire));
+        state_clone
+            .ir_loading
+            .store(false, std::sync::atomic::Ordering::Release);
     }
 
     #[test]
