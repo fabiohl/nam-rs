@@ -273,7 +273,7 @@ pub(crate) fn set_layer_film(
 }
 
 /// Convenience wrapper — see `weights_layout::film_weight_count`.
-#[allow(dead_code)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn film_weight_count_cfg(
     config: &FiLMConfig,
     cond_size: usize,
@@ -283,7 +283,7 @@ pub(crate) fn film_weight_count_cfg(
 }
 
 /// Convenience wrapper — see `weights_layout::film_bias_count`.
-#[allow(dead_code)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn film_bias_count_cfg(config: &FiLMConfig, channels: usize) -> usize {
     film_bias_count(channels, config.shift)
 }

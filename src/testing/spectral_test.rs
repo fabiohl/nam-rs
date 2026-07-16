@@ -20,23 +20,6 @@ fn test_next_power_of_two() {
     assert_eq!(next_power_of_two(1025), 2048);
 }
 
-#[test]
-fn test_median_odd() {
-    let data = [1.0, 3.0, 2.0];
-    assert!((median(&data) - 2.0).abs() < 1e-10);
-}
-
-#[test]
-fn test_median_even() {
-    let data = [1.0, 4.0, 2.0, 3.0];
-    assert!((median(&data) - 2.5).abs() < 1e-10);
-}
-
-#[test]
-fn test_median_empty() {
-    assert_eq!(median(&[]), 0.0);
-}
-
 // =============================================================================
 // Farina sweep generation
 // =============================================================================

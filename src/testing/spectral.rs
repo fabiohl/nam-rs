@@ -52,22 +52,6 @@ fn next_power_of_two(n: usize) -> usize {
 // Farina exponential sine sweep
 // =============================================================================
 
-/// Simple median of a `f64` slice (used by unit tests).
-#[allow(dead_code)]
-fn median(data: &[f64]) -> f64 {
-    if data.is_empty() {
-        return 0.0;
-    }
-    let mut sorted: Vec<f64> = data.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let mid = sorted.len() / 2;
-    if sorted.len().is_multiple_of(2) {
-        (sorted[mid - 1] + sorted[mid]) * 0.5
-    } else {
-        sorted[mid]
-    }
-}
-
 /// Farina sweep + deconvolution result.
 #[derive(Debug, Clone)]
 pub struct FarinaResult {

@@ -1427,13 +1427,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Modificações mecânicas e limpezas simples.
 
-### T16.1 — Condicionar `FftPlannerRadix4` para testes/benches [ ]
+### T16.1 — Condicionar `FftPlannerRadix4` para testes/benches [x]
 
 - **Arquivo:** [`src/math/dsp/fft_radix4.rs`](src/math/dsp/fft_radix4.rs) (L59)
 - **Ação:** Adicionar `#[cfg(any(test, feature = "long_bench"))]` sobre a struct pública `FftPlannerRadix4` para evitar sua compilação em builds normais de produção, pois ela não possui consumidores em produção.
 - **Critério de aceite:** `cargo check` passa.
 
-### T16.2 — Consolidar a função `median` em local comum de testes [ ]
+### T16.2 — Consolidar a função `median` em local comum de testes [x]
 
 - **Arquivos:**
   - [`src/testing/aliasing.rs`](src/testing/aliasing.rs) (L289-301)
@@ -1441,13 +1441,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Consolidar a função duplicada `median` (e seus testes associados) em um local comum sob `src/testing/` e atualizar os locais de chamada.
 - **Critério de aceite:** `cargo test --features testing` compila e passa.
 
-### T16.3 — Integrar estratégia proptest órfã de `NamModelData` num teste real [ ]
+### T16.3 — Integrar estratégia proptest órfã de `NamModelData` num teste real [x]
 
 - **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs) (L270-512)
 - **Ação:** Criar um teste proptest real (ex: `prop_model_data_serialization_roundtrip`) que utiliza a estratégia `arbitrary_nam_model_data` para gerar dados arbitrários, serializá-los para JSON e desserializá-los de volta, validando a equivalência e o parse robusto.
 - **Critério de aceite:** Novo teste integrado e verde na suite rápida.
 
-### T16.4 — Remover `#[allow(dead_code)]` espúrios [ ]
+### T16.4 — Remover `#[allow(dead_code)]` espúrios [x]
 
 - **Arquivos:**
   - [`src/models/a2/model/set_weights.rs`](src/models/a2/model/set_weights.rs) (L276-289)
@@ -1455,13 +1455,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Remover as anotações `#[allow(dead_code)]` desnecessárias, ajustando para `#[cfg_attr(not(test), allow(dead_code))]` ou removendo se as funções puderem ser expostas limpas.
 - **Critério de aceite:** Lints limpos.
 
-### T16.5 — Eliminar `CatalogGap` e exceções vazias [ ]
+### T16.5 — Eliminar `CatalogGap` e exceções vazias [x]
 
 - **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs) (L21-29)
 - **Ação:** Apagar a declaração da struct `CatalogGap` e o vetor estático `CATALOG_EXCEPTIONS` vazios, já que não há discrepâncias pendentes no catálogo de QA.
 - **Critério de aceite:** `cargo test` verde.
 
-### T16.6 — Implementar asserção e verificação de `max_frames_count` [ ]
+### T16.6 — Implementar asserção e verificação de `max_frames_count` [x]
 
 - **Arquivos:**
   - [`src/clap/processor/dsp/orchestrator.rs`](src/clap/processor/dsp/orchestrator.rs)
@@ -1472,14 +1472,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Remover o `#[allow(dead_code)]` sobre `max_frames_count` em `state.rs`.
 - **Critério de aceite:** O campo `max_frames_count` deixa de ser código morto.
 
-### T16.7 — Centralizar ajudantes `generate_sine` redundantes [ ]
+### T16.7 — Centralizar ajudantes `generate_sine` redundantes [x]
 
 - **Arquivos:**
   - `benches/common.rs:20`, `tests/common/signals.rs:13`, `benches/linear.rs:48`, `tests/models/namb_v2_*.rs`
 - **Ação:** Centralizar as funções duplicadas `generate_sine`/`generate_sine_440hz` em um local comum de testes (ex: `tests/common/signals.rs`) e reusar os helpers.
 - **Critério de aceite:** Todos os testes e benchmarks continuam compilando normalmente.
 
-### T16.8 — Adicionar documentação na feature `pgo` no Cargo.toml [ ]
+### T16.8 — Adicionar documentação na feature `pgo` no Cargo.toml [x]
 
 - **Arquivo:** [`Cargo.toml`](Cargo.toml) (L124)
 - **Ação:** Adicionar um comentário explicativo ao lado da feature `pgo` esclarecendo que ela serve como tag para o script de compilação de release, justificando sua presença embora esteja vazia de CFG.

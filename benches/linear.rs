@@ -32,6 +32,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::nam_json::LinearImplementation;
 use nam_rs::models::linear::{LinearMode, LinearModel};
 
+mod common;
+
 /// Generates a synthetic impulse response of `len` samples using a
 /// deterministic decaying sinusoid. This mimics a realistic cab sim IR
 /// without depending on external fixture files.
@@ -41,13 +43,6 @@ fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
             let t = i as f32 / 48000.0;
             (2.0 * std::f32::consts::PI * freq * t).sin() * (-decay * t).exp()
         })
-        .collect()
-}
-
-/// Generates a deterministic 440 Hz sinusoidal test signal at 48 kHz.
-fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect()
 }
 
@@ -73,7 +68,7 @@ fn bench_direct_vs_fft_per_block(c: &mut Criterion) {
         let mut model_fft = LinearModel::new(ir, 0.1, LinearImplementation::Fft).unwrap();
         model_fft.prewarm(4096);
 
-        let input = generate_sine_440hz(BLOCK_SIZE);
+        let input = common::generate_sine_440hz(BLOCK_SIZE);
         let mut output_direct = vec![0.0f32; BLOCK_SIZE];
         let mut output_fft = vec![0.0f32; BLOCK_SIZE];
 
@@ -206,7 +201,7 @@ fn bench_large_block_4096(c: &mut Criterion) {
         let mut model_fft = LinearModel::new(ir, 0.1, LinearImplementation::Fft).unwrap();
         model_fft.prewarm(4096);
 
-        let input = generate_sine_440hz(4096);
+        let input = common::generate_sine_440hz(4096);
         let mut output_direct = vec![0.0f32; 4096];
         let mut output_fft = vec![0.0f32; 4096];
 

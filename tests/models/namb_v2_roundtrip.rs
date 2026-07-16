@@ -20,6 +20,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::common::PrecisionGuard;
+use crate::common::generate_sine_440hz as generate_sine;
 
 // =============================================================================
 // Shared helpers
@@ -30,12 +31,6 @@ fn model_path(filename: &str) -> PathBuf {
     path.push("tests/fixtures/models");
     path.push(filename);
     path
-}
-
-fn generate_sine(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
-        .collect()
 }
 
 fn compute_mse(a: &[f32], b: &[f32]) -> f64 {

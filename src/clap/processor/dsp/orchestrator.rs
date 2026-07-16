@@ -3,6 +3,7 @@
 
 use super::super::NamClapProcessor;
 use crate::clap::processor::dsp::{channels, peaks};
+use crate::common::spsc::RT_STATUS_HOST_CONTRACT_VIOLATION;
 use crate::dsp::gate::GateState;
 use crate::dsp::gate_flags;
 use crate::dsp::pipeline::{
@@ -19,7 +20,16 @@ impl<'a> NamClapProcessor<'a> {
         start_nanos: u64,
     ) -> Result<ProcessStatus, PluginError> {
         for mut port_pair in audio {
-            let n_samples = port_pair.frames_count() as usize;
+            let n_samples_raw = port_pair.frames_count() as usize;
+            if n_samples_raw > self.max_frames_count {
+                debug_assert!(
+                    false,
+                    "Host contract violation: n_samples={n_samples_raw} > max_frames_count={}",
+                    self.max_frames_count
+                );
+                self.rt_status.set_flag(RT_STATUS_HOST_CONTRACT_VIOLATION);
+            }
+            let n_samples = n_samples_raw.min(self.max_frames_count);
             if n_samples == 0 {
                 continue;
             }

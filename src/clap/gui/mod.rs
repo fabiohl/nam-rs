@@ -33,5 +33,7 @@ pub const GUI_HEIGHT: u32 = 275;
 pub(crate) unsafe fn extend_host_lifetime<'a>(
     h: clack_plugin::host::HostSharedHandle<'a>,
 ) -> clack_plugin::host::HostSharedHandle<'static> {
+    // SAFETY: 'a to 'static transmute is sound because host outlives plugin —
+    // the GUI window is destroyed before the plugin factory is deactivated.
     unsafe { std::mem::transmute(h) }
 }

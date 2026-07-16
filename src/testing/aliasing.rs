@@ -286,7 +286,7 @@ pub fn asr_worst_case(results: &[AsrResult]) -> f64 {
 // =============================================================================
 
 /// Computes the median of a slice of `f64`.
-fn median(data: &[f64]) -> f64 {
+pub(crate) fn median(data: &[f64]) -> f64 {
     if data.is_empty() {
         return 0.0;
     }

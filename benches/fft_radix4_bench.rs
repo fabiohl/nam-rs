@@ -13,14 +13,19 @@
 //!
 //! # Running
 //! ```sh
-//! cargo bench --bench fft_radix4_bench
+//! cargo bench --bench fft_radix4_bench --features long_bench
 //! ```
 
+#[cfg(feature = "long_bench")]
 use criterion::{Criterion, criterion_group, criterion_main};
+#[cfg(feature = "long_bench")]
 use nam_rs::math::dsp::fft::FftPlanner;
+#[cfg(feature = "long_bench")]
 use nam_rs::math::dsp::fft_radix4::FftPlannerRadix4;
+#[cfg(feature = "long_bench")]
 use std::hint::black_box;
 
+#[cfg(feature = "long_bench")]
 fn make_complex_input_impl(n: usize, seed: u64) -> (Vec<f32>, Vec<f32>) {
     use std::num::Wrapping;
     let mut s = Wrapping(seed);
@@ -37,6 +42,7 @@ fn make_complex_input_impl(n: usize, seed: u64) -> (Vec<f32>, Vec<f32>) {
     (re, im)
 }
 
+#[cfg(feature = "long_bench")]
 fn bench_fft_radix2_f32(c: &mut Criterion, n: usize) {
     let planner = FftPlanner::<f32>::new(n);
     let (re_orig, im_orig) = make_complex_input_impl(n, 42);
@@ -51,6 +57,7 @@ fn bench_fft_radix2_f32(c: &mut Criterion, n: usize) {
     });
 }
 
+#[cfg(feature = "long_bench")]
 fn bench_fft_radix4_f32(c: &mut Criterion, n: usize) {
     let planner = FftPlannerRadix4::<f32>::new(n);
     let (re_orig, im_orig) = make_complex_input_impl(n, 42);
@@ -65,6 +72,7 @@ fn bench_fft_radix4_f32(c: &mut Criterion, n: usize) {
     });
 }
 
+#[cfg(feature = "long_bench")]
 fn bench_fft_radix4_inverse_f32(c: &mut Criterion, n: usize) {
     let planner = FftPlannerRadix4::<f32>::new(n);
     let (mut re, mut im) = make_complex_input_impl(n, 42);
@@ -82,6 +90,7 @@ fn bench_fft_radix4_inverse_f32(c: &mut Criterion, n: usize) {
     });
 }
 
+#[cfg(feature = "long_bench")]
 fn bench_fft_radix2_inverse_f32(c: &mut Criterion, n: usize) {
     let planner = FftPlanner::<f32>::new(n);
     let (mut re, mut im) = make_complex_input_impl(n, 42);
@@ -99,6 +108,7 @@ fn bench_fft_radix2_inverse_f32(c: &mut Criterion, n: usize) {
     });
 }
 
+#[cfg(feature = "long_bench")]
 fn bench_fft_radix2v4(c: &mut Criterion) {
     for n in [256, 1024] {
         bench_fft_radix2_f32(c, n);
@@ -108,5 +118,10 @@ fn bench_fft_radix2v4(c: &mut Criterion) {
     }
 }
 
+#[cfg(feature = "long_bench")]
 criterion_group!(benches, bench_fft_radix2v4);
+#[cfg(feature = "long_bench")]
 criterion_main!(benches);
+
+#[cfg(not(feature = "long_bench"))]
+fn main() {}

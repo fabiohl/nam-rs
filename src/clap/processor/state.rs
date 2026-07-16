@@ -118,8 +118,7 @@ pub struct NamClapProcessor<'a> {
     /// Monotonic generation counter for GUI param synchronization.
     /// Guard: only load atomics from UiToRt when generation differs.
     pub(crate) last_seen_generation: u32,
-    /// Host audio buffer size, preserved for future RT-safety assertions.
-    #[allow(dead_code)]
+    /// Host audio buffer size, used for RT-safety contract validation.
     pub(crate) max_frames_count: usize,
     /// Last seen render mode for transition detection (0 = Realtime, 1 = Offline).
     pub(crate) last_render_mode: u32,

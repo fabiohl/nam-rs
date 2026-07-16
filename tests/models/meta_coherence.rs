@@ -14,20 +14,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-/// Models referenced by `#[ignore]` tests that are intentionally
-/// absent from the CATALOG. Each entry MUST document the reason and
-/// the sprint/task that will resolve it. Entries MUST be removed
-/// when the corresponding gap is closed.
-#[allow(dead_code)]
-#[derive(Debug)]
-struct CatalogGap {
-    nam_file: &'static str,
-    source: &'static str,
-    reason: &'static str,
-}
-
-const CATALOG_EXCEPTIONS: &[CatalogGap] = &[];
-
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
@@ -297,19 +283,10 @@ fn test_catalog_models_have_consumers() {
          ({skipped_count} skipped via skip_reason).",
     );
 }
-/// test files) MUST be registered in the canonical CATALOG array of
-/// `golden_gen_build.sh`.
-///
-/// This prevents drift where a model is added to test suites but
-/// forgotten in the golden generator — a structural gap that silently
-/// keeps the corresponding golden tests `#[ignore]`d forever.
-///
-/// ## Known exceptions
-///
-/// Models in `CATALOG_EXCEPTIONS` are intentionally absent from the
-/// CATALOG and are tracked for resolution in future sprints. Each
-/// exception has a documented reason and must be removed when the gap
-/// is closed.
+/// Ensures every `.nam` model referenced by an `#[ignore]` test
+/// (golden-missing reason) is registered in the canonical CATALOG
+/// array in `golden_gen_build.sh`. This prevents silent drift where a
+/// model is added to test files but forgotten in the golden generator.
 ///
 /// ## Scope
 ///
@@ -319,8 +296,6 @@ fn test_catalog_models_have_consumers() {
 #[test]
 fn test_ignored_models_are_in_catalog() {
     let catalog = parse_catalog();
-
-    let exceptions_by_nam: HashSet<&str> = CATALOG_EXCEPTIONS.iter().map(|e| e.nam_file).collect();
 
     let test_files: &[(&str, &str)] = &[
         ("tests/models/golden_vectors.rs", "golden_vectors.rs"),
@@ -338,27 +313,12 @@ fn test_ignored_models_are_in_catalog() {
         let models = scan_ignored_test_models(&full_path, source_name);
 
         for (nam_file, _, fn_sig) in &models {
-            // Skip known exceptions — gaps already documented and tracked
-            if exceptions_by_nam.contains(nam_file.as_str()) {
-                let gap = CATALOG_EXCEPTIONS
-                    .iter()
-                    .find(|e| e.nam_file == nam_file.as_str())
-                    .unwrap();
-                eprintln!(
-                    "  INFO: {nam_file} (test: {fn_sig}) is a known gap — {reason}",
-                    reason = gap.reason,
-                );
-                continue;
-            }
-
             assert!(
                 catalog.contains(nam_file.as_str()),
                 "Model '{nam_file}' is referenced by an #[ignore] test in {source_name} \
                  (fn: {fn_sig}) but is NOT in the CATALOG array of golden_gen_build.sh.\n\
                  \n\
-                 Add '{nam_file}' to CATALOG in tests/fixtures/golden_gen_build.sh, \
-                 or document it as a known gap in CATALOG_EXCEPTIONS \
-                 (tests/meta_coherence.rs) with a reason and tracking sprint/task.\n\
+                 Add '{nam_file}' to CATALOG in tests/fixtures/golden_gen_build.sh.\n\
                  \n\
                  This is the guard against F3-class bugs: models that silently enter \
                  the test suite but never have their goldens generated because the \
