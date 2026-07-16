@@ -1788,7 +1788,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Substituir por `unsafe { self.host.with_arbitrary_lifetime() }` para obter um handle mutável seguro mantendo a tipagem sem realizar conversões de thread não-checadas.
 - **Critério de aceite:** `cargo check` passa; sem `as_main_thread_unchecked` no arquivo.
 
-### T21.3 — Adicionar helper de runtime thread checking `debug_assert_main_thread` [ ]
+### T21.3 — Adicionar helper de runtime thread checking `debug_assert_main_thread` [x]
 
 - **Arquivo:** [`src/clap/plugin/main_thread/mod.rs`](src/clap/plugin/main_thread/mod.rs)
 - **Ação:**

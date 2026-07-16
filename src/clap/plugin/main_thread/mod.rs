@@ -239,3 +239,21 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         self.emit_pending_logs();
     }
 }
+
+/// Runtime thread-check assertion for debug builds.
+///
+/// Queries the host's `thread-check` extension and panics (debug-only) if
+/// the current thread is **not** the CLAP main thread.  When the host does
+/// not provide the extension the check is skipped silently.
+#[expect(dead_code, reason = "will be used in T21.4")]
+pub fn debug_assert_main_thread(host: &HostMainThreadHandle) {
+    if let Some(check) = host
+        .shared()
+        .get_extension::<clack_extensions::thread_check::HostThreadCheck>()
+    {
+        debug_assert!(
+            check.is_main_thread(&host.shared()).unwrap_or(true),
+            "CLAP method called from a thread other than the main thread"
+        );
+    }
+}
