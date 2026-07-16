@@ -14,13 +14,12 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamLayerConfig, NamModelData, parse_nam_json};
 use nam_rs::models::NamModel;
 use nam_rs::models::lstm::lstm_weight_count;
+use nam_rs::testing::aliasing::generate_sine;
 use std::fs;
 use std::path::PathBuf;
 
 pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
-        .collect()
+    generate_sine(440.0, 48000, num_samples, 1.0)
 }
 
 pub fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {

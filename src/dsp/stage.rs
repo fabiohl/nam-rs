@@ -131,9 +131,11 @@ impl X2Stage {
             // The mirror buffer is double-mapped, so both writes target the
             // same physical location for the primary and mirror halves.
             unsafe {
-                *self.up_ring.get_unchecked_mut(p) = x;
-                *self.up_ring.get_unchecked_mut(p + n) = x;
+                core::hint::assert_unchecked(p < self.up_ring.len());
+                core::hint::assert_unchecked(p + n < self.up_ring.len());
             }
+            self.up_ring[p] = x;
+            self.up_ring[p + n] = x;
             self.up_pos = (p + 1) % n;
 
             // SAFETY: up_pos < HB_DELAY and up_ring has UP_DELAY_LINE_LEN elements
@@ -150,19 +152,25 @@ impl X2Stage {
                 let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
                 let mut sum = hsum_avx2(acc8);
                 // SAFETY: coeffs has HB_ODD_COUNT elements; wptr+offset in bounds.
-                sum += *coeffs.get_unchecked(8) * *wptr.add(8);
-                sum += *coeffs.get_unchecked(9) * *wptr.add(9);
-                sum += *coeffs.get_unchecked(10) * *wptr.add(10);
-                sum += *coeffs.get_unchecked(11) * *wptr.add(11);
+                core::hint::assert_unchecked(8 < coeffs.len());
+                core::hint::assert_unchecked(9 < coeffs.len());
+                core::hint::assert_unchecked(10 < coeffs.len());
+                core::hint::assert_unchecked(11 < coeffs.len());
+                sum += coeffs[8] * *wptr.add(8);
+                sum += coeffs[9] * *wptr.add(9);
+                sum += coeffs[10] * *wptr.add(10);
+                sum += coeffs[11] * *wptr.add(11);
                 sum
             };
 
             // SAFETY: output has 2*n_in elements (output.len() == 2 * input.len()).
             // 2*i+1 < 2*n_in for all i < n_in.
             unsafe {
-                *output.get_unchecked_mut(2 * i) = even_out;
-                *output.get_unchecked_mut(2 * i + 1) = odd_out;
+                core::hint::assert_unchecked(2 * i < output.len());
+                core::hint::assert_unchecked(2 * i + 1 < output.len());
             }
+            output[2 * i] = even_out;
+            output[2 * i + 1] = odd_out;
         }
 
         n_in * 2
@@ -181,17 +189,21 @@ impl X2Stage {
                 // SAFETY: p < DOWN_EVEN_LEN; p+DOWN_EVEN_LEN < DOWN_EVEN_DELAY_LINE_LEN.
                 // Both writes hit the same physical page in the mirrored buffer.
                 unsafe {
-                    *self.down_ring_even.get_unchecked_mut(p) = x;
-                    *self.down_ring_even.get_unchecked_mut(p + DOWN_EVEN_LEN) = x;
+                    core::hint::assert_unchecked(p < self.down_ring_even.len());
+                    core::hint::assert_unchecked(p + DOWN_EVEN_LEN < self.down_ring_even.len());
                 }
+                self.down_ring_even[p] = x;
+                self.down_ring_even[p + DOWN_EVEN_LEN] = x;
                 self.down_pos_even = (p + 1) % DOWN_EVEN_LEN;
             } else {
                 let p = self.down_pos_odd;
                 // SAFETY: p < DOWN_ODD_LEN; p+DOWN_ODD_LEN < DOWN_ODD_DELAY_LINE_LEN.
                 unsafe {
-                    *self.down_ring_odd.get_unchecked_mut(p) = x;
-                    *self.down_ring_odd.get_unchecked_mut(p + DOWN_ODD_LEN) = x;
+                    core::hint::assert_unchecked(p < self.down_ring_odd.len());
+                    core::hint::assert_unchecked(p + DOWN_ODD_LEN < self.down_ring_odd.len());
                 }
+                self.down_ring_odd[p] = x;
+                self.down_ring_odd[p + DOWN_ODD_LEN] = x;
                 self.down_pos_odd = (p + 1) % DOWN_ODD_LEN;
             }
             self.down_total += 1;
@@ -212,10 +224,14 @@ impl X2Stage {
                     let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
                     sum += hsum_avx2(acc8);
                     // SAFETY: coeffs[8..11] valid (HB_ODD_COUNT=12); od_ptr+offset in bounds.
-                    sum += *coeffs.get_unchecked(8) * *od_ptr.add(8);
-                    sum += *coeffs.get_unchecked(9) * *od_ptr.add(9);
-                    sum += *coeffs.get_unchecked(10) * *od_ptr.add(10);
-                    sum += *coeffs.get_unchecked(11) * *od_ptr.add(11);
+                    core::hint::assert_unchecked(8 < coeffs.len());
+                    core::hint::assert_unchecked(9 < coeffs.len());
+                    core::hint::assert_unchecked(10 < coeffs.len());
+                    core::hint::assert_unchecked(11 < coeffs.len());
+                    sum += coeffs[8] * *od_ptr.add(8);
+                    sum += coeffs[9] * *od_ptr.add(9);
+                    sum += coeffs[10] * *od_ptr.add(10);
+                    sum += coeffs[11] * *od_ptr.add(11);
                 }
 
                 if out_idx < output.len() {

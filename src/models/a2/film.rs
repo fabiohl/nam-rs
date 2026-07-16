@@ -183,32 +183,33 @@ impl FiLMLayer {
 
     /// `input[c] *= scale[c]; input[c] += shift[c]` — AVX2, 8-wide.
     ///
-    /// Uses `chunks_exact_mut` for the SIMD block and a scalar tail
-    /// for any remainder. The inner SIMD block contains no branches.
+    /// Uses [`as_chunks_mut`](core::slice::slice::as_chunks_mut) for the SIMD
+    /// block, yielding `&mut [[f32; 8]]` with compile-time guaranteed width.
+    /// The remainder tail uses safe indexing — bounds are guaranteed by the
+    /// chunk decomposition.
     #[inline(always)]
     unsafe fn apply_modulation(&mut self, input: &mut [f32]) {
         let scale = &self.scale_shift_buf[..self.channels];
         let shift = &self.scale_shift_buf[self.channels..self.channels * 2];
-        // S14.2 (PM-15): Support applying FiLM to slices shorter than
-        // self.channels (e.g. activation_post_film on bottleneck-sized z_scratch
-        // when bottleneck < channels). Only modulate up to input.len() elements.
         let limit = input.len().min(self.channels);
 
-        let mut off = 0;
-        for in_chunk in input[..limit].chunks_exact_mut(8) {
-            let v_in = _mm256_loadu_ps(in_chunk.as_ptr());
-            let v_scale = _mm256_loadu_ps(scale.as_ptr().add(off));
-            let v_shift = _mm256_loadu_ps(shift.as_ptr().add(off));
+        let (in_chunks, in_rem) = input[..limit].as_chunks_mut::<8>();
+        let (scale_chunks, _) = scale[..limit].as_chunks::<8>();
+        let (shift_chunks, _) = shift[..limit].as_chunks::<8>();
+
+        for i in 0..in_chunks.len() {
+            let v_in = _mm256_loadu_ps(in_chunks[i].as_ptr());
+            let v_scale = _mm256_loadu_ps(scale_chunks[i].as_ptr());
+            let v_shift = _mm256_loadu_ps(shift_chunks[i].as_ptr());
             _mm256_storeu_ps(
-                in_chunk.as_mut_ptr(),
+                in_chunks[i].as_mut_ptr(),
                 _mm256_fmadd_ps(v_in, v_scale, v_shift),
             );
-            off += 8;
         }
 
-        for c in off..limit {
-            *input.get_unchecked_mut(c) =
-                input.get_unchecked(c) * scale.get_unchecked(c) + shift.get_unchecked(c);
+        let off = in_chunks.len() * 8;
+        for c in 0..in_rem.len() {
+            input[off + c] = input[off + c] * scale[off + c] + shift[off + c];
         }
     }
 }

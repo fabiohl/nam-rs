@@ -2104,7 +2104,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Fornecer os métodos `pub unsafe fn new(ptr: *const NamClapShared) -> Self`, `pub fn as_ptr(&self) -> *const NamClapShared` e `pub unsafe fn as_ref(&self) -> &'static NamClapShared`.
   3. Atualizar todos os pontos de consumo e instanciamento de `NamClapSharedRef` nos arquivos listados acima.
 
-### T27.4 — R14: Roundtrip de serialização e consolidação de sinal senoidal [ ]
+### T27.4 — R14: Roundtrip de serialização e consolidação de sinal senoidal [x]
 
 - **Arquivos:**
   - [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
@@ -2114,7 +2114,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   1. Em `proptest_parsers.rs`, marcar `prop_model_data_serialization_roundtrip` com o atributo `#[ignore]` para que seja ativamente exercitado no fuzzing ágil da Fase 3 de `tests-quick.sh`.
   2. Em `signals.rs` e `common.rs`, remover a lógica duplicada de geração matemática senoidal em `generate_sine_440hz` e delegar diretamente para `nam_rs::testing::aliasing::generate_sine(440.0, 48000, num_samples, 1.0)`.
 
-### T27.5 — P3: Avaliação de assert_unchecked no DSP e as_chunks no FiLM [ ]
+### T27.5 — P3: Avaliação de assert_unchecked no DSP e as_chunks no FiLM [x]
 
 - **Arquivos:**
   - [`src/dsp/stage.rs`](src/dsp/stage.rs)

@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+use nam_rs::testing::aliasing::generate_sine;
 use nam_rs::testing::stress::generate_stress_signal_v1;
 
 #[deprecated(since = "1.5.0", note = "Use `generate_stress_signal_v1()` directly")]
@@ -11,7 +12,5 @@ pub fn generate_stress_signal() -> Vec<f32> {
 }
 
 pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
-    (0..num_samples)
-        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
-        .collect()
+    generate_sine(440.0, 48000, num_samples, 1.0)
 }

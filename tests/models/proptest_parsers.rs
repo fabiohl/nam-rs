@@ -524,6 +524,7 @@ proptest! {
     })]
 
     #[test]
+    #[ignore]
     fn prop_model_data_serialization_roundtrip(data in arbitrary_nam_model_data()) {
         let json_str =
             serde_json::to_string(&data).expect("Failed to serialize NamModelData to JSON");
