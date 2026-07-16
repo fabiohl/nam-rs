@@ -365,7 +365,10 @@ impl<T> Deref for HugePageVec<T> {
         if self.len == 0 {
             &[]
         } else {
-            // SAFETY: Inner safety guarantees are upheld by caller invariants.
+            // SAFETY: self.ptr is non-null (allocated via allocate_huge_pages or fallback
+            // alloc; empty case guarded by len==0 above). self.len ≤ capacity, determined
+            // at allocation time, and elements [0..len) are properly initialized by the
+            // HugePageVec construction and push operations.
             unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
         }
     }
@@ -376,7 +379,8 @@ impl<T> DerefMut for HugePageVec<T> {
         if self.len == 0 {
             &mut []
         } else {
-            // SAFETY: Inner safety guarantees are upheld by caller invariants.
+            // SAFETY: Same pointer/size invariants as Deref. &mut self ensures exclusive
+            // access to the allocation, so no aliasing of any element occurs.
             unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
         }
     }
@@ -385,7 +389,11 @@ impl<T> DerefMut for HugePageVec<T> {
 impl<T> Drop for HugePageVec<T> {
     fn drop(&mut self) {
         if self.len > 0 {
-            // SAFETY: Inner safety guarantees are upheld by caller invariants.
+            // SAFETY: self.ptr was allocated via allocate_huge_pages (or the fallback heap
+            // path), tracked by self.alloc_info. The deallocation size self.len * size_of::<T>()
+            // matches the allocation size modulo page alignment rounding (deallocate_huge uses
+            // the stored size_bytes from allocation). Drop consumes self; this is the final
+            // use of the pointer.
             unsafe {
                 deallocate_huge(
                     self.ptr.as_ptr() as *mut u8,
@@ -397,7 +405,11 @@ impl<T> Drop for HugePageVec<T> {
     }
 }
 
-// SAFETY: Inner safety guarantees are upheld by caller invariants.
+// SAFETY: HugePageVec owns its allocation exclusively (mmap/MAP_PRIVATE or heap with no
+// external aliasing). Sending across threads is sound because the underlying memory is not
+// shared with other HugePageVec instances, and T: Send ensures elements are thread-transferable.
 unsafe impl<T: Send> Send for HugePageVec<T> {}
-// SAFETY: Inner safety guarantees are upheld by caller invariants.
+// SAFETY: T: Sync guarantees shared references to elements are sound across threads. The
+// allocation is exclusively owned and accessed through Deref/DerefMut which enforce Rust's
+// aliasing rules.
 unsafe impl<T: Sync> Sync for HugePageVec<T> {}

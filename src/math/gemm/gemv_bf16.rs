@@ -59,7 +59,11 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
                     );
                     $acc = _mm512_dpbf16_ps(
                         $acc,
+                        // SAFETY: __m512 → __m512bh is a no-op transmute of 512-bit
+                        // vectors with identical ABI (same size, alignment, register class).
                         core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
+                        // SAFETY: __m512i → __m512bh is a no-op transmute of 512-bit
+                        // vectors with identical ABI.
                         core::mem::transmute::<__m512i, __m512bh>(vw),
                     );
                 };
@@ -96,7 +100,9 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
             );
             acc0 = _mm512_dpbf16_ps(
                 acc0,
+                // SAFETY: __m512 → __m512bh: no-op 512-bit transmute, identical ABI.
                 core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
+                // SAFETY: __m512i → __m512bh: no-op 512-bit transmute, identical ABI.
                 core::mem::transmute::<__m512i, __m512bh>(vw),
             );
             in_c += 2;

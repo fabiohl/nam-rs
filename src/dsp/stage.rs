@@ -16,6 +16,8 @@ use core::arch::x86_64::*;
 const HB_ODD_COUNT: usize = HB_TAPS / 2;
 
 const UP_DELAY_LINE_LEN: usize = HB_DELAY * 2;
+#[allow(dead_code)]
+const _: () = const { assert!(UP_DELAY_LINE_LEN > (HB_DELAY - 1) + (HB_ODD_COUNT - 1)) };
 const DOWN_EVEN_LEN: usize = HB_TAPS.div_ceil(2);
 const DOWN_ODD_LEN: usize = HB_TAPS / 2;
 const DOWN_EVEN_DELAY_LINE_LEN: usize = DOWN_EVEN_LEN * 2;
@@ -125,14 +127,21 @@ impl X2Stage {
 
         for (i, &x) in input.iter().enumerate() {
             let p = self.up_pos;
+            // SAFETY: p < HB_DELAY by invariant; p+n < UP_DELAY_LINE_LEN.
+            // The mirror buffer is double-mapped, so both writes target the
+            // same physical location for the primary and mirror halves.
             unsafe {
                 *self.up_ring.get_unchecked_mut(p) = x;
                 *self.up_ring.get_unchecked_mut(p + n) = x;
             }
             self.up_pos = (p + 1) % n;
 
+            // SAFETY: up_pos < HB_DELAY and up_ring has UP_DELAY_LINE_LEN elements
+            // (verified by the compile-time assertion above). Reads at offsets 0..11
+            // stay within bounds: up_pos + 11 < UP_DELAY_LINE_LEN.
             let wptr = unsafe { self.up_ring.as_ptr().add(self.up_pos) };
 
+            // SAFETY: wptr.add(5) is in bounds — see invariant above.
             let even_out = unsafe { *wptr.add(5) * center };
 
             let odd_out = unsafe {
@@ -140,6 +149,7 @@ impl X2Stage {
                 let s8 = _mm256_loadu_ps(wptr);
                 let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
                 let mut sum = hsum_avx2(acc8);
+                // SAFETY: coeffs has HB_ODD_COUNT elements; wptr+offset in bounds.
                 sum += *coeffs.get_unchecked(8) * *wptr.add(8);
                 sum += *coeffs.get_unchecked(9) * *wptr.add(9);
                 sum += *coeffs.get_unchecked(10) * *wptr.add(10);
@@ -147,6 +157,8 @@ impl X2Stage {
                 sum
             };
 
+            // SAFETY: output has 2*n_in elements (output.len() == 2 * input.len()).
+            // 2*i+1 < 2*n_in for all i < n_in.
             unsafe {
                 *output.get_unchecked_mut(2 * i) = even_out;
                 *output.get_unchecked_mut(2 * i + 1) = odd_out;
@@ -166,6 +178,8 @@ impl X2Stage {
             let is_even = (self.down_total & 1) == 0;
             if is_even {
                 let p = self.down_pos_even;
+                // SAFETY: p < DOWN_EVEN_LEN; p+DOWN_EVEN_LEN < DOWN_EVEN_DELAY_LINE_LEN.
+                // Both writes hit the same physical page in the mirrored buffer.
                 unsafe {
                     *self.down_ring_even.get_unchecked_mut(p) = x;
                     *self.down_ring_even.get_unchecked_mut(p + DOWN_EVEN_LEN) = x;
@@ -173,6 +187,7 @@ impl X2Stage {
                 self.down_pos_even = (p + 1) % DOWN_EVEN_LEN;
             } else {
                 let p = self.down_pos_odd;
+                // SAFETY: p < DOWN_ODD_LEN; p+DOWN_ODD_LEN < DOWN_ODD_DELAY_LINE_LEN.
                 unsafe {
                     *self.down_ring_odd.get_unchecked_mut(p) = x;
                     *self.down_ring_odd.get_unchecked_mut(p + DOWN_ODD_LEN) = x;
@@ -182,16 +197,21 @@ impl X2Stage {
             self.down_total += 1;
 
             if self.down_total >= HB_TAPS as u64 && (self.down_total & 1) == 1 {
+                // SAFETY: down_pos_even < DOWN_EVEN_LEN; the mirror buffer doubles
+                // the capacity, so reads up to offset 6 stay within bounds.
                 let ev_ptr = unsafe { self.down_ring_even.as_ptr().add(self.down_pos_even) };
                 let center_sample = unsafe { *ev_ptr.add(6) };
                 let mut sum = center_sample * center;
 
+                // SAFETY: down_pos_odd < DOWN_ODD_LEN; max access at offset 11
+                // fits within DOWN_ODD_DELAY_LINE_LEN (2*DOWN_ODD_LEN).
                 let od_ptr = unsafe { self.down_ring_odd.as_ptr().add(self.down_pos_odd) };
                 unsafe {
                     let c8 = _mm256_loadu_ps(coeffs.as_ptr());
                     let s8 = _mm256_loadu_ps(od_ptr);
                     let acc8 = _mm256_fmadd_ps(c8, s8, _mm256_setzero_ps());
                     sum += hsum_avx2(acc8);
+                    // SAFETY: coeffs[8..11] valid (HB_ODD_COUNT=12); od_ptr+offset in bounds.
                     sum += *coeffs.get_unchecked(8) * *od_ptr.add(8);
                     sum += *coeffs.get_unchecked(9) * *od_ptr.add(9);
                     sum += *coeffs.get_unchecked(10) * *od_ptr.add(10);

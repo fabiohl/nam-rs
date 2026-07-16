@@ -92,7 +92,15 @@ fn main() -> anyhow::Result<()> {
     }
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
-        sa.sa_sigaction = sigint_handler as *const () as libc::sighandler_t;
+        // SAFETY: transmute is necessary because libc's sigaction exposes only
+        // sa_sigaction (a union member with 3-argument prototype), but our
+        // handler sigint_handler has the 1-argument signature expected by
+        // the kernel when SA_SIGINFO is not set. SA_RESTART alone triggers
+        // the kernel's 1-arg handler path, so the ABI is compatible.
+        sa.sa_sigaction = std::mem::transmute::<
+            extern "C" fn(libc::c_int),
+            libc::sighandler_t,
+        >(sigint_handler);
         sa.sa_flags = libc::SA_RESTART;
         libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
     }

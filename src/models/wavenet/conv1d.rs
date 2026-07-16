@@ -52,6 +52,14 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let mut in_taps = [[0.0f32; IN]; K];
         for (k, in_tap) in in_taps.iter_mut().enumerate() {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            // SAFETY: The causal receptive-field invariant guarantees
+            // frame_idx >= dilation * (K-1), so (frame_idx as isize) + offset >= 0.
+            debug_assert!(
+                frame_idx >= self.dilation * (K - 1),
+                "frame_idx {} must be >= dilation*K_minus_1 = {}",
+                frame_idx,
+                self.dilation * (K - 1)
+            );
             let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
             unsafe {
                 std::ptr::copy_nonoverlapping(
@@ -160,6 +168,13 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let mut in_taps = [[0.0f32; IN]; K];
         for (k, in_tap) in in_taps.iter_mut().enumerate() {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            // SAFETY: Receptive-field invariant: frame_idx >= dilation*(K-1).
+            debug_assert!(
+                frame_idx >= self.dilation * (K - 1),
+                "frame_idx {} must be >= dilation*K_minus_1 = {}",
+                frame_idx,
+                self.dilation * (K - 1)
+            );
             let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
             unsafe {
                 std::ptr::copy_nonoverlapping(

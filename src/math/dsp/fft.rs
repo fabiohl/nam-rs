@@ -225,12 +225,15 @@ impl<T: FftFloat> FftPlanner<T> {
         // 1. Bit-reversal permutation
         // SAFETY: bit_reverse has length n, and i ∈ 0..n.
         for i in 0..n {
-            let j = unsafe { *self.bit_reverse.get_unchecked(i) };
+            unsafe { core::hint::assert_unchecked(i < n) };
+            let j = self.bit_reverse[i];
             if i < j {
                 // SAFETY: i < j < n by bit-reversal property; both indices are in bounds.
                 unsafe {
-                    std::ptr::swap(re.get_unchecked_mut(i), re.get_unchecked_mut(j));
-                    std::ptr::swap(im.get_unchecked_mut(i), im.get_unchecked_mut(j));
+                    core::hint::assert_unchecked(i < n);
+                    core::hint::assert_unchecked(j < n);
+                    std::ptr::swap(&mut re[i], &mut re[j]);
+                    std::ptr::swap(&mut im[i], &mut im[j]);
                 }
             }
         }
@@ -255,12 +258,15 @@ impl<T: FftFloat> FftPlanner<T> {
         // 1. Bit-reversal permutation
         // SAFETY: bit_reverse has length n, and i ∈ 0..n.
         for i in 0..n {
-            let j = unsafe { *self.bit_reverse.get_unchecked(i) };
+            unsafe { core::hint::assert_unchecked(i < n) };
+            let j = self.bit_reverse[i];
             if i < j {
                 // SAFETY: i < j < n by bit-reversal property; both indices are in bounds.
                 unsafe {
-                    std::ptr::swap(re.get_unchecked_mut(i), re.get_unchecked_mut(j));
-                    std::ptr::swap(im.get_unchecked_mut(i), im.get_unchecked_mut(j));
+                    core::hint::assert_unchecked(i < n);
+                    core::hint::assert_unchecked(j < n);
+                    std::ptr::swap(&mut re[i], &mut re[j]);
+                    std::ptr::swap(&mut im[i], &mut im[j]);
                 }
             }
         }
@@ -295,7 +301,8 @@ impl<T: FftFloat> FftPlanner<T> {
             {
                 // SAFETY: T is f32 (guarded by size_of check above).
                 // stage_idx < num_stages, twiddle offsets are precomputed.
-                let tw_offset = *unsafe { self.stage_offsets.get_unchecked(stage_idx) };
+                unsafe { core::hint::assert_unchecked(stage_idx < self.stage_offsets.len()) };
+                let tw_offset = self.stage_offsets[stage_idx];
                 let tw_re_ptr =
                     unsafe { self.stage_twiddle_re.as_ptr().add(tw_offset) as *const f32 };
                 let tw_im_ptr =
@@ -317,21 +324,25 @@ impl<T: FftFloat> FftPlanner<T> {
                     for j in 0..half {
                         let w_idx = j * step;
                         // SAFETY: w_idx < n/2; twiddle tables have capacity n/2.
-                        let w_re = unsafe { *self.twiddle_re.get_unchecked(w_idx) };
+                        unsafe { core::hint::assert_unchecked(w_idx < self.twiddle_re.len()) };
+                        let w_re = self.twiddle_re[w_idx];
                         let w_im = if inverse {
-                            -unsafe { *self.twiddle_im.get_unchecked(w_idx) }
+                            unsafe { core::hint::assert_unchecked(w_idx < self.twiddle_im.len()) };
+                            -self.twiddle_im[w_idx]
                         } else {
-                            unsafe { *self.twiddle_im.get_unchecked(w_idx) }
+                            self.twiddle_im[w_idx]
                         };
 
                         let idx1 = k + j;
                         let idx2 = k + j + half;
                         // SAFETY: k < n, j < half, len ≤ n → idx1, idx2 < n.
                         let (re_idx2, im_idx2, re_idx1, im_idx1) = unsafe {
-                            let r2 = *re.get_unchecked(idx2);
-                            let i2 = *im.get_unchecked(idx2);
-                            let r1 = *re.get_unchecked(idx1);
-                            let i1 = *im.get_unchecked(idx1);
+                            core::hint::assert_unchecked(idx1 < re.len());
+                            core::hint::assert_unchecked(idx2 < re.len());
+                            let r2 = re[idx2];
+                            let i2 = im[idx2];
+                            let r1 = re[idx1];
+                            let i1 = im[idx1];
                             (r2, i2, r1, i1)
                         };
 
@@ -339,10 +350,12 @@ impl<T: FftFloat> FftPlanner<T> {
                         let t_im = w_re.mul_add(im_idx2, w_im * re_idx2);
 
                         unsafe {
-                            *re.get_unchecked_mut(idx2) = re_idx1 - t_re;
-                            *im.get_unchecked_mut(idx2) = im_idx1 - t_im;
-                            *re.get_unchecked_mut(idx1) = re_idx1 + t_re;
-                            *im.get_unchecked_mut(idx1) = im_idx1 + t_im;
+                            core::hint::assert_unchecked(idx1 < re.len());
+                            core::hint::assert_unchecked(idx2 < re.len());
+                            re[idx2] = re_idx1 - t_re;
+                            im[idx2] = im_idx1 - t_im;
+                            re[idx1] = re_idx1 + t_re;
+                            im[idx1] = im_idx1 + t_im;
                         }
                     }
                 }

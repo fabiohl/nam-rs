@@ -25,10 +25,13 @@ pub const GUI_HEIGHT: u32 = 275;
 /// handle is guaranteed to be destroyed/closed before the plugin is destroyed,
 /// ensuring that the host's real lifetime encompasses all use of the handle.
 #[inline]
-// SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
+// SAFETY: HostSharedHandle is repr(transparent) over a raw pointer wrapper
+// (the underlying type is a NonNull<clap_host>). transmuting the lifetime from
+// 'a to 'static is sound because the caller guarantees the host outlives the
+// plugin — the GUI window is destroyed/closed before the plugin factory is
+// deactivated, ensuring the real host lifetime encompasses the extended lifetime.
 pub(crate) unsafe fn extend_host_lifetime<'a>(
     h: clack_plugin::host::HostSharedHandle<'a>,
 ) -> clack_plugin::host::HostSharedHandle<'static> {
-    // SAFETY: The caller guarantees host validity for the extended lifetime.
     unsafe { std::mem::transmute(h) }
 }

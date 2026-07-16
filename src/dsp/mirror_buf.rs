@@ -148,8 +148,11 @@ impl<T> Deref for MirroredBuffer<T> {
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        // Returns a slice that covers both halves (2x size)
-        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        // SAFETY: self.ptr points to a valid virtual mapping of size_elements*2 elements.
+        // The allocation reserves contiguous virtual space for the two mirrored halves,
+        // mapping the same physical pages twice. ptr is initialized by mmap/ftruncate
+        // (or std heap fallback validated by the alloc module) and remains valid for the
+        // full virtual extent until Drop.
         unsafe { std::slice::from_raw_parts(self.ptr, self.size_elements * 2) }
     }
 }
@@ -157,7 +160,9 @@ impl<T> Deref for MirroredBuffer<T> {
 impl<T> DerefMut for MirroredBuffer<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        // SAFETY: Same invariants as Deref: ptr covers size_elements*2 valid virtual elements
+        // (two mirrored halves mapping the same physical pages). The &mut self reference
+        // guarantees exclusive access, so no aliasing of the underlying memory occurs.
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.size_elements * 2) }
     }
 }
@@ -166,7 +171,10 @@ impl<T> Drop for MirroredBuffer<T> {
     fn drop(&mut self) {
         let element_size = std::mem::size_of::<T>();
         let size_bytes = self.size_elements * element_size;
-        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        // SAFETY: self.ptr was obtained via mmap (or std heap via the alloc module).
+        // The virtual mapping spans size_bytes*2 (two mirrored halves). munmap receives
+        // the original base address and the full virtual extent, matching the allocation
+        // interface. Drop consumes self, so this is the last use of the pointer.
         unsafe {
             munmap(self.ptr as *mut c_void, size_bytes * 2);
         }
@@ -193,9 +201,13 @@ impl<T: Clone> Clone for MirroredBuffer<T> {
     }
 }
 
-// SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+// SAFETY: ptr points to an exclusive virtual mapping (mmap/MAP_PRIVATE or heap) with no
+// shared physical aliasing to other processes. Moving the struct across threads is sound
+// because the underlying memory is not shared with other MirroredBuffer instances.
 unsafe impl<T: Send> Send for MirroredBuffer<T> {}
-// SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+// SAFETY: T: Sync ensures that shared references to T elements are sound across threads.
+// MirroredBuffer's internal ptr is only accessed through Deref/DerefMut which follow Rust's
+// borrow rules. The exclusive virtual mapping prevents races from external writers.
 unsafe impl<T: Sync> Sync for MirroredBuffer<T> {}
 
 #[cfg(all(test, target_os = "linux"))]

@@ -99,11 +99,19 @@ impl ConvNetModel {
             let in_slice = &input[pos..pos + num_frames];
 
             let num_blocks = self.blocks.len();
+            // SAFETY: &mut self borrows blocks exclusively; Vec won't reallocate
+            // while this mutable reference exists. Calling as_mut_ptr() is sound
+            // because the Vec is never resized, dropped, or aliased during the
+            // function body. All pointer arithmetic respects i ∈ 0..num_blocks,
+            // and blocks_ptr.add(i) points to a valid initialized ConvNetBlock.
             let blocks_ptr = self.blocks.as_mut_ptr();
 
             // Block 0 writes to scratch_a
+            // SAFETY: blocks_ptr is valid (see above). blocks is non-empty
+            // (guarded at L90). i=0 is within bounds.
             let first_out_ch = unsafe { (*blocks_ptr).conv.out_ch };
             let dst_a = &mut self.scratch_a[..num_frames * first_out_ch];
+            // SAFETY: blocks_ptr and dst_a are valid; M provides safe SIMD dispatch.
             unsafe {
                 (*blocks_ptr).process_block_internal::<M>(in_slice, dst_a, num_frames);
             }
@@ -111,6 +119,8 @@ impl ConvNetModel {
             let mut src_is_a = true;
 
             for i in 1..num_blocks {
+                // SAFETY: i < num_blocks by loop bound. blocks_ptr.add(i) yields
+                // a valid pointer to an initialized ConvNetBlock in the Vec.
                 let curr = unsafe { &mut *blocks_ptr.add(i) };
                 let curr_out_ch = curr.conv.out_ch;
 
@@ -118,6 +128,9 @@ impl ConvNetModel {
                     let src = &self.scratch_a
                         [..num_frames * unsafe { (*blocks_ptr.add(i - 1)).conv.out_ch }];
                     let dst = &mut self.scratch_b[..num_frames * curr_out_ch];
+                    // SAFETY: curr is valid (see above); src/dst are valid
+                    // slices within scratch_a/scratch_b which are separate
+                    // allocations.
                     unsafe {
                         curr.process_block_internal::<M>(src, dst, num_frames);
                     }
@@ -125,6 +138,8 @@ impl ConvNetModel {
                     let src = &self.scratch_b
                         [..num_frames * unsafe { (*blocks_ptr.add(i - 1)).conv.out_ch }];
                     let dst = &mut self.scratch_a[..num_frames * curr_out_ch];
+                    // SAFETY: Same invariants as the if branch; src and dst
+                    // are reversed between scratch_a/scratch_b.
                     unsafe {
                         curr.process_block_internal::<M>(src, dst, num_frames);
                     }
@@ -133,10 +148,9 @@ impl ConvNetModel {
                 src_is_a = !src_is_a;
             }
 
-            // After the loop, if number of blocks is odd, result is in scratch_a.
-            // If number of blocks is even (n>=2), result alternates: block0→a, block1→b, block2→a...
-            // Final: if (num_blocks-1) % 2 == 0, result is in scratch_a.
             let last_result_in_a = (num_blocks - 1).is_multiple_of(2);
+            // SAFETY: num_blocks > 0 (guarded at L90). num_blocks-1 < num_blocks,
+            // so blocks_ptr.add(num_blocks-1) is in bounds.
             let last_out_ch = unsafe { (*blocks_ptr.add(num_blocks - 1)).conv.out_ch };
             let last_slice = if last_result_in_a {
                 &self.scratch_a[..num_frames * last_out_ch]

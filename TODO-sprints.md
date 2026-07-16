@@ -1351,19 +1351,21 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Mínimo. Alteração focada em documentação e otimizações locais.
 
-### T15.1 — Reescrever comentários SAFETY em `src/dsp/mirror_buf.rs` [ ]
+### T15.1 — Reescrever comentários SAFETY em `src/dsp/mirror_buf.rs` [x]
 
 - **Arquivo:** [`src/dsp/mirror_buf.rs`](src/dsp/mirror_buf.rs) (L153, 161, 171, 192, 194)
 - **Ação:** Substituir comentários SAFETY genéricos por explicações das invariantes reais de manipulação de memória virtual, citando a validade do ponteiro para `size_elements * 2` e os buffers espelhados.
 - **Critério de aceite:** `cargo check` passa; comentários revisados.
 
-### T15.2 — Alinhar SAFETY de `huge_alloc.rs` com padrão de `aligned.rs` [ ]
+### T15.2 — Alinhar SAFETY de `huge_alloc.rs` com padrão de `aligned.rs` [x]
 
 - **Arquivo:** [`src/math/common/huge_alloc.rs`](src/math/common/huge_alloc.rs) (L369, 380, 389)
 - **Ação:** Substituir o comentário genérico "upheld by caller invariants" por documentação precisa citando o porquê de o ponteiro ser válido e não-nulo, e a relação com o tamanho da alocação de huge pages.
 - **Critério de aceite:** `cargo check` passa.
 
-### T15.3 — Formalizar invariantes e SAFETY no delay line do stage [ ]
+### T15.3 — Formalizar invariantes e SAFETY no delay line do stage [x]
+
+> **Nota de implementação:** A invariante estática usou `UP_DELAY_LINE_LEN > (HB_DELAY - 1) + (HB_ODD_COUNT - 1)` (24 > 22) — o invariante verificável real para o upsampling — pois `UP_DELAY_LINE_LEN` (24) é estritamente menor que `HB_TAPS` (25). A forma original `>= HB_TAPS` seria compilação impossível. A invariante correta verifica que todos os acessos de leitura SIMD + scalar no upsampling cabem no mirror buffer.
 
 - **Arquivo:** [`src/dsp/stage.rs`](src/dsp/stage.rs) (L130-152, 169-198)
 - **Ação:**
@@ -1371,7 +1373,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Adicionar documentação SAFETY explicando por que o loop garante acessos válidos e em limites de bounds.
 - **Critério de aceite:** Código compila com a nova asserção estática.
 
-### T15.4 — Otimizar `get_unchecked` no FFT usando `assert_unchecked` [ ]
+### T15.4 — Otimizar `get_unchecked` no FFT usando `assert_unchecked` [x]
+
+> **Nota de implementação:** Além dos locais citados (bit-reversal L228/258 e scalar path L320-324), o `get_unchecked` do SIMD path em `stage_offsets` também foi convertido. Todos os 63 testes de FFT passam.
 
 - **Arquivo:** [`src/math/dsp/fft.rs`](src/math/dsp/fft.rs) (L228, 258, 320-324)
 - **Ação:**
@@ -1379,31 +1383,35 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Verificar que o assembly gerado em `target/dsp_hotpath.asm` não regrediu e mantém a eliminação de bounds checks.
 - **Critério de aceite:** `cargo check` passa e o quick suite passa.
 
-### T15.5 — Documentar SAFETY de ponteiros em ConvNet [ ]
+### T15.5 — Documentar SAFETY de ponteiros em ConvNet [x]
 
 - **Arquivo:** [`src/models/convnet/model.rs`](src/models/convnet/model.rs) (L105-140)
 - **Ação:** Adicionar blocos de comentário SAFETY explicativos sobre a aritmética de ponteiros com `Vec::as_mut_ptr()`, detalhando que `&mut self` impede realocações simultâneas e que os índices estão contidos em `blocks.len()`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T15.6 — Adicionar `debug_assert!` e SAFETY no `copy_nonoverlapping` de WaveNet [ ]
+### T15.6 — Adicionar `debug_assert!` e SAFETY no `copy_nonoverlapping` de WaveNet [x]
+
+> **Nota de implementação:** `debug_assert!` adicionado nas duas funções (`process_single_frame_with_mixin` e `process_single_frame`). A invariante `max_lookback_cols` (não encontrada no codebase atual) foi documentada como `frame_idx >= dilation * (K-1)` — a restrição causal do receptive field que previne underflow no cast `isize → usize`.
 
 - **Arquivo:** [`src/models/wavenet/conv1d.rs`](src/models/wavenet/conv1d.rs) (L56-62)
 - **Ação:** Adicionar `debug_assert!` validando que o offset `isize` convertido para `usize` não causa underflow ou transborda, documentando a segurança da operação em relação à invariante `max_lookback_cols`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T15.7 — Documentar transmute de lifetime na GUI do CLAP [ ]
+### T15.7 — Documentar transmute de lifetime na GUI do CLAP [x]
 
 - **Arquivo:** [`src/clap/gui/mod.rs`](src/clap/gui/mod.rs) (L33)
 - **Ação:** Documentar de forma expressa a segurança do `transmute` de lifetime em tipo sem `repr(transparent)`, detalhando a dependência de layout ou encapsulando em wrapper limpo de forma equivalente.
 - **Critério de aceite:** Compila sem alertas.
 
-### T15.8 — Comentário SAFETY para transmute de `__m512` em GEMV [ ]
+### T15.8 — Comentário SAFETY para transmute de `__m512` em GEMV [x]
 
 - **Arquivo:** [`src/math/gemm/gemv_bf16.rs`](src/math/gemm/gemv_bf16.rs) (L62-63, 99-100)
 - **Ação:** Adicionar anotação SAFETY de uma linha justificando a conversão de `__m512` para `__m512bh` como "no-op de 512 bits entre tipos com ABI idêntica".
 - **Critério de aceite:** Comentários adicionados.
 
-### T15.9 — Limpar cast duplo de handler de sinal em `src/main.rs` [ ]
+### T15.9 — Limpar cast duplo de handler de sinal em `src/main.rs` [x]
+
+> **Nota de implementação:** O binding `libc::sigaction` do Linux não expõe `sa_handler`; apenas `sa_sigaction`. O cast duplo `as *const () as sighandler_t` foi substituído por `std::mem::transmute` com comentário SAFETY explicando a compatibilidade ABI (SA_RESTART sem SA_SIGINFO aciona o path de handler 1-arg do kernel, que é compatível com nosso `sigint_handler`).
 
 - **Arquivo:** [`src/main.rs`](src/main.rs) (L85-89)
 - **Ação:** Substituir o cast duplo via `*const ()` para `sighandler_t` atribuindo o handler `sigint_handler` diretamente ao campo correto (`sa_handler` ou equivalente via struct) do `sigaction`.
