@@ -40,11 +40,9 @@ pub(crate) fn build_lstm_dynamic(
 
     let h = hidden_size;
     let head_weights_data = cursor.read_slice(h)?;
-    let mut head_weights = crate::math::common::AlignedVec::new(h, 0.0f32)
-        .expect("allocation should succeed for test-sized buffers");
+    let mut head_weights = crate::math::common::AlignedVec::new(h, 0.0f32)?;
     head_weights.copy_from_slice(head_weights_data);
-    let mut head_weights_f32 = crate::math::common::AlignedVec::new(h, 0.0f32)
-        .expect("allocation should succeed for test-sized buffers");
+    let mut head_weights_f32 = crate::math::common::AlignedVec::new(h, 0.0f32)?;
     head_weights_f32.copy_from_slice(head_weights_data);
     let head_bias = cursor.read_f32_finite()?;
 

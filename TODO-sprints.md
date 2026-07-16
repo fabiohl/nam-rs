@@ -1887,7 +1887,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Substituir por propagação direta via `?`.
 - **Critério de aceite:** Sem ocorrências de `.expect(` no arquivo; `cargo check` passa.
 
-### T22.4 — Propagar erro de alocação no dynamic builder do LSTM [ ]
+### T22.4 — Propagar erro de alocação no dynamic builder do LSTM [x]
 
 - **Arquivo:** [`src/loader/dispatcher/lstm/dynamic_builder.rs`](src/loader/dispatcher/lstm/dynamic_builder.rs)
 - **Ação:**
