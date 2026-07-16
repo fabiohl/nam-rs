@@ -336,7 +336,10 @@ impl DynamicHysteresis {
                 left.fill(0.0);
                 right.fill(0.0);
             } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
-                // Applies volume to both channels efficiently.
+                // SAFETY: `M::apply_gain_stereo` operates on mutable f32
+                // slices `left` and `right` of equal length (n_samples).
+                // The SIMD kernel only reads the multiplier and writes
+                // in-place within slice bounds.
                 unsafe { M::apply_gain_stereo(left, right, self.current_multiplier) };
             }
             return;
@@ -348,11 +351,16 @@ impl DynamicHysteresis {
         if self.ramp_samples >= n_samples {
             // Smooth change across both channels for the entire block.
             if (start_mult - end_mult).abs() < 1e-6 {
+                // SAFETY: same invariants as apply_gain_stereo above.
                 unsafe { M::apply_gain_stereo(left, right, end_mult) };
             } else {
                 // NOTE: With n_samples = 1, the 1-sample "ramp"
                 // results in a direct jump to the target value, which is accepted by design.
                 let step = (end_mult - start_mult) / (n_samples as f32);
+                // SAFETY: `M::apply_ramp_stereo` operates on mutable f32
+                // slices `left` and `right` of equal length (n_samples).
+                // The SIMD kernel reads start_mult and step, writes
+                // in-place within slice bounds.
                 unsafe { M::apply_ramp_stereo(left, right, start_mult, step) };
             }
         } else {
@@ -361,9 +369,13 @@ impl DynamicHysteresis {
             let (ramp_r, const_r) = right.split_at_mut(self.ramp_samples);
 
             if (start_mult - end_mult).abs() < 1e-6 {
+                // SAFETY: ramp_l and ramp_r have equal length (self.ramp_samples).
+                // Same SIMD invariants as the global-ramp path.
                 unsafe { M::apply_gain_stereo(ramp_l, ramp_r, end_mult) };
             } else {
                 let step = (end_mult - start_mult) / (self.ramp_samples as f32);
+                // SAFETY: ramp_l and ramp_r have equal length (self.ramp_samples).
+                // Same SIMD invariants as apply_ramp_stereo above.
                 unsafe { M::apply_ramp_stereo(ramp_l, ramp_r, start_mult, step) };
             }
 
@@ -372,6 +384,9 @@ impl DynamicHysteresis {
                 const_l.fill(0.0);
                 const_r.fill(0.0);
             } else if (end_mult - 1.0).abs() > 1e-6 {
+                // SAFETY: const_l and const_r have equal length (the
+                // remainder after splitting off ramp_samples). Same
+                // SIMD invariants as apply_gain_stereo.
                 unsafe { M::apply_gain_stereo(const_l, const_r, end_mult) };
             }
         }

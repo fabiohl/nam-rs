@@ -110,9 +110,14 @@ impl BatchNorm1D {
     ///
     /// # Safety
     /// The caller must ensure `data.len() == num_frames * num_channels`.
+    /// # Safety
+    /// `data.len() == num_frames * self.num_channels`.
     #[inline(always)]
     pub unsafe fn process(&self, data: &mut [f32], num_frames: usize) {
         debug_assert_eq!(data.len(), num_frames * self.num_channels);
+        // SAFETY: caller guarantees `data.len()` matches the frame×channel
+        // layout. The dispatch macro selects an ISA-specific `process_simd`
+        // implementation whose safety contract is the same.
         unsafe { crate::math::common::dispatch_simd!(self, process_simd, data, num_frames) };
     }
 
@@ -126,6 +131,11 @@ impl BatchNorm1D {
     #[inline(always)]
     pub unsafe fn process_simd<M: SimdMath>(&self, data: &mut [f32], num_frames: usize) {
         debug_assert_eq!(data.len(), num_frames * self.num_channels);
+        // SAFETY: caller guarantees the frame×channel layout invariant
+        // (data.len == num_frames * num_channels). scale and offset each
+        // have `num_channels` elements, validated at construction time.
+        // `M::batch_norm_process` uses these pre-validated buffers without
+        // additional bounds checks.
         unsafe {
             M::batch_norm_process(
                 data,
@@ -143,6 +153,9 @@ impl BatchNorm1D {
     /// `data.len()` must equal `num_frames * self.num_channels`.
     #[inline(always)]
     pub unsafe fn process_scalar(&self, data: &mut [f32], num_frames: usize) {
+        // SAFETY: caller guarantees the frame×channel layout invariant.
+        // scale and offset each have `num_channels` elements (validated at
+        // construction). `process_scalar_ref` iterates within these bounds.
         unsafe {
             process_scalar_ref(
                 data,
@@ -168,10 +181,15 @@ unsafe fn process_scalar_ref(
     num_frames: usize,
 ) {
     for ch in 0..n_ch {
+        // SAFETY: ch ∈ [0, n_ch) by the loop bound. scale and offset
+        // each have `n_ch` elements (guaranteed at construction time
+        // by from_params/from_fused).
         let s = unsafe { *scale.get_unchecked(ch) };
         let o = unsafe { *offset.get_unchecked(ch) };
         for f in 0..num_frames {
             let idx = ch + f * n_ch;
+            // SAFETY: ch < n_ch and f < num_frames, so idx < n_ch * num_frames.
+            // The caller guarantees data.len() == num_frames * n_ch.
             unsafe {
                 *data.get_unchecked_mut(idx) = (*data.get_unchecked(idx)).mul_add(s, o);
             }

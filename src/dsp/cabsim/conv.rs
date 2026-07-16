@@ -234,6 +234,10 @@ impl ConvEngine {
         debug_assert_eq!(output.len(), self.partition_size);
 
         if self.num_partitions == 0 {
+            // SAFETY: debug_assert_eq! on L233-234 guarantees input and
+            // output each have exactly `self.partition_size` elements.
+            // The regions are distinct (output is a caller-provided
+            // mutable buffer, input is caller-provided immutable data).
             unsafe {
                 core::ptr::copy_nonoverlapping(
                     input.as_ptr(),
@@ -246,6 +250,13 @@ impl ConvEngine {
 
         let in_len = self.fft_size;
         let out_start = self.output_start;
+        // SAFETY: Overlap-save shift-left: copies the trailing
+        // `fft_size - partition_size` samples from the old input
+        // block (starting at offset `partition_size`) to the front
+        // of the same buffer. Both source and destination are within
+        // `self.input_buf` (length `fft_size`), so `add` and
+        // `copy` are in-bounds. Regions may overlap (source >
+        // destination) but `copy` handles that correctly.
         unsafe {
             core::ptr::copy(
                 self.input_buf.as_ptr().add(self.partition_size),
@@ -254,6 +265,10 @@ impl ConvEngine {
             );
         }
 
+        // SAFETY: debug_assert_eq! on L233-234 guarantees `input`
+        // has `self.partition_size` samples. `out_start + partition_size
+        // == fft_size`, so the destination range is within `input_buf`.
+        // Source and destination do not overlap (input is caller data).
         unsafe {
             core::ptr::copy_nonoverlapping(
                 input.as_ptr(),
@@ -361,6 +376,11 @@ impl ConvEngine {
             .process_inverse(&mut self.acc_re, &mut self.acc_im, &mut self.output_buf);
 
         // ── Step 6: Extract valid output (overlap-save discard) ──
+        // SAFETY: debug_assert_eq! on L233-234 guarantees `output`
+        // has `self.partition_size` elements. `out_start + partition_size
+        // == fft_size`, so the source range is within `output_buf`.
+        // Source and destination do not overlap (output is a
+        // caller-provided mutable buffer, output_buf is internal).
         unsafe {
             core::ptr::copy_nonoverlapping(
                 self.output_buf.as_ptr().add(out_start),

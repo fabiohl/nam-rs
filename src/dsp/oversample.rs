@@ -197,6 +197,11 @@ impl OversampleEngine {
         match &mut self.stages {
             OsStages::Off => {
                 let n = input.len().min(output.len());
+                // SAFETY: both input and output are valid for `n` elements
+                // (`n` is the minimum of both lengths, computed from the
+                // caller-provided slices which are already in scope). The
+                // regions do not overlap because `output` is a distinct
+                // mutable buffer.
                 unsafe {
                     core::ptr::copy_nonoverlapping(input.as_ptr(), output.as_mut_ptr(), n);
                 }
@@ -225,6 +230,9 @@ impl OversampleEngine {
         match &mut self.stages {
             OsStages::Off => {
                 let n = input.len().min(output.len());
+                // SAFETY: both input and output are valid for `n` elements
+                // (minimum of both lengths). The regions do not overlap
+                // because `output` is a distinct mutable buffer.
                 unsafe {
                     core::ptr::copy_nonoverlapping(input.as_ptr(), output.as_mut_ptr(), n);
                 }

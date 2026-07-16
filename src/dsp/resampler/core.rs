@@ -79,6 +79,10 @@ impl ResamplerCore {
                 if in_idx >= n_in {
                     return out_idx;
                 }
+                // SAFETY: `in_idx < n_in` is checked immediately above
+                // on L78. The while-loop condition ensures we only
+                // enter the body when `phase_accum >= num_phases_fp`,
+                // and `in_idx` is only incremented after push.
                 unsafe {
                     self.state_l.push(*in_l.get_unchecked(in_idx));
                     self.state_r.push(*in_r.get_unchecked(in_idx));
@@ -99,6 +103,13 @@ impl ResamplerCore {
             };
 
             let (y_l, y_r) = unsafe {
+                // SAFETY: `phase_idx` and `phase_next` are in [0, NUM_PHASES)
+                // (guarded by the modulo on L95-99). `self.state_l.window_ptr()`
+                // and `self.state_r.window_ptr()` return pointers to internal
+                // delay-line buffers whose length ≥ `taps`, validated at
+                // construction time. `phase_ptr` returns a pointer into the
+                // pre-allocated polyphase coefficient bank (length
+                // `NUM_PHASES * taps_per_phase`).
                 let c0 = self.bank.phase_ptr(phase_idx);
                 let c1 = self.bank.phase_ptr(phase_next);
                 let x_l = self.state_l.window_ptr();
@@ -109,6 +120,10 @@ impl ResamplerCore {
                 (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
             };
 
+            // SAFETY: `out_idx < n_out_max` is checked by the outer
+            // while-loop on L77. Both `out_l` and `out_r` have length
+            // ≥ `n_out_max` (L71). No other mutable access to these
+            // buffers exists during the loop.
             unsafe {
                 *out_l.get_unchecked_mut(out_idx) = y_l;
                 *out_r.get_unchecked_mut(out_idx) = y_r;
@@ -119,6 +134,9 @@ impl ResamplerCore {
         }
 
         while self.phase_accum >= num_phases_fp && in_idx < n_in {
+            // SAFETY: `in_idx < n_in` is checked in the while-loop
+            // condition. The loop body executes at most `n_in - in_idx`
+            // times, draining the remaining samples.
             unsafe {
                 self.state_l.push(*in_l.get_unchecked(in_idx));
                 self.state_r.push(*in_r.get_unchecked(in_idx));
@@ -151,6 +169,9 @@ impl ResamplerCore {
                 if in_idx >= n_in {
                     return out_idx;
                 }
+                // SAFETY: `in_idx < n_in` is checked immediately above.
+                // The loop body only executes after the while condition
+                // is satisfied, and `in_idx` is incremented after each push.
                 unsafe {
                     self.state_l.push(*in_l.get_unchecked(in_idx));
                 }
@@ -170,6 +191,9 @@ impl ResamplerCore {
             };
 
             let y_l = unsafe {
+                // SAFETY: `phase_idx` and `phase_next` are in [0, NUM_PHASES).
+                // `window_ptr` and `phase_ptr` return pointers to
+                // pre-allocated, valid buffers whose length ≥ `taps`.
                 let c0 = self.bank.phase_ptr(phase_idx);
                 let c1 = self.bank.phase_ptr(phase_next);
                 let x_l = self.state_l.window_ptr();
@@ -179,6 +203,10 @@ impl ResamplerCore {
                 y0_l + frac * (y1_l - y0_l)
             };
 
+            // SAFETY: `out_idx < n_out_max` is checked by the outer
+            // while-loop on L149. Both `out_l` and `out_r` have length
+            // ≥ `n_out_max` (L143). Mono path writes the same sample
+            // to both channels.
             unsafe {
                 *out_l.get_unchecked_mut(out_idx) = y_l;
                 *out_r.get_unchecked_mut(out_idx) = y_l;
@@ -189,6 +217,8 @@ impl ResamplerCore {
         }
 
         while self.phase_accum >= num_phases_fp && in_idx < n_in {
+            // SAFETY: `in_idx < n_in` is checked in the while-loop
+            // condition. Mono path only pushes to the left channel.
             unsafe {
                 self.state_l.push(*in_l.get_unchecked(in_idx));
             }

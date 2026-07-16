@@ -72,6 +72,11 @@ pub struct NamModelMetadata {
 #[derive(Clone, Copy)]
 pub struct NamClapSharedRef(pub *const NamClapShared);
 
+// SAFETY: the pointer is obtained from a leaked `Arc` — the pointee is
+// never deallocated while the process runs. All interior mutation uses
+// `Atomic*`/`Mutex`, so concurrent access is sound. `Send` is safe because
+// the pointee is Sync+Send; `Sync` is safe because `&NamClapSharedRef` only
+// allows reading the pointer itself (not dereferencing the pointee).
 unsafe impl Send for NamClapSharedRef {}
 unsafe impl Sync for NamClapSharedRef {}
 

@@ -111,6 +111,12 @@ pub(crate) unsafe fn process_single_frame_depthwise_avx2(
     for (k, tap) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
         let offset = (dilation as isize) * ((k as isize) + 1 - (kernel as isize));
         let in_start = ((frame_idx as isize) + offset) as usize * ch;
+        // SAFETY: `layer_buffer` has length > `frame_idx * in_ch`
+        // (asserted at L96-103). Each tap pointer advances `in_start`
+        // elements into the buffer, which is within bounds for all
+        // k in [0, kernel) because `dilation * (kernel - 1)` ≤
+        // `frame_idx` (asserted at L90-95), so the most negative
+        // offset never underflows into a negative pointer.
         unsafe {
             *tap = layer_buffer.as_ptr().add(in_start);
             if dilation >= 128 {
@@ -254,6 +260,9 @@ pub unsafe fn grouped_conv1d_single_frame_simd(
     for (k, tap) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
         let offset = (dilation as isize) * ((k as isize) + 1 - (kernel as isize));
         let in_start = ((frame_idx as isize) + offset) as usize * in_ch;
+        // SAFETY: `layer_buffer` has length > `frame_idx * in_ch`
+        // (asserted at L229-235). Same pointer arithmetic invariants
+        // as `process_single_frame_depthwise_avx2`.
         unsafe {
             *tap = layer_buffer.as_ptr().add(in_start);
             if dilation >= 128 {
@@ -314,6 +323,12 @@ pub unsafe fn grouped_conv1d_single_frame_simd(
             if out_c + 3 < conv.out_ch {
                 _mm_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc);
             } else {
+                // SAFETY: `transmute` from __m128 to [f32; 4] is a
+                // no-op at the ABI level (both are 128-bit types with
+                // the same alignment). This is the standard idiom for
+                // extracting individual lanes from an XMM register for
+                // edge-case write-back when out_ch is not a multiple
+                // of 4.
                 let r = core::mem::transmute::<__m128, [f32; 4]>(acc);
                 for (lane, &val) in r.iter().enumerate() {
                     if out_c + lane < conv.out_ch {

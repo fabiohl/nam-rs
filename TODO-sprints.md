@@ -2047,7 +2047,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Adicionar o comentário `// SAFETY:` detalhado para cada bloco unsafe que carece de documentação na produção.
 
-### T26.1 — Documentar blocos unsafe [ ]
+### T26.1 — Documentar blocos unsafe [X]
 
 - **Arquivos:**
   - [`src/clap/plugin/shared.rs`](src/clap/plugin/shared.rs)
