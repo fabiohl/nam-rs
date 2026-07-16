@@ -97,29 +97,6 @@ impl<'a> NamClapProcessor<'a> {
         }
     }
 
-    // ── Modulation helpers ────────────────────────────────────────
-
-    pub(super) fn set_mod_input_gain(&mut self, amount: f32) {
-        self.mod_input_gain = amount;
-        self.smoother_in.set_target(
-            self.gain_lut
-                .db_to_linear(self.params.input_gain_db + amount),
-        );
-    }
-
-    pub(super) fn set_mod_output_gain(&mut self, amount: f32) {
-        self.mod_output_gain = amount;
-        self.smoother_out.set_target(
-            self.gain_lut
-                .db_to_linear(self.params.output_gain_db + amount),
-        );
-    }
-
-    pub(super) fn set_mod_gate_thresh(&mut self, amount: f32) {
-        self.mod_gate_thresh = amount;
-        self.gate_dirty = true;
-    }
-
     // ── SPSC full-apply ───────────────────────────────────────────
 
     // ── SPSC full-apply ───────────────────────────────────────────

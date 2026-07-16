@@ -377,10 +377,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         }
 
         // Event drainage (SPSC + Host + GUI sync + Latency)
-        self.process_events(events);
+        self.process_events(events.output);
 
         // DSP block (gate, inference, resampling, output, telemetry)
-        self.process_dsp_audio(&mut audio, start_nanos)
+        // Host parameter events are handled sample-accurately via block-splitting.
+        self.process_dsp_audio(&mut audio, events.input, start_nanos)
     }
 }
 

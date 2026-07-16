@@ -5,25 +5,21 @@
 //! GUI parameter sync and latency monitoring.
 
 use super::NamClapProcessor;
-use crate::clap::extensions::params::{
-    PARAM_ACTIVATION, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-    PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
-};
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
 use crate::models::StaticModel;
-use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
-use clack_plugin::prelude::Events;
+use clack_plugin::prelude::OutputEvents;
 use std::sync::atomic::Ordering;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::cabsim::conv::ConvEngine;
 
 impl<'a> NamClapProcessor<'a> {
-    /// Processes all input events: GUI gestures → host, SPSC payloads,
-    /// sample-accurate host events, GUI parameter sync and latency.
-    pub(super) fn process_events(&mut self, events: Events) {
-        self.shared.write_gui_events(events.output);
+    /// Processes SPSC payloads, GUI parameter sync, latency, and render mode.
+    /// Host parameter events are handled later via block-splitting in
+    /// `process_dsp_audio`.
+    pub(super) fn process_events(&mut self, output: &mut OutputEvents) {
+        self.shared.write_gui_events(output);
 
         // 0. Drain parking lot: re-try items parked during previous swaps
         //    when the GC SPSC channel was full.
@@ -48,38 +44,6 @@ impl<'a> NamClapProcessor<'a> {
                 }
                 ClapParamPayload::SetOversample { os_l, os_r } => {
                     self.cold_load_os(os_l, os_r);
-                }
-            }
-        }
-
-        // 2. Event Processing (Host Events Queue - Sample Accurate)
-        for event in events.input {
-            if let Some(param_event) = event.as_event::<ParamValueEvent>() {
-                let Some(clap_id) = param_event.param_id() else {
-                    continue;
-                };
-                let val = param_event.value() as f32;
-                match clap_id.get() {
-                    PARAM_INPUT_GAIN => self.set_input_gain(val),
-                    PARAM_OUTPUT_GAIN => self.set_output_gain(val),
-                    PARAM_GATE_THRESH => self.set_gate_threshold(val),
-                    PARAM_BYPASS => self.set_bypass(val),
-                    PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
-                    PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
-                    PARAM_OVERSAMPLE => self.set_oversample(val),
-                    PARAM_ACTIVATION => self.set_activation(val),
-                    _ => {}
-                }
-            } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
-                let Some(clap_id) = mod_event.param_id() else {
-                    continue;
-                };
-                let amount = mod_event.amount() as f32;
-                match clap_id.get() {
-                    PARAM_INPUT_GAIN => self.set_mod_input_gain(amount),
-                    PARAM_OUTPUT_GAIN => self.set_mod_output_gain(amount),
-                    PARAM_GATE_THRESH => self.set_mod_gate_thresh(amount),
-                    _ => {}
                 }
             }
         }

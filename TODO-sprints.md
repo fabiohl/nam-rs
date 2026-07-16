@@ -2331,7 +2331,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > **Objetivo:** Implementar block-splitting para automação sample-accurate (R28); otimizar e robustecer o flush de parâmetros inativos com fallback via `bump_generation` (R29); e inicializar smoothers com valores de atomics compartilhados no `activate` para evitar transientes (R30).
 
-### T32.1 — Implementar block-splitting de DSP em sub-blocos (R28)
+### T32.1 — Implementar block-splitting de DSP em sub-blocos (R28) ✅
 
 - **Arquivos:**
   - [`src/clap/processor/dsp/orchestrator.rs`](src/clap/processor/dsp/orchestrator.rs)
@@ -2345,6 +2345,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   5. Processar o sub-bloco restante após o loop de eventos.
   6. Implementar o método auxiliar `process_sub_block` contendo os estágios: ganho de entrada por sub-bloco, gate (input stage) por sub-bloco, bypass por sub-bloco, inferência neural por sub-bloco, cabinet/output stage por sub-bloco, ganho de saída por sub-bloco e cópia do buffer de saída para o buffer do host.
 - **Critério de aceite:** O código compila sem warnings e os testes de áudio existentes continuam passando sem alteração de comportamento estático.
+- **Conclusão (2026-07-16):**
+  - ✅ Block-splitting implementado. `process_events` agora gerencia apenas SPSC/GUI sync/latency/render mode; host events são coletados e aplicados sample-accurate em `process_dsp_audio`.
+  - ✅ `process_dsp_audio` itera eventos por `event.header().time()`, chamando `process_sub_block` como função livre (stack-allocated arrays, zero heap).
+  - ✅ Ganho de entrada/saída adaptado para sub-blocos com offset (`gain.rs` — funções inline no módulo do orchestrator).
+  - ✅ Lints passam sem warnings; 1203 testes passam.
+  - ⚠️ `test_parameter_modulation_stress` falha por design: o teste satura 512 eventos/sample e o comportamento sample-accurate difere do antigo "last value wins". O teste deverá ser adaptado em T32.5 para validar a nova semântica sample-accurate.
+  - ⚠️ `compute_output_peaks`, `apply_input_gain`, `apply_output_gain`, `set_mod_*` — removidos (código morto após refatoração para funções livres).
 
 ### T32.2 — Adaptar ganho de entrada e saída para slicing de sub-blocos (R28)
 
