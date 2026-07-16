@@ -1698,7 +1698,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
      - `pthread_getschedparam` falhou: registrar `ret_getsched` (errno) em `rt_getsched_err`.
 - **Critério de aceite:** Zero ocorrências de `log::` no método `configure_realtime_thread`.
 
-### T20.3 — Consumir erros e telemetria RT de forma segura na thread principal [ ]
+### T20.3 — Consumir erros e telemetria RT de forma segura na thread principal [x]
 
 - **Arquivo:** [`src/standalone/rt_setup/telemetry.rs`](src/standalone/rt_setup/telemetry.rs)
 - **Ação:**

@@ -112,9 +112,51 @@ pub fn poll_rt_status(
         );
     }
 
-    // 4. REAL-TIME PRIORITY:
-    // Checks whether Linux allowed NAM-rs to run with "maximum priority".
-    // This prevents other programs (like the browser) from causing audio interruptions.
+    // 4. REAL-TIME PRIORITY & ATOMIC ERRORS:
+    // Reads error flags set atomically by configure_realtime_thread in the DSP callback
+    // and emits the corresponding diagnostic messages from the main thread.
+    // On full success, prints the classic thread optimization confirmation.
+
+    let aff_err = rt_status.rt_affinity_err.swap(0, Ordering::Relaxed);
+    let sched_err = rt_status.rt_sched_err.swap(0, Ordering::Relaxed);
+    let getsched_err = rt_status.rt_getsched_err.swap(0, Ordering::Relaxed);
+    let target_cpu = rt_status.rt_target_cpu.swap(-1, Ordering::Relaxed);
+
+    if aff_err == -1 {
+        log::error!(
+            "CPU {} is out of bounds (CPU_SETSIZE={}). NAM-rs will continue running without CPU affinity.\n\
+             [E2301 | CPU_OUT_OF_BOUNDS] cpu={} max={}",
+            target_cpu,
+            libc::CPU_SETSIZE,
+            target_cpu,
+            libc::CPU_SETSIZE - 1,
+        );
+    } else if aff_err > 0 {
+        log::error!(
+            "\n  ⚡ Failed to set CPU affinity to core {} (errno={}).\n  💡 NAM-rs will continue running, but may suffer jitter due to Core Migration.\n\
+             [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
+            target_cpu,
+            aff_err,
+            target_cpu,
+            aff_err
+        );
+    }
+
+    if sched_err > 0 {
+        log::error!(
+            "⚠️ pthread_setschedparam(SCHED_FIFO, 90) failed (errno={}).\n\
+             [E2302 | RT_SCHED_FAILED] Check ulimit -r and rtkit permissions.\n",
+            sched_err
+        );
+    }
+
+    if getsched_err > 0 {
+        log::error!(
+            "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam failed (ret={}).\n",
+            getsched_err
+        );
+    }
+
     let prio = rt_status.rt_priority.load(Ordering::Relaxed);
     if prio != -1 {
         let is_fifo = rt_status.check_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
@@ -122,10 +164,12 @@ pub fn poll_rt_status(
         rt_status.rt_priority.store(-1, Ordering::Relaxed);
 
         if is_fifo {
+            let cpu = rt_status.rt_cpu.load(Ordering::Relaxed);
             log::info!(
-                "{} DSP thread confirmed: SCHED_FIFO active, RT priority = {}",
-                "✅".green(),
-                prio
+                "{} Thread Optimization: Dedicated core {} with Real-Time priority (FIFO, Prio={})",
+                "🔍".blue(),
+                cpu.to_string().cyan(),
+                prio.to_string().green()
             );
         } else {
             NamDiagnostic::new(NamErrorCode::SchedFifoDenied, sys)
