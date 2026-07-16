@@ -1816,7 +1816,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Substituir locking direto (`if let Ok(...)`) por `.unwrap_or_else(|e| { log::error!(...); e.into_inner() })` para que o dado pendente ainda seja recuperado em caso de lock envenenado e o erro seja devidamente reportado.
 - **Critério de aceite:** Ausência de descartes silenciosos de poison de mutex nos arquivos especificados.
 
-### T21.6 — Adicionar testes unitários/coerência de runtime thread check [ ]
+### T21.6 — Adicionar testes unitários/coerência de runtime thread check [x]
 
 - **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs) (ou unitário adequado)
 - **Ação:** Criar testes estruturados ou estáticos para assegurar que as chamadas críticas do main thread possuem a barreira de thread check e que a falha de envenenamento é tratada corretamente.

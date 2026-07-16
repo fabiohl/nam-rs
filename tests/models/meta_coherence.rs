@@ -716,3 +716,163 @@ fn test_configure_realtime_thread_no_logging() {
         panic!("{msg}");
     }
 }
+
+/// Sprint S21 — Runtime thread-check hardening. Verifies that every
+/// CLAP extension entry point listed in T21.4 contains a
+/// `debug_assert_main_thread` barrier as its first statement.
+///
+/// Scans the source files and for each critical method confirms the
+/// barrier call appears within the first few non-blank, non-comment
+/// lines of the function body.
+#[test]
+fn test_thread_check_barriers_present() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    let checks: &[(&str, &[&str])] = &[
+        ("src/clap/extensions/state.rs", &["save", "load"]),
+        ("src/clap/extensions/state_context.rs", &["save", "load"]),
+        (
+            "src/clap/extensions/preset_load.rs",
+            &["load_from_location"],
+        ),
+        (
+            "src/clap/extensions/gui.rs",
+            &[
+                "create",
+                "destroy",
+                "show",
+                "hide",
+                "set_parent",
+                "set_transient",
+            ],
+        ),
+        ("src/clap/extensions/track_info.rs", &["changed"]),
+    ];
+
+    let mut missing = Vec::new();
+
+    for (rel_path, methods) in checks {
+        let full_path = manifest_dir.join(rel_path);
+        let content = fs::read_to_string(&full_path).unwrap_or_else(|_| {
+            panic!("Failed to read {rel_path}");
+        });
+
+        for &method in *methods {
+            if !contains_thread_barrier(&content, method) {
+                missing.push(format!("{rel_path}::{method}"));
+            }
+        }
+    }
+
+    if !missing.is_empty() {
+        panic!(
+            "{} CLAP entry point(s) missing debug_assert_main_thread barrier:\n  {}\n\n\
+             Add `debug_assert_main_thread(&self.host);` as the first statement \
+             in each of the listed methods.",
+            missing.len(),
+            missing.join("\n  "),
+        );
+    }
+
+    eprintln!(
+        "  ✓ thread-check barriers: all {} entry points verified.",
+        checks.iter().map(|(_, m)| m.len()).sum::<usize>(),
+    );
+}
+
+fn contains_thread_barrier(content: &str, fn_name: &str) -> bool {
+    let pattern = format!("fn {fn_name}(");
+    let mut start_from = 0usize;
+
+    loop {
+        let offset = match content[start_from..].find(&pattern) {
+            Some(o) => start_from + o,
+            None => return false,
+        };
+
+        let sig_end = match content[offset..].find('{') {
+            Some(o) => offset + o + 1,
+            None => {
+                start_from = offset + pattern.len();
+                continue;
+            }
+        };
+
+        let window = &content[sig_end..];
+        let mut brace_depth: u32 = 1;
+        let mut lines_checked = 0usize;
+
+        for line in window.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("///") {
+                continue;
+            }
+
+            brace_depth = brace_depth
+                .saturating_add(trimmed.matches('{').count() as u32)
+                .saturating_sub(trimmed.matches('}').count() as u32);
+
+            if brace_depth == 0 {
+                break;
+            }
+
+            lines_checked += 1;
+            if lines_checked > 5 {
+                break;
+            }
+
+            if trimmed.contains("debug_assert_main_thread") {
+                return true;
+            }
+        }
+
+        start_from = offset + pattern.len();
+    }
+}
+
+/// Sprint S21 — Verifies that no `PoisonError` of `Mutex` locks
+/// is silently discarded in the three files treated by T21.5.
+///
+/// `if let Ok(...) = ...lock()` silently ignores poisoned locks.
+/// The fix replaces them with `.unwrap_or_else(|e| {
+/// log::error!(...); e.into_inner() })`.
+#[test]
+fn test_no_silent_poison_discards() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let target_files: &[&str] = &[
+        "src/clap/plugin/main_thread/housekeeping.rs",
+        "src/clap/extensions/preset_load.rs",
+        "src/clap/extensions/params/main.rs",
+    ];
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for rel_path in target_files {
+        let full_path = manifest_dir.join(rel_path);
+        let content = fs::read_to_string(&full_path).unwrap_or_else(|_| {
+            panic!("Failed to read {rel_path}");
+        });
+
+        for (line_idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("//") || trimmed.starts_with("///") {
+                continue;
+            }
+            if trimmed.contains("if let Ok(") && trimmed.contains(".lock()") {
+                violations.push(format!("{rel_path}:{}", line_idx + 1));
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        panic!(
+            "{} silent PoisonError discard(s) found:\n  {}\n\n\
+             Replace `if let Ok(guard) = ...lock()` with \
+             `.unwrap_or_else(|e| {{ log::error!(...); e.into_inner() }})`.",
+            violations.len(),
+            violations.join("\n  "),
+        );
+    }
+
+    eprintln!("  ✓ poison handling: no silent discards in target files.",);
+}
