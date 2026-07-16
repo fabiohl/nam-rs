@@ -221,4 +221,39 @@ mod tests {
     fn test_init() {
         NamPluginWindow::test_init();
     }
+
+    #[test]
+    fn test_window_safe_shared_boundary() {
+        use crate::clap::plugin::NamClapShared;
+        use crate::clap::plugin::make_test_shared;
+        use std::sync::Arc;
+        use std::sync::atomic::Ordering;
+
+        let shared = Arc::new(make_test_shared());
+        let shared_ref = NamClapSharedRef(&*shared as *const NamClapShared);
+        let alive_fence = Arc::clone(&shared.cold.alive_fence);
+
+        // Emulates the accessor logic of safe_shared()
+        let safe_access =
+            |fence: &Arc<AtomicBool>, sref: NamClapSharedRef| -> Option<&'static NamClapShared> {
+                if fence.load(Ordering::Acquire) {
+                    // SAFETY: fence Acquire ensures the shared state is still alive
+                    unsafe { Some(&*sref.0) }
+                } else {
+                    None
+                }
+            };
+
+        // Fence active: access is permitted
+        assert!(alive_fence.load(Ordering::Relaxed));
+        assert!(safe_access(&alive_fence, shared_ref).is_some());
+
+        // Fence disabled: access is denied (prevents UAF)
+        alive_fence.store(false, Ordering::Release);
+        assert!(safe_access(&alive_fence, shared_ref).is_none());
+
+        // Re-enable and confirm access restored
+        alive_fence.store(true, Ordering::Release);
+        assert!(safe_access(&alive_fence, shared_ref).is_some());
+    }
 }

@@ -646,3 +646,73 @@ fn scan_rt_logging_violations(
 
     violations
 }
+
+/// Statically verifies that `configure_realtime_thread` contains zero `log::`
+/// calls, enforcing RT-zero-IO compliance per Sprint S20 (R18).
+///
+/// Upon failure, the test reports the line numbers of any remaining `log::`
+/// patterns so the developer can replace them with atomic stores.
+#[test]
+fn test_configure_realtime_thread_no_logging() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let file_path = manifest_dir.join("src/standalone/rt_setup/thread.rs");
+    let content =
+        fs::read_to_string(&file_path).expect("Failed to read src/standalone/rt_setup/thread.rs");
+
+    // Locate configure_realtime_thread function boundary
+    let mut in_fn = false;
+    let mut brace_depth: u32 = 0;
+    let mut violations: Vec<(usize, String)> = Vec::new();
+
+    for (line_idx, raw_line) in content.lines().enumerate() {
+        let lineno = line_idx + 1;
+        let trimmed = raw_line.trim();
+
+        if !in_fn && trimmed.starts_with("pub fn configure_realtime_thread(") {
+            in_fn = true;
+            brace_depth += trimmed.matches('{').count() as u32;
+            brace_depth = brace_depth.saturating_sub(trimmed.matches('}').count() as u32);
+            continue;
+        }
+
+        if !in_fn {
+            continue;
+        }
+
+        brace_depth += trimmed.matches('{').count() as u32;
+        brace_depth = brace_depth.saturating_sub(trimmed.matches('}').count() as u32);
+
+        if brace_depth == 0 {
+            break;
+        }
+
+        if trimmed.starts_with("//") || trimmed.starts_with("/*") {
+            continue;
+        }
+
+        if trimmed.contains("log::") {
+            violations.push((lineno, trimmed.to_string()));
+        }
+    }
+
+    assert!(
+        in_fn,
+        "Function configure_realtime_thread not found in thread.rs — \
+         check src/standalone/rt_setup/thread.rs exists and contains the expected signature."
+    );
+
+    if !violations.is_empty() {
+        let mut msg = String::from(
+            "log:: calls found inside configure_realtime_thread (RT-zero-IO violation):\n\n",
+        );
+        for (line, code) in &violations {
+            msg.push_str(&format!("  line {line}: {code}\n"));
+        }
+        msg.push_str(
+            "\nReplace log::error! / log::info! with atomic stores \
+             (rt_status.rt_affinity_err, rt_sched_err, etc.) \
+             and defer logging to telemetry.rs.\n",
+        );
+        panic!("{msg}");
+    }
+}

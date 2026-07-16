@@ -1717,7 +1717,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Passar ambos como parâmetros para a chamada de `NamPluginWindow::new(...)`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T20.5 — Modificar assinatura de `NamPluginWindow::new` para prevenir UAF [ ]
+### T20.5 — Modificar assinatura de `NamPluginWindow::new` para prevenir UAF [x]
 
 - **Arquivo:** [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs)
 - **Ação:**
@@ -1726,7 +1726,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Atribuir os parâmetros diretamente nos campos correspondentes da estrutura criada.
 - **Critério de aceite:** `cargo check` passa; sem desreferências cruas e cegas de `shared.0` durante o bootstrap do construtor.
 
-### T20.6 — Adicionar baterias de testes unitários e coerência estrutural [ ]
+### T20.6 — Adicionar baterias de testes unitários e coerência estrutural [x]
 
 - **Arquivos:**
   - [`src/clap/gui/window/state.rs`](src/clap/gui/window/state.rs)
