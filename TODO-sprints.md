@@ -1209,7 +1209,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Médio. Toca a captura de diagnóstico no crash de produção.
 
-### T13.1 — Pre-capturar `SystemSnapshot` estaticamente
+### T13.1 — Pre-capturar `SystemSnapshot` estaticamente [x]
 
 - **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
 - **Ação:**
@@ -1217,7 +1217,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Inicializá-la no `install_panic_hook` chamando `SystemSnapshot::capture()` (caminho off-RT de inicialização do plugin).
 - **Critério de aceite:** Snapshot de sistema capturado em startup, sem tocar no alocador global durante o pânico.
 
-### T13.2 — Criar formatador do crash report zero-alloc com `LimitWriter`
+### T13.2 — Criar formatador do crash report zero-alloc com `LimitWriter` [x]
 
 - **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
 - **Ação:**
@@ -1227,7 +1227,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   4. Substituir a leitura bloqueante de RwLock por `try_read()` com fallback `"<unavailable>"`.
 - **Critério de aceite:** Função de formatação do report compila e opera puramente em memória da pilha.
 
-### T13.3 — Atualizar o manipulador do Panic Hook
+### T13.3 — Atualizar o manipulador do Panic Hook [x]
 
 - **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
 - **Ação:**
@@ -1236,7 +1236,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Gravar os bytes resultantes diretamente para o arquivo `.cache` usando `std::fs::File` (e `write_all`).
 - **Critério de aceite:** O arquivo de crash report é escrito corretamente com dados válidos e sem alocar memória no heap.
 
-### T13.4 — Adicionar teste de auditoria de heap para o panic hook
+### T13.4 — Adicionar teste de auditoria de heap para o panic hook [x]
 
 - **Arquivo:** [`tests/models/diagnostic_bundle.rs`](tests/models/diagnostic_bundle.rs)
 - **Ação:**

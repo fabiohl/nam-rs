@@ -203,7 +203,7 @@ click audível) e sem sinalizar o shutdown ao restante do processo.
 
 ---
 
-## R4 · Panic hook aloca heap e adquire `RwLock` no caminho de crash — pode deadlockar exatamente quando mais se precisa dele — **ALTA**
+## R4 · Panic hook aloca heap e adquire `RwLock` no caminho de crash — pode deadlockar exatamente quando mais se precisa dele — **ALTA** ✓ RESOLVIDO (Sprint S13)
 
 ### R4 · Evidência
 

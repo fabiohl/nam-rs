@@ -653,4 +653,31 @@ mod heap_audit_tests {
             "RT status/telemetry operations triggered heap allocations!"
         );
     }
+
+    #[test]
+    fn test_panic_hook_zero_alloc() {
+        let _guard = super::TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+        nam_rs::common::panic_hook::install_panic_hook("test-panic-hook-zero-alloc");
+
+        let allocs = {
+            let _guard = TrackingGuard::new();
+            let mut buf = [0u8; 4096];
+            let written = nam_rs::common::panic_hook::format_panic_report_for_audit_test(
+                &mut buf,
+                "test-component",
+                "test-thread",
+                "src/test.rs:42:5",
+                "test panic message",
+            );
+            assert!(written > 0, "format_panic_report should produce output");
+            assert!(buf[..written].starts_with(b"======================================="));
+            get_alloc_count()
+        };
+
+        assert_eq!(
+            allocs, 0,
+            "format_panic_report_to_buf triggered heap allocations during panic formatting!"
+        );
+    }
 }
