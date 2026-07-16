@@ -1928,7 +1928,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Adicionar o teste `prop_fuzz_adversarial_a2_dynamic_dims` anotado com `#[test]` e `#[ignore]`.
 - **Critério de aceite:** Testes novos passam quando executados explicitamente.
 
-### T23.3 — Adicionar estratégia e teste adversarial para SlimmableContainer [ ]
+### T23.3 — Adicionar estratégia e teste adversarial para SlimmableContainer [x]
 
 - **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
 - **Ação:**

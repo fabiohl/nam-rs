@@ -1093,6 +1093,216 @@ fn adversarial_a2_dynamic_json_strategy() -> impl Strategy<Value = String> {
 }
 
 // ---------------------------------------------------------------------------
+// T23.3 — Adversarial SlimmableContainer: exercises submodel count, recursion
+//         depth, top-level topology overflows, missing fields, and version
+//         bounds — never abort/panic.
+// ---------------------------------------------------------------------------
+
+/// Strategy: generates a SlimmableContainer model JSON with adversarial
+/// submodel count, depth, topology, version, and structural properties.
+fn adversarial_container_json_strategy() -> impl Strategy<Value = String> {
+    (
+        any::<usize>(), // raw value for dimension overflows
+        any::<usize>(), // pattern selector
+        any::<u8>(),    // jitter for submodel count
+    )
+        .prop_map(|(raw, pattern, jitter)| {
+            let inner_model = serde_json::json!({
+                "version": "0.7.0",
+                "architecture": "WaveNet",
+                "config": {
+                    "layers": [{
+                        "input_size": 1,
+                        "condition_size": 1,
+                        "channels": 4,
+                        "kernel_size": 3,
+                        "dilations": [1],
+                        "head_size": 1,
+                        "activation": "Tanh",
+                        "gated": false,
+                        "head_bias": true
+                    }],
+                    "head": null,
+                    "head_scale": 0.02
+                },
+                "weights": vec![0.0f32; 32],
+                "sample_rate": 48000
+            });
+
+            match pattern % 8 {
+                // 0: > MAX_SUBMODELS submodels → Err at parse (SubmodelsExceedLimit)
+                0 => {
+                    let count = 9usize + (jitter as usize % 32);
+                    let submodels: Vec<serde_json::Value> = (0..count)
+                        .map(|i| {
+                            serde_json::json!({
+                                "max_value": (i + 1) as f32 / count as f32,
+                                "model": inner_model
+                            })
+                        })
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "architecture": "SlimmableContainer",
+                        "config": {
+                            "submodels": submodels,
+                            "layers": [],
+                            "head": null
+                        },
+                        "weights": Vec::<f32>::new(),
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // 1: deeply nested containers exceeding MAX_CONTAINER_DEPTH (4)
+                1 => {
+                    let depth = 5usize + (jitter as usize % 4);
+                    let innermost = inner_model.clone();
+                    let mut nested = innermost;
+                    for _ in 0..depth {
+                        nested = serde_json::json!({
+                            "architecture": "SlimmableContainer",
+                            "config": {
+                                "submodels": [{
+                                    "max_value": 1.0,
+                                    "model": nested
+                                }],
+                                "layers": [],
+                                "head": null
+                            },
+                            "weights": Vec::<f32>::new(),
+                            "sample_rate": 48000
+                        });
+                    }
+                    serde_json::to_string(&serde_json::json!({
+                        "architecture": "SlimmableContainer",
+                        "config": {
+                            "submodels": [{
+                                "max_value": 1.0,
+                                "model": nested
+                            }],
+                            "layers": [],
+                            "head": null
+                        },
+                        "weights": Vec::<f32>::new(),
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // 2: top-level hidden_size > MAX_HIDDEN_SIZE → Err at parse
+                2 => {
+                    let hs = MAX_HIDDEN_SIZE + 1 + (raw % 2048);
+                    serde_json::to_string(&serde_json::json!({
+                        "architecture": "SlimmableContainer",
+                        "config": {
+                            "submodels": [{
+                                "max_value": 1.0,
+                                "model": inner_model
+                            }],
+                            "layers": [],
+                            "head": null,
+                            "hidden_size": hs.min(usize::MAX / 4096)
+                        },
+                        "weights": Vec::<f32>::new(),
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // 3: top-level layers > MAX_LAYERS → Err at parse
+                3 => {
+                    let n_layers = MAX_LAYERS + 1 + (raw % 16);
+                    let layers: Vec<serde_json::Value> = (0..n_layers)
+                        .map(|_| serde_json::json!({"input_size": 4, "output_size": 4}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "architecture": "SlimmableContainer",
+                        "config": {
+                            "submodels": [{
+                                "max_value": 1.0,
+                                "model": inner_model
+                            }],
+                            "layers": layers,
+                            "head": null
+                        },
+                        "weights": Vec::<f32>::new(),
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // 4: unsupported version (< 0.5.0) → Err at parse
+                4 => {
+                    let ver = match raw % 3 {
+                        0 => "0.4.0",
+                        1 => "0.4.9",
+                        _ => "0.1.0",
+                    };
+                    serde_json::to_string(&serde_json::json!({
+                        "version": ver,
+                        "architecture": "SlimmableContainer",
+                        "config": {
+                            "submodels": [{
+                                "max_value": 1.0,
+                                "model": inner_model
+                            }],
+                            "layers": [],
+                            "head": null
+                        },
+                        "weights": Vec::<f32>::new(),
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // 5: submodel entry missing 'model' field → passes parse, dispatch fails
+                5 => serde_json::to_string(&serde_json::json!({
+                    "architecture": "SlimmableContainer",
+                    "config": {
+                        "submodels": [{
+                            "max_value": 1.0
+                        }],
+                        "layers": [],
+                        "head": null
+                    },
+                    "weights": Vec::<f32>::new(),
+                    "sample_rate": 48000
+                }))
+                .unwrap(),
+                // 6: exactly at limit — 8 submodels (edge case that *should* parse)
+                6 => {
+                    let submodels: Vec<serde_json::Value> = (0..8)
+                        .map(|i| {
+                            serde_json::json!({
+                                "max_value": (i + 1) as f32 / 8.0,
+                                "model": inner_model
+                            })
+                        })
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "architecture": "SlimmableContainer",
+                        "config": {
+                            "submodels": submodels,
+                            "layers": [],
+                            "head": null
+                        },
+                        "weights": Vec::<f32>::new(),
+                        "sample_rate": 48000
+                    }))
+                    .unwrap()
+                }
+                // 7: container with no submodels field → passes parse, dispatch fails
+                _ => serde_json::to_string(&serde_json::json!({
+                    "architecture": "SlimmableContainer",
+                    "config": {
+                        "layers": [],
+                        "head": null
+                    },
+                    "weights": Vec::<f32>::new(),
+                    "sample_rate": 48000
+                }))
+                .unwrap(),
+            }
+        })
+}
+
+// ---------------------------------------------------------------------------
 // F12 — Adversarial state budget. Generates models that combine near-max
 //       kernel_size × dilation × channels × layer count to stress the new
 //       MAX_TOTAL_STATE_FRAMES bound.
@@ -1483,6 +1693,26 @@ proptest! {
                 None => {
                     // Acceptable: model does not qualify as A2
                 }
+            }
+        }
+    }
+
+    /// T23.3 — Adversarial SlimmableContainer: ensures submodel count,
+    /// recursion depth, topology overflow, version, and structural
+    /// properties are rejected or handled without panic/abort.
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_container_dims(json_str in adversarial_container_json_strategy()) {
+        let result = parse_nam_json(&json_str);
+        match result {
+            Ok(_data) => {
+                // Acceptable: some adversarial patterns pass parsing
+                // (e.g. 8 submodels, deeply nested JSON). Dispatch would
+                // catch them later.
+            }
+            Err(_e) => {
+                // Also acceptable: parse-time rejection (e.g. >8 submodels,
+                // topology overflow, unsupported version).
             }
         }
     }
