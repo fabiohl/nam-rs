@@ -83,33 +83,69 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .max(MAX_RESAMP_BUF)
             .max(1024)
             * 2;
-        let buf_host_l =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of host buffer failed");
-        let buf_host_r =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of host buffer failed");
-        let buf_mid_l =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of mid buffer failed");
-        let buf_mid_r =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of mid buffer failed");
-        let buf_model_l =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of model buffer failed");
-        let buf_model_r =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of model buffer failed");
-        let buf_out_l =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of output buffer failed");
-        let buf_out_r =
-            AlignedVec::new(buf_capacity, 0.0f32).expect("pre-allocation of output buffer failed");
+        let buf_host_l = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of host buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_host_r = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of host buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_mid_l = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of mid buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_mid_r = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of mid buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_model_l = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of model buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_model_r = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of model buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_out_l = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of output buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_out_r = AlignedVec::new(buf_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of output buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
 
         // 2b. Oversample buffer pre-allocation (MAX_RESAMP_BUF * 4 for X4)
         let os_capacity = MAX_RESAMP_BUF * 4;
-        let buf_os_in_l = AlignedVec::new(os_capacity, 0.0f32)
-            .expect("pre-allocation of oversample input buffer failed");
-        let buf_os_in_r = AlignedVec::new(os_capacity, 0.0f32)
-            .expect("pre-allocation of oversample input buffer failed");
-        let buf_os_model_l = AlignedVec::new(os_capacity, 0.0f32)
-            .expect("pre-allocation of oversample model buffer failed");
-        let buf_os_model_r = AlignedVec::new(os_capacity, 0.0f32)
-            .expect("pre-allocation of oversample model buffer failed");
+        let buf_os_in_l = AlignedVec::new(os_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of oversample input buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_os_in_r = AlignedVec::new(os_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of oversample input buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_os_model_l = AlignedVec::new(os_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of oversample model buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_os_model_r = AlignedVec::new(os_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of oversample model buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
 
         // 3. DSP component initialization
         let model_rate = shared.cold.model_sample_rate.load(Ordering::Relaxed);
@@ -141,7 +177,12 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     if partition_size > 0 {
                         Some(Box::new(
                             crate::dsp::cabsim::conv::ConvEngine::new(samples, partition_size)
-                                .expect("ConvEngine allocation failed"),
+                                .map_err(|e| {
+                                    PluginError::Message(Box::leak(
+                                        format!("ConvEngine allocation failed: {e:?}")
+                                            .into_boxed_str(),
+                                    ))
+                                })?,
                         ))
                     } else {
                         None

@@ -1861,7 +1861,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Eliminar pânicos residuais nas alocações de produção convertendo chamadas a `.expect()` em propagação limpa via `?`.
 
-### T22.1 — Propagar erro de alocação de buffers no processador CLAP [ ]
+### T22.1 — Propagar erro de alocação de buffers no processador CLAP [x]
 
 - **Arquivo:** [`src/clap/processor/mod.rs`](src/clap/processor/mod.rs)
 - **Ação:**
