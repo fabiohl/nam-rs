@@ -233,11 +233,11 @@ _cargo_meas() {
         fi
         local _ep_flags=""
         for _ep in "${!_eps[@]}"; do _ep_flags="$_ep_flags --test $_ep"; done
-        cargo test --release $_ep_flags -- $_filters "${libtest_args[@]}"
+        cargo test --features testing --release $_ep_flags -- $_filters "${libtest_args[@]}"
     else
         local _legacy=""
         for _t in "${tests[@]}"; do _legacy="$_legacy --test $_t"; done
-        cargo test --release $_legacy -- $filters "${libtest_args[@]}"
+        cargo test --features testing --release $_legacy -- $filters "${libtest_args[@]}"
     fi
 }
 
@@ -269,14 +269,14 @@ if _structural_entry_files_exist || [ "${NAM_NEW_ARCH:-0}" = "1" ]; then
     for _t in $_struct_targets; do
         _struct_flags="$_struct_flags --test $_t"
     done
-    cargo test --lib $_struct_flags -- \
+    cargo test --features testing --lib $_struct_flags -- \
         --skip golden_vectors:: --skip linear_fft_test:: \
         --skip spectral_fidelity:: --skip reference_oracle_f64:: \
         --skip cpp_parity:: --skip isa_parity:: \
         --skip rt_deadline:: --skip rt_jitter::
 else
     # ── Legacy flat-file format (pre-Sprint 3) ───────────────────────────
-    cargo test --lib "${STRUCT_TESTS[@]/#/--test=}"
+    cargo test --features testing --lib "${STRUCT_TESTS[@]/#/--test=}"
 fi
 
 # ── Fase 2: Oráculos de medida (release, docs/testing.md §7) ───────────────

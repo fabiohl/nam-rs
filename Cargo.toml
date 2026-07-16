@@ -114,7 +114,7 @@ name = "clap_bench"
 harness = false
 
 [features]
-default = ["standalone", "testing"]
+default = ["standalone"]
 standalone = ["dep:pipewire", "stereo"]
 clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types", "dep:clack-host"]
 stereo = []

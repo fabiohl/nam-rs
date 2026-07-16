@@ -1495,18 +1495,18 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Requer apenas ajustes finos no `Cargo.toml` e nos scripts de QA.
 
-### T17.1 — Remover `testing` de default features no Cargo.toml [ ]
+### T17.1 — Remover `testing` de default features no Cargo.toml [x]
 
 - **Arquivo:** [`Cargo.toml`](Cargo.toml) (L117)
 - **Ação:** Mudar a linha de defaults para: `default = ["standalone"]`.
 - **Critério de aceite:** `cargo build --release` não compila mais os módulos sob a feature `testing`.
 
-### T17.2 — Medir impacto do bloat com cargo bloat [ ]
+### T17.2 — Medir impacto do bloat com cargo bloat [x]
 
 - **Ação:** Executar `cargo bloat --release` antes e após a remoção da feature `testing` dos defaults para registrar no commit/walkthrough o ganho real de tamanho binário (redução de superfície do .so CLAP).
 - **Critério de aceite:** Relatório estatístico gerado.
 
-### T17.3 — Atualizar scripts para explicitar `--features testing` [ ]
+### T17.3 — Atualizar scripts para explicitar `--features testing` [x]
 
 - **Arquivos:**
   - [`utils/tests-quick.sh`](utils/tests-quick.sh)
@@ -1514,11 +1514,19 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Adicionar `--features testing` em todas as invocações de `cargo test`/`cargo bench` que dependam do oráculo matemático ou da instrumentação de testes.
 - **Critério de aceite:** Ambas as suítes (quick e long) executam com sucesso.
 
-### T17.4 — Feature-gate a flag global `DISABLE_GATE` [ ]
+### T17.4 — Feature-gate a flag global `DISABLE_GATE` [x]
 
 - **Arquivo:** [`src/dsp/pipeline/stages/input.rs`](src/dsp/pipeline/stages/input.rs) (L23)
 - **Ação:** Assegurar que `DISABLE_GATE` e o atalho `NAM_DISABLE_GATE` estão rigidamente protegidos sob `#[cfg(feature = "testing")]` e não vazam no pipeline de produção.
 - **Critério de aceite:** Zero referências não-condicionadas a `DISABLE_GATE`.
+
+> **Resultado S17 (2026-07-16):**
+>
+> - **T17.1:** `Cargo.toml:117` → `default = ["standalone"]`. ✓
+> - **T17.2:** Redução de superfície: `.so`: 4.3 M → 338 K (−92%), `nam-rs`: 5.5 M → 3.3 M (−40%), `.rlib`: 29 M → 27 M (−7%).
+> - **T17.3:** Adicionado `--features testing` em `tests-quick.sh` (todas as fases), `tests-long.sh` (todas as fases via `timed_cargo_test` e benches), `build-release.sh` (standalone PGO). CLAP phase em `tests-long.sh` já tinha `testing` explícito.
+> - **T17.4:** Já implementado — `DISABLE_GATE` (definição, re-exports e uso) e `NAM_DISABLE_GATE` (`main.rs`) sob `#[cfg(feature = "testing")]`.
+> - **Nota:** `#[cfg(any(test, feature = "testing"))]` em `lib.rs` garante que `cargo test` (unit/integration) compile o módulo `testing` via `#[cfg(test)]`, mesmo sem `--features testing`. O flag explícito nos scripts serve como redundância defensiva.
 
 ---
 

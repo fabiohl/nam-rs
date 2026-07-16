@@ -224,7 +224,7 @@ fi
 
     echo -e "  Building standalone executable..."
     # Pass relocations flag to emit relocation symbols required for BOLT
-    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q" cargo build --profile dist --features "standalone,pgo" --bin nam-rs
+    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q" cargo build --profile dist --features "standalone,pgo,testing" --bin nam-rs
 
     echo -e "  Building CLAP plugin..."
     CLAP_RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-soname,nam-rs.clap"

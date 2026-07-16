@@ -289,7 +289,7 @@ check_freshness hard-fail || exit 1
 # the ± 50 min battery, so a drifted catalog fails fast instead of burning a
 # full nightly window before being noticed.
 echo -e "\n${BLUE}${BOLD}→ Verificando coerência catálogo↔testes (meta_coherence)...${NC}"
-if ! cargo test --release $(_test_flag meta_coherence); then
+if ! cargo test --features testing --release $(_test_flag meta_coherence); then
     echo -e "${RED}${BOLD}❌ meta_coherence falhou — catálogo de goldens divergiu dos testes #[ignore].${NC}"
     exit 1
 fi
@@ -314,7 +314,7 @@ timed_cargo_test() {
     shift
     local start_t
     start_t=$(date +%s%N)
-    cargo test "$@"
+    cargo test --features testing "$@"
     local status=$?
     local end_t
     end_t=$(date +%s%N)
@@ -482,7 +482,7 @@ run_pipewire_phase() {
     echo "  Verificando daemon PipeWire..."
     if pw-cli info all >/dev/null 2>&1; then
         echo "  PipeWire detectado. Executando teste de integração..."
-        cargo test --release --no-fail-fast --features standalone $(_test_flag pw_integration_test) -- --ignored --nocapture
+        cargo test --release --no-fail-fast --features "standalone,testing" $(_test_flag pw_integration_test) -- --ignored --nocapture
     else
         echo "  PipeWire indisponível (pw-cli info all falhou). Pulando teste de integração."
         return 77
@@ -649,15 +649,15 @@ run_phase "CLAP Release Validation & Concurrency" "run_clap_audit_phase" "phase5
 # bench isolated from the others is the whole point of this phase existing.
 run_benchmarks_phase() {
     local status=0
-    cargo bench --features long_bench --bench dot_4x_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench kahan_conv1d_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench inference_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench long_inference_bench || status=1
-    cargo bench --features long_bench --bench math_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench dsp_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench cabsim_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
-    cargo bench --features long_bench --bench clap_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench dot_4x_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench kahan_conv1d_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench inference_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench regression_gate -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench long_inference_bench || status=1
+    cargo bench --features "long_bench,testing" --bench math_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench dsp_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench cabsim_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
+    cargo bench --features "long_bench,testing" --bench clap_bench -- --sample-size 100 --measurement-time 5 --warm-up-time 1 || status=1
     return $status
 }
 run_phase "Long Performance Benchmarks" "run_benchmarks_phase" "phase6-benchmarks.log" || true
