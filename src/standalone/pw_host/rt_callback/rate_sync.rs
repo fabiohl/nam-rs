@@ -18,7 +18,7 @@ pub fn sync_rate(
     current_nam_rate: u32,
     rt_status_for_process: &RtStatusFlags,
 ) -> u32 {
-    let detected_pw_rate = rate_for_process.swap(0, Ordering::Relaxed);
+    let detected_pw_rate = rate_for_process.swap(0, Ordering::Acquire); // pairs with Release store em capture/listeners.rs:59
     let current_pw_rate = resampler.pw_rate();
 
     let mut pw_rate_to_request = current_pw_rate;

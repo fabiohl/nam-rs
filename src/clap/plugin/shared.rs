@@ -259,7 +259,7 @@ impl<'a> PluginShared<'a> for NamClapShared {}
 
 impl Drop for NamClapShared {
     fn drop(&mut self) {
-        self.cold.alive_fence.store(false, Ordering::Relaxed);
+        self.cold.alive_fence.store(false, Ordering::Release); // pairs with Acquire load em gui/window/state.rs:190
         crate::common::panic_hook::set_shutdown_in_progress();
     }
 }
@@ -310,7 +310,7 @@ impl NamClapShared {
     pub fn bump_generation(&self) {
         self.ui_to_rt
             .gui_param_generation
-            .fetch_add(1, Ordering::Release);
+            .fetch_add(1, Ordering::Release); // pairs with Acquire loads em processor/events.rs:94, extensions/params/audio.rs:70
     }
 
     /// Flushes gestures and parameter updates initiated by the GUI

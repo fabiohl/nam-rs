@@ -187,7 +187,8 @@ impl NamPluginWindow {
     }
 
     pub(crate) fn safe_shared(&self) -> Option<&'static crate::clap::plugin::NamClapShared> {
-        if self.alive_fence.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.alive_fence.load(std::sync::atomic::Ordering::Acquire) {
+            // pairs with Release store em plugin/shared.rs:262
             // SAFETY: If alive_fence is true, the plugin and its shared state
             // are still alive in memory, so the pointer is valid.
             unsafe { Some(&*self.shared.0) }

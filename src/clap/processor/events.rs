@@ -91,7 +91,7 @@ impl<'a> NamClapProcessor<'a> {
             .shared
             .ui_to_rt
             .gui_param_generation
-            .load(Ordering::Acquire);
+            .load(Ordering::Acquire); // pairs with Release fetch_add em plugin/shared.rs:313, gui/ui/bypass.rs:62, gui/ui/knob.rs:281
         if generation != self.last_seen_generation {
             self.last_seen_generation = generation;
 
@@ -133,7 +133,7 @@ impl<'a> NamClapProcessor<'a> {
         // Honor render mode override: in offline mode, force adaptive compute to Off
         // for deterministic maximum-quality output. The Main Thread writes render_mode
         // with Release ordering via `clap.render.set()`.
-        let render_mode = self.shared.cold.render_mode.load(Ordering::Acquire);
+        let render_mode = self.shared.cold.render_mode.load(Ordering::Acquire); // pairs with Release store em extensions/render.rs:30
         if render_mode != self.last_render_mode {
             self.last_render_mode = render_mode;
             let old_activation = self.params.activation_precision;

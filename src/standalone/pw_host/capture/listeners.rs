@@ -56,6 +56,6 @@ pub fn param_changed_handler(
     let mut format = pw::spa::param::audio::AudioInfoRaw::default();
     if format.parse(param).is_ok() {
         let rate = format.rate();
-        rate_for_param.store(rate, Ordering::Relaxed);
+        rate_for_param.store(rate, Ordering::Release); // pairs with Acquire swap em rt_callback/rate_sync.rs:21
     }
 }

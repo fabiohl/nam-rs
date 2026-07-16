@@ -27,7 +27,7 @@ pub fn set_shutdown_in_progress() {
 
 /// Checks if a shutdown (host-initiated or signal-initiated) is in progress.
 pub fn is_shutdown_in_progress() -> bool {
-    crate::common::spsc::SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed)
+    crate::common::spsc::SHUTDOWN.load(std::sync::atomic::Ordering::Acquire) // pairs with Release store em main.rs:90
         || *SHUTDOWN_IN_PROGRESS.get().unwrap_or(&false)
 }
 

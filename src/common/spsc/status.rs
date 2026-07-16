@@ -214,6 +214,17 @@ impl RtStatusFlags {
         self.status_bits.fetch_or(flag, Ordering::Release);
     }
 
+    /// Clears one or more flags with Relaxed ordering.
+    ///
+    /// Use this when the consumer clears flags the RT reader never acquires —
+    /// the main thread simply resets its own flags after acting on them.
+    /// No happens-before edge is needed because the RT reader only sets
+    /// these flags (via `fetch_or(Release)`), never reads them back.
+    #[inline(always)]
+    pub fn clear_flag_relaxed(&self, flag: u64) {
+        self.status_bits.fetch_and(!flag, Ordering::Relaxed);
+    }
+
     /// Clears one or more flags with Release ordering (for data handshakes).
     ///
     /// Pair with [`check_flag_acquire`] in the consumer handshake.

@@ -27,7 +27,7 @@ impl<'a> PluginRenderImpl for NamClapMainThread<'a> {
             RenderMode::Realtime => RENDER_MODE_REALTIME,
             RenderMode::Offline => RENDER_MODE_OFFLINE,
         };
-        self.shared.cold.render_mode.store(val, Ordering::Release);
+        self.shared.cold.render_mode.store(val, Ordering::Release); // pairs with Acquire load em processor/events.rs:136
         Ok(())
     }
 }

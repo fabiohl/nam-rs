@@ -226,7 +226,7 @@ impl GcOverflowBuffer {
         let packed = item.into_packed();
 
         let len = self.slots.len() as u64;
-        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
+        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize; // Relaxed safe: SPSC — only producer touches write_idx; happens-before via slot swap(AcqRel)
 
         let old = self.slots[idx].swap(packed, Ordering::AcqRel);
 
@@ -301,9 +301,10 @@ pub fn gc_cascade(
         item = i_opt;
     }
 
-    if let Some(i) = item.take() {
+    if let Some(i) = item.take()
+        && gc_overflow.push(i)
+    {
         rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW);
-        gc_overflow.push(i);
     }
 }
 

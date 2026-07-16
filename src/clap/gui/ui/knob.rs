@@ -278,7 +278,7 @@ pub fn handle_knob(
                 gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
             }
             atomic_val.store(final_val.to_bits(), Ordering::Relaxed);
-            gui_param_generation.fetch_add(1, Ordering::Release);
+            gui_param_generation.fetch_add(1, Ordering::Release); // pairs with Acquire loads em processor/events.rs:94, extensions/params/audio.rs:70
             gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
             if is_discrete {
                 gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);

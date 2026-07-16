@@ -78,6 +78,7 @@ fn main() -> anyhow::Result<()> {
     // If you want to close the program, it ensures the audio stops smoothly, without clicks.
     extern "C" fn sigint_handler(_sig: libc::c_int) {
         if spsc::SHUTDOWN.load(Ordering::Acquire) {
+            // pairs with Release store em linha 90
             // Segundo Ctrl-C: o graceful shutdown não respondeu a tempo.
             // `_exit(1)` encerra o processo sem rodar destrutores.
             // O kernel recolhe TODOS os recursos abertos (fds, mapeamentos, PM QoS,
@@ -87,7 +88,7 @@ fn main() -> anyhow::Result<()> {
             // usar `abort()` apenas se core dump for desejado para diagnóstico.
             unsafe { libc::_exit(1) };
         }
-        spsc::SHUTDOWN.store(true, Ordering::Release);
+        spsc::SHUTDOWN.store(true, Ordering::Release); // pairs with Acquire loads em panic_hook.rs:30, run.rs:141
     }
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();

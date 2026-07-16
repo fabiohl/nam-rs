@@ -94,9 +94,13 @@ impl LatencyHistogram {
     }
 
     /// Zeros all histogram bins.
+    ///
+    /// Uses `swap` instead of `store` to guarantee visibility via cache-coherence
+    /// (RMW). Best-effort reset: concurrent `fetch_add` records may be lost
+    /// during the sweep; `record` calls are lock-free and never blocked.
     pub fn reset(&self) {
         for bin in &self.bins {
-            bin.store(0, Ordering::Relaxed);
+            bin.swap(0, Ordering::Relaxed);
         }
     }
 

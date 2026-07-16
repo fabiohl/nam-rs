@@ -59,7 +59,7 @@ pub fn handle_bypass(
         let new_bypass = !current_bypass;
         gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
         atomic_val.store(bypass_bool_to_u32(new_bypass), Ordering::Relaxed);
-        gui_param_generation.fetch_add(1, Ordering::Release);
+        gui_param_generation.fetch_add(1, Ordering::Release); // pairs with Acquire loads em processor/events.rs:94, extensions/params/audio.rs:70
         gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
         gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);
         if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {

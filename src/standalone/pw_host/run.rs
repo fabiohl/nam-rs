@@ -139,6 +139,7 @@ pub fn run_pipewire_host(
     let mut was_silent = false;
     let mut was_fading = false;
     while !SHUTDOWN.load(Ordering::Acquire) {
+        // pairs with Release store em main.rs:90
         let active = rt_status.active_rate.load(Ordering::Relaxed);
         if active != 0 {
             crate::common::diagnostics::ACTIVE_SAMPLE_RATE.store(active, Ordering::Relaxed);
@@ -151,7 +152,7 @@ pub fn run_pipewire_host(
             if target_pw_rate != 0 && target_nam_rate != 0 {
                 match NamResampler::new(target_pw_rate, target_nam_rate, 2048) {
                     Ok(new_rs) => {
-                        rt_status.clear_flag_release(
+                        rt_status.clear_flag_relaxed(
                             crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED,
                         );
 
@@ -200,7 +201,7 @@ pub fn run_pipewire_host(
                     }
                 }
                 rt_status
-                    .clear_flag_release(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+                    .clear_flag_relaxed(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
             }
         }
 
@@ -231,7 +232,7 @@ pub fn run_pipewire_host(
                         .emit_warning();
                     }
                 }
-                rt_status.clear_flag_release(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
+                rt_status.clear_flag_relaxed(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
             }
         }
 
@@ -266,7 +267,7 @@ pub fn run_pipewire_host(
                     }
                 }
             }
-            rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
+            rt_status.clear_flag_relaxed(spsc::RT_STATUS_NEEDS_SLIMMABLE_REBUILD);
         }
 
         if rt_status.check_flag_acquire(spsc::RT_STATUS_NEEDS_OS_REBUILD) {
@@ -301,7 +302,7 @@ pub fn run_pipewire_host(
                         .hint("The audio engine is overloaded. If the problem persists, restart NAM-rs.")
                         .emit_warning();
                     } else {
-                        rt_status.clear_flag_release(spsc::RT_STATUS_NEEDS_OS_REBUILD);
+                        rt_status.clear_flag_relaxed(spsc::RT_STATUS_NEEDS_OS_REBUILD);
                     }
                 }
                 (Err(e), _) | (_, Err(e)) => {

@@ -1006,7 +1006,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Sem custo de release em x86 (Release/Acquire compila para mov).
 
-### T9.1 — Corrigir R8-b: Sample rate sync [ ]
+### T9.1 — Corrigir R8-b: Sample rate sync [x]
 
 - **Arquivos:**
   - [`src/standalone/pw_host/capture/listeners.rs`](src/standalone/pw_host/capture/listeners.rs)
@@ -1016,19 +1016,19 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - No `rate_sync.rs`, mudar o swap no `rate_for_process` para `Ordering::Acquire`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.2 — Corrigir R8-c: Panic hook SHUTDOWN load [ ]
+### T9.2 — Corrigir R8-c: Panic hook SHUTDOWN load [x]
 
 - **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
 - **Ação:** Modificar a leitura do `SHUTDOWN` na linha 30 para usar `Ordering::Acquire`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.3 — Corrigir R8-d: Telemetry Reset [ ]
+### T9.3 — Corrigir R8-d: Telemetry Reset [x]
 
 - **Arquivo:** [`src/dsp/telemetry.rs`](src/dsp/telemetry.rs)
 - **Ação:** No reset, substituir `bin.store(0, Ordering::Relaxed)` por `bin.swap(0, Ordering::Relaxed)` e adicionar comentário explicando o comportamento concorrente "best-effort".
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.4 — Corrigir R8-e: alive_fence ordering [ ]
+### T9.4 — Corrigir R8-e: alive_fence ordering [x]
 
 - **Arquivos:**
   - [`src/clap/plugin/shared.rs`](src/clap/plugin/shared.rs)
@@ -1038,13 +1038,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - Em `state.rs:190` (no safe_shared), mudar para `alive_fence.load(Ordering::Acquire)`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.5 — Corrigir R8-f: write_idx fetch_add [ ]
+### T9.5 — Corrigir R8-f: write_idx fetch_add [x]
 
 - **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
 - **Ação:** Mudar `write_idx.fetch_add(1, Ordering::Relaxed)` para `Ordering::AcqRel` (ou documentar por que `Relaxed` é seguro dada a sweep total).
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.6 — Corrigir R8-g: clear_flag_relaxed [ ]
+### T9.6 — Corrigir R8-g: clear_flag_relaxed [x]
 
 - **Arquivos:**
   - [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
@@ -1054,13 +1054,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - Em `run.rs`, substituir as 5 chamadas de `clear_flag_release` por `clear_flag_relaxed` (pois o leitor RT não faz acquire do clear).
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.7 — Corrigir R8-h: RT_STATUS_GC_OVERFLOW condicionamento [ ]
+### T9.7 — Corrigir R8-h: RT_STATUS_GC_OVERFLOW condicionamento [x]
 
 - **Arquivo:** [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
 - **Ação:** Condicionar o `set_flag(RT_STATUS_GC_OVERFLOW)` ao retorno `true` (sobrescrita real) do `gc_overflow.push(i)`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T9.8 — Comentários de pareamento [ ]
+### T9.8 — Comentários de pareamento [x]
 
 - **Ação:** Adicionar comentários `// pairs with Release store em <file:line>` ou similar em cada par Acquire/Release atômico da base de código tocada.
 - **Critério de aceite:** Código revisado e documentado.
