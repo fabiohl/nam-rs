@@ -84,6 +84,8 @@ fn test_diagnostic_bundle_with_mock_provider() {
             total_blocks: 10000,
             xruns: 2,
             drains: 5,
+            pw_buffer_miss: 0,
+            playback_miss: 0,
         },
         flags: 0x1a,
     };
@@ -485,6 +487,8 @@ fn test_diagnostic_bundle_regex_roundtrip() {
             total_blocks: 500,
             xruns: 0,
             drains: 0,
+            pw_buffer_miss: 0,
+            playback_miss: 0,
         },
         flags: 0x01,
     };

@@ -160,6 +160,13 @@ pub struct RtStatusFlags {
     /// Set by RT thread, read and cleared by main thread after rebuild.
     pub requested_os_factor: AtomicU32,
 
+    /// Incremented by the RT callback when capture (source)
+    /// `dequeue_buffer()` returns `None` — PipeWire buffer miss on the input side.
+    pub pw_buffer_miss: AtomicU32,
+    /// Incremented by the playback thread when `dequeue_buffer()`
+    /// returns `None` — PipeWire buffer miss on the output side.
+    pub playback_miss: AtomicU32,
+
     /// errno from `pthread_setaffinity_np` (0 = success).
     pub rt_affinity_err: AtomicI32,
     /// errno from `pthread_setschedparam` (0 = success).
@@ -195,6 +202,8 @@ impl RtStatusFlags {
             requested_cabsim_partition_size: AtomicU32::new(0),
             requested_slimmable_ch: AtomicU32::new(0),
             requested_os_factor: AtomicU32::new(0),
+            pw_buffer_miss: AtomicU32::new(0),
+            playback_miss: AtomicU32::new(0),
             rt_affinity_err: AtomicI32::new(0),
             rt_sched_err: AtomicI32::new(0),
             rt_getsched_err: AtomicI32::new(0),

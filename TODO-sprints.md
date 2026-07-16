@@ -1988,7 +1988,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Adicionar os contadores de underruns/xruns do PipeWire ao `RtStatusFlags` e expô-los no dashboard de telemetria.
 
-### T24.1 — Adicionar campos de miss a `RtStatusFlags` e `TelemetrySnapshot` [ ]
+### T24.1 — Adicionar campos de miss a `RtStatusFlags` e `TelemetrySnapshot` [X]
 
 - **Arquivos:**
   - [`src/common/spsc/status.rs`](src/common/spsc/status.rs)

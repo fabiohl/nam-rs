@@ -102,6 +102,10 @@ pub struct TelemetrySnapshot {
     pub xruns: u32,
     /// Total count of GC items successfully drained.
     pub drains: u32,
+    /// Total PipeWire buffer misses on the capture (input) side.
+    pub pw_buffer_miss: u32,
+    /// Total PipeWire buffer misses on the playback (output) side.
+    pub playback_miss: u32,
 }
 
 /// Snapshot of the dynamic runtime state, captured on-demand.
@@ -220,6 +224,8 @@ impl HasRuntimeSnapshot for crate::common::spsc::RtStatusFlags {
         let total_blocks = self.latency_hist.total_count();
         let xruns = self.xruns.load(Ordering::Relaxed);
         let drains = self.drains.load(Ordering::Relaxed);
+        let pw_buffer_miss = self.pw_buffer_miss.load(Ordering::Relaxed);
+        let playback_miss = self.playback_miss.load(Ordering::Relaxed);
 
         TelemetrySnapshot {
             p50_us,
@@ -229,6 +235,8 @@ impl HasRuntimeSnapshot for crate::common::spsc::RtStatusFlags {
             total_blocks,
             xruns,
             drains,
+            pw_buffer_miss,
+            playback_miss,
         }
     }
 
