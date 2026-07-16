@@ -748,7 +748,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 - **Golden Fixture:** `golden_wavenet_condition_lstm.bin` — **not generated** (skip_reason). v1 golden test skipped gracefully when the golden file is absent.
 
-- **Tests:** `test_wavenet_condition_lstm_loads_and_runs` (smoke test), `test_golden_vectors_wavenet_condition_lstm` (SKIP when golden absent), `live_cross_validation_wavenet_condition_lstm` (cpp_parity.rs).
+- **Tests:** `test_wavenet_condition_lstm_loads_and_runs` (smoke test), `test_policy_reject_condition_lstm` (SKIP when golden absent), `live_cross_validation_wavenet_condition_lstm` (cpp_parity.rs).
 
 - **SNR/ESR:** Calibrated thresholds: SNR≥70 dB, ESR<1.0e-8 (validation.rs — conservative floor).
 

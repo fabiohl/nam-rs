@@ -697,7 +697,7 @@ Critério: regravar contrato com `--save` e conferir manualmente as linhas A2-Fu
 distintas; teste do panic hook com alloc_audit = 0; fase PipeWire falhando artificialmente com
 filtro vazio (teste do gate). Risco: baixo.
 
-### EP-R5 — Higiene e superfície (R12 + R14 + R15 + R16 + P3) [DOING]
+### EP-R5 — Higiene e superfície (R12 + R14 + R15 + R16 + P3) [DONE]
 
 Escopo: sprint mecânico de documentação SAFETY (tabela R12), remoção de mortos/duplicados
 (R14), `testing` fora do default com medição `cargo bloat` (R15), limpezas de log/refs (R16),

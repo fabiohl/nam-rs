@@ -1538,33 +1538,44 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo. Alterações puras de UI e cosméticos nos relatórios.
 
-### T18.1 — Corrigir referências a arquivos transitórios [ ]
+### T18.1 — Corrigir referências a arquivos transitórios [x]
 
 - **Arquivo:** [`utils/quality-dashboard.sh`](utils/quality-dashboard.sh) (L1451)
 - **Ação:** Substituir o texto que cita `TODO-findings.md Achado F3` por uma referência ao documento canônico estável: `docs/perceptual_validation.md#decomposition-cold-start`. Adotar a regra de não citar `TODO-*.md` em logs permanentes.
 - **Critério de aceite:** Relatório limpo de referências transitórias.
 
-### T18.2 — Esconder dumps de depuração sob `NAM_ORACLE_VERBOSE=1` [ ]
+### T18.2 — Esconder dumps de depuração sob `NAM_ORACLE_VERBOSE=1` [x]
 
 - **Ação:** Alterar o formatador do oráculo para somente imprimir os dumps de depuração `PROD FIRST 10` e `ORACLE FIRST 10` se a variável de ambiente `NAM_ORACLE_VERBOSE=1` estiver ativada, despoluindo a tabela de resumo.
 - **Critério de aceite:** Visualização padrão do dashboard exibe apenas a tabela sem intercalações.
 
-### T18.3 — Explicitar motivo de `#[ignore]` no teste do gate [ ]
+### T18.3 — Explicitar motivo de `#[ignore]` no teste do gate [x]
 
 - **Arquivo:** [`src/dsp/gate_test.rs`](src/dsp/gate_test.rs) (L300)
 - **Ação:** Atualizar a anotação para `#[ignore = "proptest 10k casos; roda no tests-long (gate_envelope_continuity_proptest)"]` para esclarecer ao desenvolvedor por que este teste foi ignorado no quick loop.
 - **Critério de aceite:** Comentário atualizado.
 
-### T18.4 — Alinhar colunas no log de `isa_matrix_header_info` [ ]
+### T18.4 — Alinhar colunas no log de `isa_matrix_header_info` [x]
 
 - **Ação:** Ajustar os espaçamentos na string formatada impressa pelo cabeçalho `isa_matrix_header_info` para corrigir o desalinhamento cosmético das colunas.
 - **Critério de aceite:** Tabela impressa perfeitamente alinhada.
 
-### T18.5 — Renomear teste de política em golden vectors [ ]
+### T18.5 — Renomear teste de política em golden vectors [x]
 
 - **Arquivo:** [`tests/models/golden_vectors.rs`](tests/models/golden_vectors.rs) (L1133)
 - **Ação:** Renomear o teste `test_golden_vectors_wavenet_condition_lstm` para `test_policy_reject_condition_lstm`, refletindo sua real natureza de política fail-closed.
 - **Critério de aceite:** Teste renomeado e funcional.
+
+> **Resultado S18 (2026-07-16):**
+>
+> - **T18.1:** Substituída referência transitória `TODO-findings.md Achado F3` por `docs/perceptual_validation.md#decomposition-cold-start` em `quality-dashboard.sh:1451`. ✓
+> - **T18.2:** dumps `PROD FIRST 10` / `ORACLE FIRST 10` em `reference_oracle_f64.rs:435-442` condicionados a `NAM_ORACLE_VERBOSE=1`. ✓
+> - **T18.3:** `#[ignore]` em `gate_test.rs:300` substituído por `#[ignore = "proptest 10k casos; roda no tests-long (gate_envelope_continuity_proptest)"]`. ✓
+> - **T18.4:** Caixa `isa_matrix_header_info` em `isa_parity.rs:693` realinhada — todas as linhas internas agora têm exatamente 62 colunas. ✓
+> - **T18.5:** Teste `test_golden_vectors_wavenet_condition_lstm` renomeado para `test_policy_reject_condition_lstm` em `golden_vectors.rs:1133` e `tests/fixtures/README.md:751`. ✓
+> - **Nota:** A variável `NAM_ORACLE_VERBOSE=1` não era usada anteriormente no código Rust; foi adicionada seguindo o mesmo padrão de `NAM_DISABLE_GATE` (`std::env::var(...).is_ok()`).
+> - **Correção (pós-auditoria):** O dashboard (`quality-dashboard.sh`) não passava `--features testing` nas invocações de `cargo test`, quebrando a compilação dos binários `parity` (e potencialmente `models`) após o Sprint S17 remover `testing` dos defaults. Adicionado `--features testing` em todas as 6 invocações de `cargo test` (exceto `cargo bench` que não usa `nam_rs::testing`).
+> - **Correção 2 (contrato de qualidade):** `verify_contract` comparava `dash_label` (nome canônico, ex: "BossWN-standard") com `contract_label` (chave completa, ex: "BossWN-standard @48000 Live"), fazendo com que TODAS as linhas exibissem "(i) nao encontrado na execucao atual". Corrigido: ambos os lados agora são normalizados (strip `@rate` e modo) antes da comparação.
 
 ---
 

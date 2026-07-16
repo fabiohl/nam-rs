@@ -693,16 +693,16 @@ fn isa_parity_hf_wavenet_standard_avx2_vs_avx512() {
 fn isa_matrix_header_info() {
     println!();
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║  Cross-ISA Determinism Matrix (P-8 / Task 2.7)            ║");
-    println!("║  Reference = AVX2 (x86-64-v3, always available)           ║");
-    println!("║                                                            ║");
-    println!("║  Kernel-level scalar-vs-SIMD parity: gemv_test.rs,         ║");
-    println!("║  dot_4x_test.rs, dot_8x_test.rs, dot_16x_test.rs,          ║");
-    println!("║  proptest_math.rs                                          ║");
-    println!("║                                                            ║");
-    println!("║  Run cross-ISA matrix:                                     ║");
-    println!("║  cargo test --release --test isa_parity -- \\               ║");
-    println!("║    --ignored --test-threads=1 --nocapture                  ║");
+    println!("║  Cross-ISA Determinism Matrix (P-8 / Task 2.7)               ║");
+    println!("║  Reference = AVX2 (x86-64-v3, always available)              ║");
+    println!("║                                                              ║");
+    println!("║  Kernel-level scalar-vs-SIMD parity: gemv_test.rs,           ║");
+    println!("║  dot_4x_test.rs, dot_8x_test.rs, dot_16x_test.rs,            ║");
+    println!("║  proptest_math.rs                                            ║");
+    println!("║                                                              ║");
+    println!("║  Run cross-ISA matrix:                                       ║");
+    println!("║  cargo test --release --test isa_parity -- \\                 ║");
+    println!("║    --ignored --test-threads=1 --nocapture                    ║");
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 }

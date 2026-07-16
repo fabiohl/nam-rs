@@ -246,7 +246,7 @@ run_golden_vectors() {
     # golden_vectors.log always yields BossLSTM-2x8 ESR=2.68e-3 and
     # lstm(Official) ESR=1.04e-3 with --test-threads=1, but the dashboard
     # intermittently showed 0.00e0 for one or the other without it.
-    NAM_METRICS_JSONL="$NAM_METRICS_JSONL" cargo test --release --test models golden_vectors -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    NAM_METRICS_JSONL="$NAM_METRICS_JSONL" cargo test --release --features testing --test models golden_vectors -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     FIDELITY_DURATION_S=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
     local line_count
@@ -267,7 +267,7 @@ run_reference_oracle() {
     # that table, which was confirmed (2026-07-05) to corrupt parsed entries.
     # Serializing here removes the interleaving at the source; the awk-side
     # row-shape validation in parse_oracle_f64 is kept as defense-in-depth.
-    cargo test --release --test parity reference_oracle_f64 -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    cargo test --release --features testing --test parity reference_oracle_f64 -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -282,7 +282,7 @@ run_isa_parity() {
     echo -e "${BLUE}${BOLD}-> Executando isa_parity...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test parity isa_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    cargo test --release --features testing --test parity isa_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -297,7 +297,7 @@ run_spectral_fidelity() {
     echo -e "${BLUE}${BOLD}-> Executando spectral_fidelity...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test models spectral_fidelity -- --nocapture > "$log" 2>&1 || true
+    cargo test --release --features testing --test models spectral_fidelity -- --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -312,7 +312,7 @@ run_activation_precision() {
     echo -e "${BLUE}${BOLD}-> Executando lstm_activation_precision...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo test --release --test models lstm_activation_precision -- --nocapture > "$log" 2>&1 || true
+    cargo test --release --features testing --test models lstm_activation_precision -- --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -327,7 +327,7 @@ run_quick_parity() {
     echo -e "${BLUE}${BOLD}-> Executando quick_parity...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    NAM_METRICS_JSONL="$NAM_METRICS_JSONL" cargo test --test parity quick_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
+    NAM_METRICS_JSONL="$NAM_METRICS_JSONL" cargo test --features testing --test parity quick_parity -- --test-threads=1 --nocapture > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     local dur
     dur=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
@@ -1448,7 +1448,7 @@ render_f64_decomposition() {
     echo "      campo receptivo e maior que a janela de 256 amostras, entao o"
     echo "      ESR total abaixo reflete majoritariamente o transiente de"
     echo "      preenchimento do buffer, nao o piso de precisao em regime"
-    echo "      permanente. Ver docs/perceptual_validation.md#lstm-recurrent-state-drift e TODO-findings.md Achado F3."
+      echo "      permanente. Ver docs/perceptual_validation.md#decomposition-cold-start."
     echo ""
     set +u
     for model in "${!F64_DECOMPOSITION[@]}"; do
@@ -1684,14 +1684,15 @@ verify_contract() {
         # We match by model name prefix (before @rate or mode suffix).
         for contract_label in "${!CONTRACT_ESR[@]}"; do
             local matched=false
+            # T11.1: contract labels (saved via --save) are full keys
+            # ("Modelo @48000 Live"). Strip @rate and mode suffix from
+            # both sides to compare canonical model names.
+            local contract_short
+            contract_short=$(echo "$contract_label" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
             for dash_key in "${!ESR_NAMCORE[@]}"; do
                 local dash_label
                 dash_label=$(echo "$dash_key" | sed 's/ @.*//; s/ Live$//; s/ HQ$//')
-                # Exact match: contract labels are now saved with full keys
-                # (T11.1), so prefix matching is no longer needed or safe.
-                # Comparing dash_label (model name stripped of @rate/mode)
-                # against contract_label (full model name from contract).
-                if [[ "$dash_label" == "$contract_label" ]]; then
+                if [[ "$dash_label" == "$contract_short" ]]; then
                     matched=true
                     local esr_cur="${ESR_NAMCORE[$dash_key]:-N/A}"
                     local esr_ctr="${CONTRACT_ESR[$contract_label]}"

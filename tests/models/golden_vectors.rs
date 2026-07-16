@@ -1130,7 +1130,7 @@ fn test_golden_vectors_wavenet_condition_dsp() {
 /// separately validates the oracle itself (which does not go through the
 /// production dispatcher and is unaffected by this policy).
 #[test]
-fn test_golden_vectors_wavenet_condition_lstm() {
+fn test_policy_reject_condition_lstm() {
     let nam_path = model_path("wavenet_condition_lstm.nam");
     assert!(
         nam_path.exists(),
