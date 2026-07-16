@@ -1956,3 +1956,120 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   ```
 
 - Validar que nenhum causa falso-positivo ou pânico não tratado.
+
+---
+
+## Épico EP-R10 — Observabilidade e higiene remanescente (R22 + R23 + R26)
+
+> **Origem:** [TODO-findings.md §EP-R10](TODO-findings.md#ep-r10--observabilidade-e-higiene-remanescente-r22--r23--r26) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R22 (telemetria de buffer-miss no PipeWire), R26 (limpeza de campos mortos, mem::zeroed e unwrap), R23 (sprint de documentação SAFETY em unsafe remanescentes).
+>
+> **Invariante absoluto:** sem alteração de comportamento de processamento de áudio, zero regressões em lints e cobertura de testes.
+>
+> **Pré-requisito:** EP-R9 concluído.
+
+---
+
+## EP-R10 — Sumário dos Sprints
+
+| Sprint  | Finding                                                  | Risco  | Arquivos tocados | Estimativa |
+| ------- | -------------------------------------------------------- | ------ | ---------------- | ---------- |
+| **S24** | R22 — Telemetria de buffer-miss no PipeWire              | Baixo  | 7                | ~30 min    |
+| **S25** | R26 — Resolução e Limpeza de Campos Mortos/Incorretos    | Baixo  | 6                | ~30 min    |
+| **S26** | R23 — Higiene de unsafe com comentários SAFETY           | Baixo  | 8                | ~30 min    |
+| **VF**  | Verificação final integrada EP-R10                       | —      | 0                | ~15 min    |
+
+---
+
+## Sprint S24 — R22: Telemetria de buffer-miss no PipeWire
+
+> **Ref:** [TODO-findings.md §R22](TODO-findings.md#r22--telemetria-de-buffer-misses-no-host-pipewire--baixa)
+>
+> **Objetivo:** Adicionar os contadores de underruns/xruns do PipeWire ao `RtStatusFlags` e expô-los no dashboard de telemetria.
+
+### T24.1 — Adicionar campos de miss a `RtStatusFlags` e `TelemetrySnapshot` [ ]
+
+- **Arquivos:**
+  - [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
+  - [`src/common/diagnostics/snapshot.rs`](src/common/diagnostics/snapshot.rs)
+- **Ação:** Adicionar `pw_buffer_miss` e `playback_miss` em `RtStatusFlags` (como `AtomicU32`) e na `TelemetrySnapshot`.
+
+### T24.2 — Incrementar contadores nas falhas de `dequeue_buffer` [ ]
+
+- **Arquivos:**
+  - [`src/standalone/pw_host/rt_callback/process.rs`](src/standalone/pw_host/rt_callback/process.rs)
+  - [`src/dsp/pipeline/output_pw.rs`](src/dsp/pipeline/output_pw.rs)
+  - [`src/standalone/pw_host/playback.rs`](src/standalone/pw_host/playback.rs)
+  - [`src/standalone/pw_host/run.rs`](src/standalone/pw_host/run.rs)
+- **Ação:** Passar `rt_status` para a thread de playback e incrementar o respectivo contador com `Ordering::Relaxed` se `dequeue_buffer()` retornar `None`.
+
+### T24.3 — Expor contadores no dashboard de telemetria [ ]
+
+- **Arquivo:** [`src/standalone/rt_setup/telemetry.rs`](src/standalone/rt_setup/telemetry.rs)
+- **Ação:** Logar avisos de buffer-miss no `poll_rt_status` se os contadores forem maiores que zero.
+
+---
+
+## Sprint S25 — R26: Resolução e Limpeza de Campos Mortos/Incorretos
+
+> **Ref:** [TODO-findings.md §R26](TODO-findings.md#r26--diagnóstico)
+>
+> **Objetivo:** Limpeza de campos não utilizados (ou redundantes), inicializações unidiomáticas e panic no FFI.
+
+### T25.1 — Remover `alive` de `DialogSharedState` e `IrDialogSharedState` [ ]
+
+- **Arquivos:**
+  - [`src/clap/gui/ui/zones/dialog_state.rs`](src/clap/gui/ui/zones/dialog_state.rs)
+  - [`src/clap/gui/ui/zones/file_dialogs.rs`](src/clap/gui/ui/zones/file_dialogs.rs)
+- **Ação:** Eliminar o campo `alive` de ambas as structs e simplificar os testes unitários removendo as asserções de `alive`.
+
+### T25.2 — Ajustar buffers `os_*` em `DspBuffers` [ ]
+
+- **Arquivo:** [`src/dsp/pipeline/context.rs`](src/dsp/pipeline/context.rs)
+- **Ação:** Remover `#[allow(unused)]` dos buffers `os_` já que eles são consumidos ativamente no pipeline de oversampling.
+
+### T25.3 — Substituir `mem::zeroed` em `thread.rs` por construções seguras [ ]
+
+- **Arquivo:** [`src/standalone/rt_setup/thread.rs`](src/standalone/rt_setup/thread.rs)
+- **Ação:** Trocar inicializações com `mem::zeroed` por `MaybeUninit` (para `cpu_set_t`) e inicializações de struct explícitas (para `sched_param`).
+
+### T25.4 — Corrigir `unwrap` em `state.rs` [ ]
+
+- **Arquivo:** [`src/clap/extensions/state.rs`](src/clap/extensions/state.rs)
+- **Ação:** Substituir `.unwrap()` por `.unwrap_or_default()`.
+
+---
+
+## Sprint S26 — R23: Higiene de unsafe com comentários SAFETY
+
+> **Ref:** [TODO-findings.md §R23](TODO-findings.md#r23--higiene-de-unsafe-remanescente-fora-da-tabela-r12--baixa)
+>
+> **Objetivo:** Adicionar o comentário `// SAFETY:` detalhado para cada bloco unsafe que carece de documentação na produção.
+
+### T26.1 — Documentar blocos unsafe [ ]
+
+- **Arquivos:**
+  - [`src/clap/plugin/shared.rs`](src/clap/plugin/shared.rs)
+  - [`src/dsp/oversample.rs`](src/dsp/oversample.rs)
+  - [`src/dsp/resampler/core.rs`](src/dsp/resampler/core.rs)
+  - [`src/clap/gui/ui/zones/dialog_state.rs`](src/clap/gui/ui/zones/dialog_state.rs) (nota: não aplicável após remoção, mas auditamos todos)
+  - [`src/dsp/cabsim/conv.rs`](src/dsp/cabsim/conv.rs)
+  - [`src/dsp/gate.rs`](src/dsp/gate.rs)
+  - [`src/models/a2/grouped_conv1d/simd.rs`](src/models/a2/grouped_conv1d/simd.rs)
+  - [`src/models/convnet/batch_norm.rs`](src/models/convnet/batch_norm.rs)
+- **Ação:** Adicionar comentários explicando as invariantes garantidas por construção para cada bloco unsafe/get_unchecked/transmute.
+
+### T26.2 — Tratar e documentar `madvise` em `bridge.rs` [ ]
+
+- **Arquivo:** [`src/standalone/pw_host/bridge.rs`](src/standalone/pw_host/bridge.rs)
+- **Ação:** Adicionar comentário de SAFETY e validar o retorno de `madvise`, emitindo log de aviso em caso de erro.
+
+---
+
+## VF — Verificação Final Integrada EP-R10
+
+### VF10.1 — Lints e Compilação rápida
+
+- Executar `utils/lints.sh` e assegurar 0 erros/avisos.
+- Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.

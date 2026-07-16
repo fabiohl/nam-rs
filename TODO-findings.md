@@ -1326,7 +1326,7 @@ Escopo: eliminar `as_main_thread_unchecked` em `track_info.rs` (R19); registrar 
 mostra apenas usos genuinamente necessários (idealmente zero); nenhum `if let Ok(...) else`
 silencioso remanescente em `housekeeping.rs`. Risco: baixo.
 
-### EP-R9 — Robustez de carregamento e cobertura anti-regressão (R20 + R21) [DOING]
+### EP-R9 — Robustez de carregamento e cobertura anti-regressão (R20 + R21) [DONE]
 
 Escopo: substituir `.expect()` por propagação de erro em `activate()` CLAP e nos dispatchers
 do loader (R20); adicionar estratégias proptest adversariais para LSTM dinâmico, A2-Dynamic e
@@ -1335,7 +1335,7 @@ src/loader/dispatcher/` sem ocorrências fora de testes; novas estratégias prop
 `tests-long.sh` sem falso-positivo. Risco: baixo (mudanças mecânicas de propagação de erro +
 testes aditivos).
 
-### EP-R10 — Observabilidade e higiene remanescente (R22 + R23 + R26)
+### EP-R10 — Observabilidade e higiene remanescente (R22 + R23 + R26) [DOING]
 
 Escopo: novos contadores `pw_buffer_miss`/`playback_miss` em `RtStatusFlags` (R22); sprint de
 documentação SAFETY nos ~20 blocos remanescentes (R23); resolver ou documentar os campos
