@@ -2029,7 +2029,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Arquivo:** [`src/dsp/pipeline/context.rs`](src/dsp/pipeline/context.rs)
 - **Ação:** Remover `#[allow(unused)]` dos buffers `os_` já que eles são consumidos ativamente no pipeline de oversampling.
 
-### T25.3 — Substituir `mem::zeroed` em `thread.rs` por construções seguras [ ]
+### T25.3 — Substituir `mem::zeroed` em `thread.rs` por construções seguras [X]
 
 - **Arquivo:** [`src/standalone/rt_setup/thread.rs`](src/standalone/rt_setup/thread.rs)
 - **Ação:** Trocar inicializações com `mem::zeroed` por `MaybeUninit` (para `cpu_set_t`) e inicializações de struct explícitas (para `sched_param`).

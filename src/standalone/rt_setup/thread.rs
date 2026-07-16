@@ -86,11 +86,12 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
     }
 
     if cpu_in_bounds {
-        let mut cpuset: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+        let mut cpuset = std::mem::MaybeUninit::<libc::cpu_set_t>::uninit();
         unsafe {
-            libc::CPU_ZERO(&mut cpuset);
-            libc::CPU_SET(target_cpu, &mut cpuset);
+            libc::CPU_ZERO(cpuset.assume_init_mut());
+            libc::CPU_SET(target_cpu, cpuset.assume_init_mut());
         }
+        let cpuset = unsafe { cpuset.assume_init() };
 
         let ret_aff = unsafe {
             libc::pthread_setaffinity_np(thread_id, std::mem::size_of::<libc::cpu_set_t>(), &cpuset)
@@ -105,7 +106,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
     }
 
     let mut actual_policy = 0i32;
-    let mut actual_param: libc::sched_param = unsafe { std::mem::zeroed() };
+    let mut actual_param = libc::sched_param { sched_priority: 0 };
     let ret_getsched =
         unsafe { libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param) };
 
@@ -116,8 +117,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
         let mut base_policy = actual_policy & !0x40000000i32;
 
         if base_policy != libc::SCHED_FIFO {
-            let mut param: libc::sched_param = unsafe { std::mem::zeroed() };
-            param.sched_priority = 90;
+            let param = libc::sched_param { sched_priority: 90 };
 
             let ret_sched =
                 unsafe { libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param) };
