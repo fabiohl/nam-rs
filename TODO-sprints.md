@@ -1895,7 +1895,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Substituir por propagação direta via `?`.
 - **Critério de aceite:** Sem ocorrências de `.expect` no arquivo.
 
-### T22.5 — Propagar erro de alocação no dispatcher ConvNet [ ]
+### T22.5 — Propagar erro de alocação no dispatcher ConvNet [x]
 
 - **Arquivo:** [`src/loader/dispatcher/convnet/mod.rs`](src/loader/dispatcher/convnet/mod.rs)
 - **Ação:**

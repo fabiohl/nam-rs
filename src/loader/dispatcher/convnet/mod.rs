@@ -140,14 +140,11 @@ fn build_convnet_flat_cpp(
         );
     }
 
-    let head_output_scratch = AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
+    let head_output_scratch = AlignedVec::new(out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
 
     let max_scratch_ch = blocks.iter().map(|b| b.conv.out_ch).max().unwrap_or(1);
-    let scratch_a = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
-    let scratch_b = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
+    let scratch_a = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
+    let scratch_b = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
 
     let model = ConvNetModel {
         blocks,
@@ -274,8 +271,7 @@ fn build_convnet_layers(
         } else {
             let total = checked_arith::checked_conv_total(out_ch, in_ch, kernel)?;
             let raw = cursor.read_slice(total)?;
-            let mut interleaved_weights = AlignedVec::new(padded_total, 0.0f32)
-                .expect("allocation should succeed for test-sized buffers");
+            let mut interleaved_weights = AlignedVec::new(padded_total, 0.0f32)?;
             layout::transpose_conv1d_interleaved_4wide(
                 raw,
                 &mut interleaved_weights,
@@ -323,8 +319,7 @@ fn build_convnet_layers(
         } else {
             let total = checked_arith::checked_conv_total(out_ch, ch, kernel)?;
             let raw = cursor.read_slice(total)?;
-            let mut interleaved = AlignedVec::new(padded_total, 0.0f32)
-                .expect("allocation should succeed for test-sized buffers");
+            let mut interleaved = AlignedVec::new(padded_total, 0.0f32)?;
             layout::transpose_conv1d_interleaved_4wide(raw, &mut interleaved, ch, out_ch, kernel);
             head.set_weights(&interleaved);
         }
@@ -349,14 +344,11 @@ fn build_convnet_layers(
         .as_ref()
         .map(|h| h.out_channels())
         .unwrap_or(1);
-    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
+    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
 
     let max_scratch_ch = blocks.iter().map(|b| b.conv.out_ch).max().unwrap_or(1);
-    let scratch_a = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
-    let scratch_b = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
+    let scratch_a = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
+    let scratch_b = AlignedVec::new(max_scratch_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
 
     let model = ConvNetModel {
         blocks,
