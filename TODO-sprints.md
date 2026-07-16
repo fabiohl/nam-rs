@@ -2305,3 +2305,90 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - Rodar `./utils/lints.sh` e assegurar que tudo compila sem warnings e sem erros.
 - Rodar `./utils/tests-quick.sh` para atestar a estabilidade e funcionamento de todas as suítes rápidas de testes, incluindo os novos testes do parser e resampler.
+
+---
+
+## Épico EP-R14 — Fidelidade de automação de parâmetros (R28 + R29 + R30)
+
+> **Origem:** [TODO-findings.md §EP-R14](TODO-findings.md#ep-r14--fidelidade-de-automação-de-parâmetros-r28--r29--r30) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R28 (Automação sample-accurate via block-splitting, **ALTA**), R29 (Flush SPSC sem perdas com fallback, **MÉDIA**), R30 (Warm reset de smoothers em activate, **BAIXA**).
+>
+> **Invariante absoluto:** zero alteração de comportamento sonoro estático ou no caminho feliz de parâmetros fixos.
+>
+> **Risco:** Médio (R28 mexe com processamento de eventos mid-block).
+
+## EP-R14 — Sumário dos Sprints
+
+| Sprint  | Finding                                     | Risco | Arquivos tocados | Estimativa |
+| ------- | ------------------------------------------- | ----- | ---------------- | ---------- |
+| **S32** | R28 + R29 + R30 — Automação de Parâmetros   | Médio | 6                | ~90 min    |
+| **VF**  | Verificação final integrada EP-R14          | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S32 — R28 + R29 + R30: Fidelidade e Robustez de Automação de Parâmetros
+
+> **Objetivo:** Implementar block-splitting para automação sample-accurate (R28); otimizar e robustecer o flush de parâmetros inativos com fallback via `bump_generation` (R29); e inicializar smoothers com valores de atomics compartilhados no `activate` para evitar transientes (R30).
+
+### T32.1 — Implementar block-splitting de DSP em sub-blocos (R28)
+
+- **Arquivos:**
+  - [`src/clap/processor/dsp/orchestrator.rs`](src/clap/processor/dsp/orchestrator.rs)
+  - [`src/clap/processor/events.rs`](src/clap/processor/events.rs)
+  - [`src/clap/processor/mod.rs`](src/clap/processor/mod.rs)
+- **Ação:**
+  1. Alterar a assinatura de `process_events` em `events.rs` para aceitar `output: &mut OutputEvents` e remover o processamento de eventos do host (`events.input`).
+  2. Alterar a assinatura de `process_dsp_audio` em `orchestrator.rs` para aceitar `input_events: &InputEvents`.
+  3. No método `process_dsp_audio`, refatorar o loop principal de processamento de portas. Em vez de chamar a pipeline de DSP inteira de uma vez para `n_samples`, iterar sobre os eventos de `input_events` em ordem cronológica de sample offset (`event.header().time()`).
+  4. Para cada ponto de evento mid-block, processar o sub-bloco acumulado até aquele sample offset chamando um método auxiliar `process_sub_block`. Em seguida, aplicar a alteração de parâmetro ou modulação correspondente.
+  5. Processar o sub-bloco restante após o loop de eventos.
+  6. Implementar o método auxiliar `process_sub_block` contendo os estágios: ganho de entrada por sub-bloco, gate (input stage) por sub-bloco, bypass por sub-bloco, inferência neural por sub-bloco, cabinet/output stage por sub-bloco, ganho de saída por sub-bloco e cópia do buffer de saída para o buffer do host.
+- **Critério de aceite:** O código compila sem warnings e os testes de áudio existentes continuam passando sem alteração de comportamento estático.
+
+### T32.2 — Adaptar ganho de entrada e saída para slicing de sub-blocos (R28)
+
+- **Arquivo:** [`src/clap/processor/dsp/gain.rs`](src/clap/processor/dsp/gain.rs)
+- **Ação:**
+  1. Modificar `apply_input_gain` para aceitar `offset` e `n_samples`. Ajustar o fatiamento (`buf_host_l` e `buf_host_r`) para usar `[offset..offset + n_samples]`.
+  2. Modificar `apply_output_gain` para aceitar `offset` e `n_samples`. Ajustar o fatiamento (`buf_out_l` e `buf_out_r`) para usar `[offset..offset + n_samples]`.
+- **Critério de aceite:** `cargo check` passa sem erros de compilação ou empréstimo de memória.
+
+### T32.3 — Mover push SPSC de flush para fora do loop e adicionar fallback (R29)
+
+- **Arquivo:** [`src/clap/extensions/params/main.rs`](src/clap/extensions/params/main.rs)
+- **Ação:**
+  1. Mover a chamada de `self.param_tx.push(...)` no método `flush` do thread principal para fora do loop de eventos.
+  2. Executar o push de snapshot de parâmetro apenas uma vez se houver alguma mudança (`param_changed == true`).
+  3. Se o canal estiver cheio (`push().is_err()`), chamar `self.shared.bump_generation()` para garantir que o processador sincronize os valores alterados via atomics na reativação.
+- **Critério de aceite:** Flush compila perfeitamente.
+
+### T32.4 — Warm reset de ParamSmoother no activate (R30)
+
+- **Arquivo:** [`src/clap/processor/mod.rs`](src/clap/processor/mod.rs)
+- **Ação:**
+  1. No método `activate`, em vez de instanciar `ParamSmoother::new(1.0, ...)` fixo, obter o valor inicial em DB a partir de `shared.ui_to_rt.param_input_gain` e `shared.ui_to_rt.param_output_gain`.
+  2. Obter o look-up table de ganho via `crate::math::dsp::gain_lut::get_gain_lut()`.
+  3. Converter as DBs para ganho linear e inicializar os smoothers com esses valores vigentes.
+- **Critério de aceite:** Ausência de "jump" transiente ao reativar o plugin com ganho diferente de 0 dB (1.0).
+
+### T32.5 — Criar testes automatizados de integração para automação de parâmetros
+
+- **Arquivos:**
+  - [`tests/params_automation_test.rs`](tests/params_automation_test.rs) (novo)
+  - [`src/clap/processor_bypass_test.rs`](src/clap/processor_bypass_test.rs) (extensão)
+- **Ação:**
+  1. Implementar um teste simulando múltiplos eventos `ParamValueEvent` no mesmo bloco com offsets de tempo diferentes (ex: t=0, t=64, t=128) e verificar se a saída de áudio muda de acordo com os tempos do bloco (sample-accurate).
+  2. Implementar um teste que sature o `flush` com 20 eventos e comprove que o fallback `bump_generation` sincroniza os valores pós-activate sem perdas.
+  3. Implementar teste unitário para validar que reativar o plugin com ganho não-unitário inicializa o smoother corretamente.
+- **Critério de aceite:** Novos testes criados e verdes via `cargo test`.
+
+---
+
+## VF — Verificação Final Integrada EP-R14
+
+### VF14.1 — Execução de Lints e Suite de Testes
+
+- Rodar `./utils/lints.sh` e assegurar que tudo compila sem warnings e sem erros.
+- Rodar `./utils/tests-quick.sh` para atestar a estabilidade e funcionamento de todas as suítes rápidas de testes, incluindo os novos testes de automação e smoothers.
+- Executar `./utils/quality-dashboard.sh --check docs/quality-contract.txt` para validar bit-exactness.

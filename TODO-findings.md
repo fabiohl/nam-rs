@@ -1789,7 +1789,7 @@ degenerado de sample_rate extremamente alto no mesmo gate. Critério de aceite: 
 achado; nenhuma alocação de resample pode exceder `MAX_IR_LENGTH * fator_máximo_de_upsampling`.
 Risco: baixo (validação aditiva num parser já bem estruturado, sem tocar o motor de convolução).
 
-### EP-R14 — Fidelidade de automação de parâmetros (R28 + R29 + R30)
+### EP-R14 — Fidelidade de automação de parâmetros (R28 + R29 + R30) [DOING]
 
 Escopo: implementar block-splitting para automação sample-accurate usando `event.header().time`
 (R28); mover o push SPSC do `MainThread::flush()` para fora do loop de eventos + fallback via
