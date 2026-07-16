@@ -1879,7 +1879,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Substituir o `.expect(...)` por propagação direta via `?` (aproveitando que o retorno é `anyhow::Result`).
 - **Critério de aceite:** Sem ocorrências de `.expect(` no arquivo; `cargo check` passa.
 
-### T22.3 — Propagar erro de alocação no dispatcher WaveNet Dynamic [ ]
+### T22.3 — Propagar erro de alocação no dispatcher WaveNet Dynamic [x]
 
 - **Arquivo:** [`src/loader/dispatcher/wavenet/dynamic.rs`](src/loader/dispatcher/wavenet/dynamic.rs)
 - **Ação:**

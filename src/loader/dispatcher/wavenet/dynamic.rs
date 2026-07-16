@@ -70,8 +70,7 @@ fn build_wavenet_array_dyn(
     let receptive_field_size: usize = dilations.iter().map(|&d| (k - 1) * d).sum();
 
     let block_size = ch;
-    let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
+    let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0)?;
     let num_layers = layers.len();
 
     Ok(WaveNetLayerArrayDyn {
@@ -84,12 +83,9 @@ fn build_wavenet_array_dyn(
         states,
         rechannel,
         head_rechannel,
-        array_outputs: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-            .expect("allocation should succeed for test-sized buffers"),
-        head_accum: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-            .expect("allocation should succeed for test-sized buffers"),
-        head_outputs: AlignedVec::new(head * WAVENET_MAX_NUM_FRAMES, 0.0)
-            .expect("allocation should succeed for test-sized buffers"),
+        array_outputs: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0)?,
+        head_accum: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0)?,
+        head_outputs: AlignedVec::new(head * WAVENET_MAX_NUM_FRAMES, 0.0)?,
         receptive_field_size,
         block_size,
         block_buffer,
@@ -229,8 +225,7 @@ fn build_wavenet_dynamic_inner(
         } else {
             let total = checked_arith::checked_conv_total(out_ch, ch, kernel)?;
             let raw = cursor.read_slice(total)?;
-            let mut interleaved = AlignedVec::new(padded_total, 0.0f32)
-                .expect("allocation should succeed for test-sized buffers");
+            let mut interleaved = AlignedVec::new(padded_total, 0.0f32)?;
             layout::transpose_conv1d_interleaved_4wide(raw, &mut interleaved, ch, out_ch, kernel);
             head.set_weights(&interleaved);
         }
@@ -303,8 +298,7 @@ fn build_wavenet_dynamic_inner(
         .as_ref()
         .map(|h| h.out_channels())
         .unwrap_or(1);
-    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)
-        .expect("allocation should succeed for test-sized buffers");
+    let head_output_scratch = AlignedVec::new(head_out_ch * WAVENET_MAX_NUM_FRAMES, 0.0)?;
 
     let mut rf = arrays
         .iter()
@@ -323,8 +317,7 @@ fn build_wavenet_dynamic_inner(
         head_scale,
         receptive_field_size: rf,
         condition_dsp,
-        condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0)
-            .expect("allocation should succeed for test-sized buffers"),
+        condition_dsp_output: AlignedVec::new(cond_dsp_output_size, 0.0)?,
         post_stack_head,
         head_output_scratch,
         prewarm_on_reset: true,
