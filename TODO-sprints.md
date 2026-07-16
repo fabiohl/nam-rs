@@ -1796,7 +1796,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. A função deve consultar a extensão via `host.shared().get_extension::<clack_extensions::thread_check::HostThreadCheck>()` e rodar `debug_assert!` validando que `is_main_thread(&host.shared())` retorna `true` ou `None`.
 - **Critério de aceite:** O helper compila com sucesso.
 
-### T21.4 — Inserir `debug_assert_main_thread` nos pontos críticos do CLAP [ ]
+### T21.4 — Inserir `debug_assert_main_thread` nos pontos críticos do CLAP [x]
 
 - **Arquivos:**
   - [`src/clap/extensions/state.rs`](src/clap/extensions/state.rs) (save, load)

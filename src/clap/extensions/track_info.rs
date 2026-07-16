@@ -4,11 +4,13 @@
 //! Implementation of the `clap_plugin_track_info` extension for NAM-rs.
 
 use crate::clap::plugin::NamClapMainThread;
+use crate::clap::plugin::debug_assert_main_thread;
 use clack_extensions::track_info::{PluginTrackInfo, PluginTrackInfoImpl};
 use std::sync::atomic::Ordering;
 
 impl<'a> PluginTrackInfoImpl for NamClapMainThread<'a> {
     fn changed(&self) {
+        debug_assert_main_thread(&self.host);
         if let Some(track_info_ext) = self
             .host
             .get_extension::<clack_extensions::track_info::HostTrackInfo>()

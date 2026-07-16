@@ -245,7 +245,6 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 /// Queries the host's `thread-check` extension and panics (debug-only) if
 /// the current thread is **not** the CLAP main thread.  When the host does
 /// not provide the extension the check is skipped silently.
-#[expect(dead_code, reason = "will be used in T21.4")]
 pub fn debug_assert_main_thread(host: &HostMainThreadHandle) {
     if let Some(check) = host
         .shared()

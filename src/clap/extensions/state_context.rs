@@ -11,6 +11,7 @@
 
 use crate::clap::extensions::params::bypass_bool_to_u32;
 use crate::clap::plugin::NamClapMainThread;
+use crate::clap::plugin::debug_assert_main_thread;
 use crate::common::diagnostics::NamDiagnostic;
 use crate::common::params::RtPluginParams;
 use clack_common::stream::{InputStream, OutputStream};
@@ -37,6 +38,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         output: &mut OutputStream,
         context_type: StateContextType,
     ) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         self.snapshot_params();
 
         let save_params = if context_type == StateContextType::ForPreset {
@@ -61,6 +63,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         input: &mut InputStream,
         context_type: StateContextType,
     ) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         let mut buffer = Vec::new();
         input
             .read_to_end(&mut buffer)

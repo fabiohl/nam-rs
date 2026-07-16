@@ -10,7 +10,7 @@ pub use shared::{
 };
 
 mod main_thread;
-pub use main_thread::NamClapMainThread;
+pub use main_thread::{NamClapMainThread, debug_assert_main_thread};
 
 use crate::clap::descriptor::nam_descriptor;
 use crate::clap::processor::NamClapProcessor;

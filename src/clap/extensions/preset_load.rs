@@ -11,6 +11,7 @@ use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 
 use crate::clap::plugin::NamClapMainThread;
+use crate::clap::plugin::debug_assert_main_thread;
 
 impl PluginPresetLoadImpl for NamClapMainThread<'_> {
     fn load_from_location(
@@ -18,6 +19,7 @@ impl PluginPresetLoadImpl for NamClapMainThread<'_> {
         location: Location,
         _load_key: Option<&CStr>,
     ) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         let path = match location {
             Location::File { path } => path,
             Location::Plugin => {

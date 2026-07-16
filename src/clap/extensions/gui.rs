@@ -5,6 +5,7 @@
 
 use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
 use crate::clap::plugin::NamClapMainThread;
+use crate::clap::plugin::debug_assert_main_thread;
 use clack_extensions::gui::{
     GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window,
 };
@@ -111,6 +112,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Creates and allocates resources for the graphical interface.
     fn create(&mut self, configuration: GuiConfiguration) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         if !self.is_api_supported(configuration) {
             return Err(PluginError::Message("GUI configuration not supported"));
         }
@@ -130,6 +132,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Frees the resources allocated for the graphical interface.
     fn destroy(&mut self) {
+        debug_assert_main_thread(&self.host);
         #[cfg(feature = "clap-plugin")]
         self.teardown_gui_resources();
     }
@@ -165,6 +168,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Sets the parent window (host) where the GUI should be embedded.
     fn set_parent(&mut self, _window: Window) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         #[cfg(feature = "clap-plugin")]
         {
             use crate::clap::gui::window::NamPluginWindow;
@@ -206,6 +210,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
     /// independent top-level window. Tracked for future improvement when baseview adds
     /// transient window capabilities.
     fn set_transient(&mut self, _window: Window) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         #[cfg(feature = "clap-plugin")]
         {
             use crate::clap::gui::window::NamPluginWindow;
@@ -269,11 +274,13 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Makes the GUI window visible.
     fn show(&mut self) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         Ok(())
     }
 
     /// Hides the GUI window.
     fn hide(&mut self) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         Ok(())
     }
 

@@ -9,6 +9,7 @@
 //! - v1 (current): envelope `StateEnvelope { version: 1, params: {...} }`.
 
 use crate::clap::extensions::params::bypass_bool_to_u32;
+use crate::clap::plugin::debug_assert_main_thread;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
@@ -70,6 +71,7 @@ fn migrate(version: u32, params: NamPluginParams) -> NamPluginParams {
 
 impl<'a> PluginStateImpl for NamClapMainThread<'a> {
     fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         self.snapshot_params();
 
         let serialized = serialize_envelope(&self.params)?;
@@ -82,6 +84,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
     }
 
     fn load(&mut self, input: &mut InputStream) -> Result<(), PluginError> {
+        debug_assert_main_thread(&self.host);
         let mut buffer = Vec::new();
         input
             .read_to_end(&mut buffer)
