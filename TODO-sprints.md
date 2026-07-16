@@ -1830,3 +1830,129 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - Executar `utils/lints.sh` e assegurar 0 erros/avisos.
 - Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.
+
+---
+
+## Épico EP-R9 — Robustez de carregamento e cobertura anti-regressão (R20 + R21)
+
+> **Origem:** [TODO-findings.md §EP-R9](TODO-findings.md#ep-r9--robustez-de-carregamento-e-cobertura-anti-regressao-r20--r21) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R20 (substituir `.expect()` por propagação de erro em `activate()` CLAP e nos dispatchers do loader); R21 (adicionar estratégias proptest adversariais para LSTM dinâmico, A2-Dynamic e SlimmableContainer).
+>
+> **Invariante absoluto:** sem alteração de comportamento de processamento de áudio em condições normais, zero aborts/panics em falhas de alocação de memória de host ou em carregamento de topologias inválidas.
+>
+> **Pré-requisito:** EP-R8 concluído.
+
+---
+
+## EP-R9 — Sumário dos Sprints
+
+| Sprint  | Finding                                                    | Risco | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S22** | R20 — Substituição de `.expect()` por propagação de erro   | Baixo | 5                | ~45 min    |
+| **S23** | R21 — Cobertura de proptests adversariais (LSTM/A2-D/Slim) | Baixo | 1                | ~30 min    |
+| **VF**  | Verificação final integrada EP-R9                          | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S22 — R20: Substituição de `.expect()` por propagação de erro em alocações de produção
+
+> **Ref:** [TODO-findings.md §R20](TODO-findings.md#r20--expect-residual-em-alocacoes-de-producao-loader--activate-clap--media)
+>
+> **Objetivo:** Eliminar pânicos residuais nas alocações de produção convertendo chamadas a `.expect()` em propagação limpa via `?`.
+
+### T22.1 — Propagar erro de alocação de buffers no processador CLAP [ ]
+
+- **Arquivo:** [`src/clap/processor/mod.rs`](src/clap/processor/mod.rs)
+- **Ação:**
+  1. Localizar as 12 ocorrências de `AlignedVec::new(buf_capacity, 0.0f32).expect(...)` na função `activate()`.
+  2. Substituí-las por tratamento de erro, convertendo o `NamErrorCode` resultante em `PluginError::Message` (usando `.map_err(...)?` ou similar).
+  3. Localizar a chamada a `ConvEngine::new(...).expect(...)`.
+  4. Tratar o erro de forma idêntica propagando via `?`.
+- **Critério de aceite:** `cargo check` passa; sem ocorrências de `.expect(` de produção no arquivo.
+
+### T22.2 — Propagar erro de alocação no dispatcher WaveNet Standard [ ]
+
+- **Arquivo:** [`src/loader/dispatcher/wavenet/standard.rs`](src/loader/dispatcher/wavenet/standard.rs)
+- **Ação:**
+  1. Localizar os construtores de `AlignedVec` que utilizam `.expect("allocation should succeed for test-sized buffers")` (4 ocorrências).
+  2. Substituir o `.expect(...)` por propagação direta via `?` (aproveitando que o retorno é `anyhow::Result`).
+- **Critério de aceite:** Sem ocorrências de `.expect(` no arquivo; `cargo check` passa.
+
+### T22.3 — Propagar erro de alocação no dispatcher WaveNet Dynamic [ ]
+
+- **Arquivo:** [`src/loader/dispatcher/wavenet/dynamic.rs`](src/loader/dispatcher/wavenet/dynamic.rs)
+- **Ação:**
+  1. Localizar os construtores de `AlignedVec` com `.expect(...)` (7 ocorrências).
+  2. Substituir por propagação direta via `?`.
+- **Critério de aceite:** Sem ocorrências de `.expect(` no arquivo; `cargo check` passa.
+
+### T22.4 — Propagar erro de alocação no dynamic builder do LSTM [ ]
+
+- **Arquivo:** [`src/loader/dispatcher/lstm/dynamic_builder.rs`](src/loader/dispatcher/lstm/dynamic_builder.rs)
+- **Ação:**
+  1. Localizar as duas alocações de `AlignedVec` com `.expect(...)` em `build_lstm_dynamic`.
+  2. Substituir por propagação direta via `?`.
+- **Critério de aceite:** Sem ocorrências de `.expect` no arquivo.
+
+### T22.5 — Propagar erro de alocação no dispatcher ConvNet [ ]
+
+- **Arquivo:** [`src/loader/dispatcher/convnet/mod.rs`](src/loader/dispatcher/convnet/mod.rs)
+- **Ação:**
+  1. Localizar as ocorrências de `AlignedVec` com `.expect(...)` (8 ocorrências).
+  2. Substituir por propagação direta via `?`.
+- **Critério de aceite:** Sem ocorrências de `.expect` no arquivo.
+
+---
+
+## Sprint S23 — R21: Cobertura de proptests adversariais
+
+> **Ref:** [TODO-findings.md §R21](TODO-findings.md#r21--lacuna-de-fuzzing-lstm-dinamico-a2-dynamic-e-slimmablecontainer-sem-estrategia-proptest-adversarial--media)
+>
+> **Objetivo:** Adicionar geradores de JSON de modelos proptest com dimensões de topologia fora dos limites tolerados para as arquiteturas que hoje não possuem cobertura estocástica adversarial.
+
+### T23.1 — Adicionar estratégia e teste adversarial para LSTM dinâmico [ ]
+
+- **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
+- **Ação:**
+  1. Implementar `adversarial_lstm_json_strategy() -> impl Strategy<Value = String>` que gere configurações de LSTM inválidas (ex.: `hidden_size` excedendo os limites ou incoerências).
+  2. Adicionar o teste `prop_fuzz_adversarial_lstm_dims` utilizando a estratégia e certificando que o parser/loader rejeita os modelos com erro ou os trata de forma controlada sem pânico/aborto.
+  3. Marcar o teste com `#[test]` e `#[ignore]`.
+- **Critério de aceite:** `cargo test` passa (com o teste ignorado por padrão).
+
+### T23.2 — Adicionar estratégia e teste adversarial para A2-Dynamic [ ]
+
+- **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
+- **Ação:**
+  1. Implementar `adversarial_a2_dynamic_json_strategy() -> impl Strategy<Value = String>` visando gerar topologias de WaveNet com tamanho de canais ou arranjos inválidos, simulando a topologia A2-Dynamic sob estresse.
+  2. Adicionar o teste `prop_fuzz_adversarial_a2_dynamic_dims` anotado com `#[test]` e `#[ignore]`.
+- **Critério de aceite:** Testes novos passam quando executados explicitamente.
+
+### T23.3 — Adicionar estratégia e teste adversarial para SlimmableContainer [ ]
+
+- **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
+- **Ação:**
+  1. Implementar `adversarial_container_json_strategy() -> impl Strategy<Value = String>` que gere JSONs de contêineres/submodelos excedendo profundidade de recursão ou número máximo de submodelos.
+  2. Adicionar o teste `prop_fuzz_adversarial_container_dims` anotado com `#[test]` e `#[ignore]`.
+- **Critério de aceite:** `cargo test` compila e os novos testes executam corretamente com `-- --ignored`.
+
+---
+
+## VF — Verificação Final Integrada EP-R9
+
+### VF9.1 — Lints e Compilação rápida
+
+- Executar `utils/lints.sh` e assegurar 0 erros/avisos.
+- Executar `utils/tests-quick.sh` e assegurar que tudo passa com sucesso.
+
+### VF9.2 — Execução explícita das estratégias adversariais
+
+- Executar individualmente os testes adicionados usando:
+
+  ```bash
+  cargo test --test models proptest_parsers::prop_fuzz_adversarial_lstm_dims -- --ignored
+  cargo test --test models proptest_parsers::prop_fuzz_adversarial_a2_dynamic_dims -- --ignored
+  cargo test --test models proptest_parsers::prop_fuzz_adversarial_container_dims -- --ignored
+  ```
+
+- Validar que nenhum causa falso-positivo ou pânico não tratado.

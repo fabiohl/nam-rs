@@ -1317,7 +1317,7 @@ ou substituir seus `log::*` por `RtStatusFlags` (R18). Critério de aceite: zero
 destruição durante criação de janela flutuante. Risco: baixo-médio (toca lifecycle CLAP e RT
 setup; mitigado por serem correções cirúrgicas de reordenação, não redesenho).
 
-### EP-R8 — Blindagem da fronteira CLAP host↔plugin (R19 + R24 + R25) [DOING]
+### EP-R8 — Blindagem da fronteira CLAP host↔plugin (R19 + R24 + R25) [DONE]
 
 Escopo: eliminar `as_main_thread_unchecked` em `track_info.rs` (R19); registrar extensão
 `thread-check` com `debug_assert!` nos pontos críticos (R24); padronizar tratamento de
@@ -1326,7 +1326,7 @@ Escopo: eliminar `as_main_thread_unchecked` em `track_info.rs` (R19); registrar 
 mostra apenas usos genuinamente necessários (idealmente zero); nenhum `if let Ok(...) else`
 silencioso remanescente em `housekeeping.rs`. Risco: baixo.
 
-### EP-R9 — Robustez de carregamento e cobertura anti-regressão (R20 + R21)
+### EP-R9 — Robustez de carregamento e cobertura anti-regressão (R20 + R21) [DOING]
 
 Escopo: substituir `.expect()` por propagação de erro em `activate()` CLAP e nos dispatchers
 do loader (R20); adicionar estratégias proptest adversariais para LSTM dinâmico, A2-Dynamic e
