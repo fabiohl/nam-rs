@@ -3,7 +3,7 @@
 
 use nam_rs::loader::nam_json::{
     NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
-    get_wavenet_topology, parse_nam_json,
+    get_lstm_topology, get_wavenet_topology, parse_nam_json,
 };
 use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee_update, parse_namb};
 use proptest::prelude::*;
@@ -11,8 +11,9 @@ use std::fs;
 
 use nam_rs::loader::nam_json::{
     MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE, MAX_DILATION, MAX_DILATIONS_PER_ARRAY,
-    MAX_HEAD_SIZE, MAX_KERNEL_SIZE, MAX_RECEPTIVE_FIELD, MAX_TOTAL_STATE_FRAMES,
-    MAX_WAVENET_ARRAYS, MAX_WAVENET_FREE_CHANNELS,
+    MAX_HEAD_SIZE, MAX_HIDDEN_SIZE, MAX_KERNEL_SIZE, MAX_LAYERS, MAX_LSTM_HIDDEN_SIZE,
+    MAX_LSTM_LAYERS, MAX_RECEPTIVE_FIELD, MAX_TOTAL_STATE_FRAMES, MAX_WAVENET_ARRAYS,
+    MAX_WAVENET_FREE_CHANNELS,
 };
 
 // Fuzz 1: Sends fully arbitrary bytes to the JSON parser.
@@ -880,6 +881,163 @@ fn adversarial_state_budget_strategy() -> impl Strategy<Value = String> {
         })
 }
 
+// ---------------------------------------------------------------------------
+// T23.1 — Adversarial LSTM dimensions: hidden_size, num_layers, channels,
+//         weight count, missing fields — ensure Err/None, never abort/panic.
+// ---------------------------------------------------------------------------
+
+/// Strategy: generates an LSTM model JSON with one or more adversarial
+/// dimension fields (hidden_size, num_layers exceeding bounds, in/out channels,
+/// layers count, missing fields, weight mismatch).
+fn adversarial_lstm_json_strategy() -> impl Strategy<Value = String> {
+    (any::<usize>(), any::<usize>(), any::<usize>()).prop_map(|(raw, _seed, pattern)| {
+        use MAX_LSTM_HIDDEN_SIZE as MHS;
+        use MAX_LSTM_LAYERS as MLL;
+
+        match pattern % 8 {
+            0 => {
+                let hs = MHS + 1 + (raw % 2048);
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": {
+                        "num_layers": 2,
+                        "hidden_size": hs.min(usize::MAX / 4096),
+                        "in_channels": 1,
+                        "out_channels": 1
+                    },
+                    "weights": vec![0.0f32; 16],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+            1 => {
+                let nl = MLL + 1 + (raw % 128);
+                let hs = 4usize;
+                let wt = nam_rs::models::lstm::lstm_weight_count(nl.min(256), hs);
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": {
+                        "num_layers": nl.min(1024),
+                        "hidden_size": hs,
+                        "in_channels": 1,
+                        "out_channels": 1
+                    },
+                    "weights": vec![0.0f32; wt.min(65536)],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+            2 => serde_json::to_string(&serde_json::json!({
+                "version": "0.5.4",
+                "architecture": "LSTM",
+                "config": {
+                    "num_layers": 0,
+                    "hidden_size": 4,
+                    "in_channels": 1,
+                    "out_channels": 1
+                },
+                "weights": vec![0.0f32; 16],
+                "sample_rate": 48000
+            }))
+            .unwrap(),
+            3 => {
+                let hs = MAX_HIDDEN_SIZE + 1 + (raw % 2048);
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": {
+                        "num_layers": 2,
+                        "hidden_size": hs.min(usize::MAX / 4096),
+                        "in_channels": 1,
+                        "out_channels": 1
+                    },
+                    "weights": vec![0.0f32; 16],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+            4 => {
+                let layers: Vec<serde_json::Value> = (0..(MAX_LAYERS + 1 + (raw % 16)))
+                    .map(|_| serde_json::json!({"input_size": 4, "output_size": 4}))
+                    .collect();
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": {
+                        "num_layers": 1,
+                        "hidden_size": 4,
+                        "in_channels": 1,
+                        "out_channels": 1,
+                        "layers": layers
+                    },
+                    "weights": vec![0.0f32; 16],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+            5 => {
+                let ch = 2usize + (raw % 8);
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": {
+                        "num_layers": 2,
+                        "hidden_size": 4,
+                        "in_channels": ch,
+                        "out_channels": ch
+                    },
+                    "weights": vec![0.0f32; 16],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+            6 => {
+                let missing = raw % 2 == 0;
+                let mut cfg = serde_json::json!({
+                    "num_layers": 2,
+                    "hidden_size": 4,
+                    "in_channels": 1,
+                    "out_channels": 1
+                });
+                if missing {
+                    cfg.as_object_mut().unwrap().remove("num_layers");
+                } else {
+                    cfg.as_object_mut().unwrap().remove("hidden_size");
+                }
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": cfg,
+                    "weights": vec![0.0f32; 16],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+            _ => {
+                let nl = MLL + 1 + (raw % 32);
+                let hs = MHS + 1 + (_seed % 2048);
+                let wt =
+                    nam_rs::models::lstm::lstm_weight_count(nl.min(MLL + 128), hs.min(MHS + 2048));
+                serde_json::to_string(&serde_json::json!({
+                    "version": "0.5.4",
+                    "architecture": "LSTM",
+                    "config": {
+                        "num_layers": nl.min(1024),
+                        "hidden_size": hs.min(usize::MAX / 4096),
+                        "in_channels": 1,
+                        "out_channels": 1
+                    },
+                    "weights": vec![0.0f32; wt.min(65536)],
+                    "sample_rate": 48000
+                }))
+                .unwrap()
+            }
+        }
+    })
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
@@ -953,6 +1111,32 @@ proptest! {
             // Adversarial receptive_field should be rejected (None)
             assert!(topo.is_none(),
                 "Linear with adversarial receptive_field should be rejected, got: {topo:?}");
+        }
+    }
+
+    /// T23.1 — Adversarial LSTM dimensions: ensures topology detection rejects
+    /// models with hidden_size, num_layers, channels, layers count, missing
+    /// fields, or weight mismatches exceeding safe bounds (never abort/panic).
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_lstm_dims(json_str in adversarial_lstm_json_strategy()) {
+        if let Ok(parsed) = parse_nam_json(&json_str) {
+            let result = get_lstm_topology(&parsed);
+            match result {
+                Ok(Some((nl, hs))) => {
+                    panic!(
+                        "adversarial LSTM should not resolve valid topology \
+                         (num_layers={nl}, hidden_size={hs})"
+                    );
+                }
+                Ok(None) => {
+                    // Expected: topology detection rejects the model
+                }
+                Err(e) => {
+                    // Also acceptable: explicit error from validation
+                    let _ = e;
+                }
+            }
         }
     }
 

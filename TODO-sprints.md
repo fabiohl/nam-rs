@@ -1911,7 +1911,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Adicionar geradores de JSON de modelos proptest com dimensões de topologia fora dos limites tolerados para as arquiteturas que hoje não possuem cobertura estocástica adversarial.
 
-### T23.1 — Adicionar estratégia e teste adversarial para LSTM dinâmico [ ]
+### T23.1 — Adicionar estratégia e teste adversarial para LSTM dinâmico [x]
 
 - **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
 - **Ação:**
