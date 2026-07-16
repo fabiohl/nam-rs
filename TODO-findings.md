@@ -679,7 +679,7 @@ Escopo: `Arc<DialogSharedState>` nas threads de diálogo + join com deadline no 
   trânsito) verdes no tests-long; `clap-validator` completo sem regressão. Risco: médio
   (lifecycle CLAP tem sutilezas de thread; usar o harness `clack-host` já existente).
 
-### EP-R3 — Formalização da concorrência (R8 completo + P1) [DOING]
+### EP-R3 — Formalização da concorrência (R8 completo + P1) [DONE]
 
 Escopo: aplicar a tabela R8 (8 correções de uma linha + comentários de pareamento) e
 introduzir os testes `loom` dos 3 protocolos (P1). Ordem interna: primeiro loom modelando o
@@ -687,7 +687,7 @@ estado **atual** (deve falhar em R8-a/b/f — prova do achado), depois as corre�
 Critério: `cargo test --cfg loom` (job novo no tests-long) verde; zero mudança de asm nos hot
 paths x86 (conferir com P4/dsp_hotpath.asm). Risco: baixo.
 
-### EP-R4 — Blindagem da malha de QA (R6 + R7 + R4 + R5)
+### EP-R4 — Blindagem da malha de QA (R6 + R7 + R4 + R5) [DOING]
 
 Escopo: chave composta exata no contrato + meta-teste de prefixo (R6); gate "≥1 passed" em
 todas as fases do tests-long (R7); panic hook zero-alloc com snapshot pré-capturado (R4);

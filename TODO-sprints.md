@@ -1112,3 +1112,207 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 | `loom` trava ou atinge limite de iterações em CI     | Configurar limites adequados no loom (`LOOM_MAX_PREEMPTIONS` se necessário); manter os modelos de teste simples e enxutos |
 | `fetch_add(AcqRel)` no GC impacta desempenho do RT   | Operação não-bloqueante; caminho de overflow é alternativo (raramente executado no hot path)                              |
 | Divergência entre modelo `loom` e código de produção | Manter os modelos atômicos nos testes 100% fiéis à topologia implementada em produção                                     |
+
+---
+
+## Épico EP-R4 — Blindagem da malha de QA
+
+> **Origem:** [TODO-findings.md §EP-R4](TODO-findings.md#ep-r4--blindagem-da-malha-de-qa-r6--r7--r4--r5) (Auditoria de Resiliência & Robustez, 2026-07-14)
+>
+> **Escopo:** R6 (Contrato de qualidade, **ALTA**) + R7 (Gate de testes no tests-long, **ALTA**) + R4 (Panic hook sem alocação/deadlocks, **ALTA**) + R5 (Zero logs em RT, **ALTA**).
+>
+> **Pré-requisito:** EP-R3 concluído e `quality-dashboard.sh --check` verde.
+>
+> **Invariante absoluto:** zero alteração de comportamento sonoro. Critério de aceite global: `quality-dashboard.sh --check` sem diff de um único número no contrato original (após regravação sem truncamento). Risco: baixo.
+
+---
+
+## EP-R4 — Sumário dos Sprints
+
+| Sprint  | Finding                                              | Risco | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S11** | R6 — Contrato de qualidade: matching exato           | Baixo | 2                | ~45 min    |
+| **S12** | R7 — tests-long: Gate "≥1 passed" obrigatório        | Baixo | 1                | ~30 min    |
+| **S13** | R4 — Panic hook zero-alloc e deadlock-free           | Médio | 2                | ~60 min    |
+| **S14** | R5 — Zero logs em RT & Meta-testes estruturais       | Médio | 8                | ~90 min    |
+| **VF**  | Verificação final integrada EP-R4                    | —     | 0                | ~15 min    |
+
+---
+
+## Sprint S11 — R6: Contrato de qualidade com matching exato e composto
+
+> **Ref:** [TODO-findings.md §R6](TODO-findings.md#r6--contrato-de-qualidade-matching-por-prefixo-colide-quick-a2-full--quick-a2-full-v2--verificação-falso-verde--alta) (L269-308)
+>
+> **Objetivo:** Eliminar colisões por prefixo na verificação do contrato de qualidade de áudio (`quality-dashboard.sh`), removendo o truncamento na persistência de dados e aplicando casamento exato.
+>
+> **Risco:** Baixo. Modificações limitadas ao script de validação de qualidade e meta-testes.
+
+### T11.1 — Evitar truncamento de colunas ao salvar contrato
+
+- **Arquivo:** [`utils/quality-dashboard.sh`](utils/quality-dashboard.sh)
+- **Ação:**
+  1. Adicionar `export IS_SAVING=1` dentro da função `render_dashboard_plain`.
+  2. Em `render_fidelity_details`, condicionar o cálculo da variável `display_key`: se `IS_SAVING` for igual a `1`, usar a chave completa do modelo (`key`), sem truncar em 38 colunas. Caso contrário, manter o truncamento em `${key:0:38}` para visualização amigável no console.
+- **Critério de aceite:** `quality-dashboard.sh --save` grava as linhas da tabela de fidelidade com os nomes dos modelos completos na primeira coluna.
+
+### T11.2 — Modificar matching para chave exata e composta
+
+- **Arquivo:** [`utils/quality-dashboard.sh`](utils/quality-dashboard.sh)
+- **Ação:**
+  1. No loop de verificação de contrato em `load_contract_baseline`, ler o identificador completo.
+  2. Em `quality_check`, fazer a verificação de igualdade exata de strings (`[[ "$dash_key" == "$contract_label" ]]`) em substituição à lógica de prefixo anterior (`[[ "$dash_label" == "$contract_label"* ]]`).
+- **Critério de aceite:** Matching de baseline do contrato opera de forma exata e não confunde mais chaves como `Quick A2-Full` e `Quick A2-Full v2`.
+
+### T11.3 — Adicionar meta-teste de unicidade do contrato
+
+- **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs)
+- **Ação:**
+  1. Implementar o teste `test_quality_contract_uniqueness`.
+  2. O teste deve ler o arquivo `docs/quality-contract.txt`, extrair todos os labels da tabela de fidelidade e garantir que nenhum deles seja prefixo de outro (evitando futuras ambiguidades).
+- **Critério de aceite:** `cargo test --test meta_coherence` passa.
+
+---
+
+## Sprint S12 — R7: Gate "≥1 passed" obrigatório no `tests-long.sh`
+
+> **Ref:** [TODO-findings.md §R7](TODO-findings.md#r7--fase-pipewire-do-tests-longsh-aviso-de-falso-verde-é-sintoma-de-detecção-incapaz-de-distinguir-rápido-de-vazio--alta) (L310-340)
+>
+> **Objetivo:** Prevenir falsos-verdes perpétuos em `tests-long.sh` decorrentes de renomeações ou seleções vazias de testes/benchmarks, forçando cada fase a executar no mínimo 1 teste.
+>
+> **Risco:** Baixo. Alteração puramente do harness de testes.
+
+### T12.1 — Implementar validador `assert_ran_tests` em `tests-long.sh`
+
+- **Arquivo:** [`utils/tests-long.sh`](utils/tests-long.sh)
+- **Ação:**
+  1. Criar a função utilitária `assert_ran_tests` que analisa o log da fase atual em `target/logs/$log_file`.
+  2. Fazer o parse dos sumários de teste (`test result: ok. [0-9]+ passed`) ou benchmark (`[0-9]+ measured`) e somá-los.
+  3. Falhar se a soma for zero, com mensagem descritiva de "seleção de testes vazia".
+- **Critério de aceite:** A função é capaz de determinar corretamente se testes reais rodaram e passaram.
+
+### T12.2 — Integrar o gate de testes em todas as fases do `tests-long.sh`
+
+- **Arquivo:** [`utils/tests-long.sh`](utils/tests-long.sh)
+- **Ação:**
+  1. Em `run_phase`, quando o comando da fase retornar sucesso (status 0), chamar `assert_ran_tests`.
+  2. Se retornar erro de testes não executados, mudar o status da fase para falha e retornar 1.
+  3. Remover o aviso `< 1s` genérico anterior.
+- **Critério de aceite:** Fases vazias (como a fase Pipewire se não houvesse testes) falham o pipeline em vez de passar como falso-verde.
+
+---
+
+## Sprint S13 — R4: Panic hook robusto, zero-alloc e deadlock-free
+
+> **Ref:** [TODO-findings.md §R4](TODO-findings.md#r4--panic-hook-aloca-heap-e-adquire-rwlock-no-caminho-de-crash--pode-deadlockar-exatamente-quando-mais-se-precisa-dele--alta) (L206-235)
+>
+> **Objetivo:** Eliminar alocações de heap e RwLock bloqueantes no caminho de pânico da thread RT para evitar deadlocks e garantir a captura do crash report em qualquer circunstância.
+>
+> **Risco:** Médio. Toca a captura de diagnóstico no crash de produção.
+
+### T13.1 — Pre-capturar `SystemSnapshot` estaticamente
+
+- **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
+- **Ação:**
+  1. Declarar `static SYSTEM_SNAPSHOT: OnceLock<SystemSnapshot>`.
+  2. Inicializá-la no `install_panic_hook` chamando `SystemSnapshot::capture()` (caminho off-RT de inicialização do plugin).
+- **Critério de aceite:** Snapshot de sistema capturado em startup, sem tocar no alocador global durante o pânico.
+
+### T13.2 — Criar formatador do crash report zero-alloc com `LimitWriter`
+
+- **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
+- **Ação:**
+  1. Definir a struct `LimitWriter<'a>` que encapsula `&mut [u8]` e um cursor.
+  2. Implementar `std::fmt::Write` para `LimitWriter` com truncamento silencioso se estourar o limite.
+  3. Implementar a função `format_panic_report_to_buf` que recebe os metadados do panic e preenche o buffer sem usar `format!` ou outras macros geradoras de String.
+  4. Substituir a leitura bloqueante de RwLock por `try_read()` com fallback `"<unavailable>"`.
+- **Critério de aceite:** Função de formatação do report compila e opera puramente em memória da pilha.
+
+### T13.3 — Atualizar o manipulador do Panic Hook
+
+- **Arquivo:** [`src/common/panic_hook.rs`](src/common/panic_hook.rs)
+- **Ação:**
+  1. No hook de pânico, alocar uma array `[u8; 4096]` na stack.
+  2. Invocar `format_panic_report_to_buf` para formatar os detalhes e o snapshot do sistema no buffer.
+  3. Gravar os bytes resultantes diretamente para o arquivo `.cache` usando `std::fs::File` (e `write_all`).
+- **Critério de aceite:** O arquivo de crash report é escrito corretamente com dados válidos e sem alocar memória no heap.
+
+### T13.4 — Adicionar teste de auditoria de heap para o panic hook
+
+- **Arquivo:** [`tests/models/diagnostic_bundle.rs`](tests/models/diagnostic_bundle.rs)
+- **Ação:**
+  1. Adicionar o teste `test_panic_hook_zero_alloc` no módulo `heap_audit_tests` (condicionado por `#[cfg(feature = "heap-audit")]`).
+  2. Utilizar `TrackingGuard` e `get_alloc_count` para assegurar que a chamada a `format_panic_report_to_buf` executa com **zero alocações no heap**.
+- **Critério de aceite:** O teste de heap-audit passa.
+
+---
+
+## Sprint S14 — R5: Eliminação de logs em RT e novos meta-testes estruturais
+
+> **Ref:** [TODO-findings.md §R5](TODO-findings.md#r5--logerror-alcançável-no-thread-rt-via-containermodelset_slimmable_size--alta) (L237-267)
+>
+> **Objetivo:** Remover a chamada a `log::error!` da thread em tempo real no `ContainerModel` (que causava I/O de disco/formatação de string bloqueante), substituindo-a por sinalização atômica traduzida assincronamente na thread de housekeeping.
+>
+> **Risco:** Médio. Altera a assinatura do pipeline de DSP e os tratamentos de erro.
+
+### T14.1 — Definir novo bit `RT_STATUS_SLIMMABLE_RESET_FAILED`
+
+- **Arquivo:** [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
+- **Ação:** Adicionar `pub const RT_STATUS_SLIMMABLE_RESET_FAILED: u64 = 1 << 21;`.
+- **Critério de aceite:** Nova flag compilável no módulo de status.
+
+### T14.2 — Alterar assinatura e comportamento do quality scaling do DSP
+
+- **Arquivos:**
+  - [`src/models/slimmable.rs`](src/models/slimmable.rs)
+  - [`src/models/container.rs`](src/models/container.rs)
+  - [`src/models/static_model.rs`](src/models/static_model.rs)
+  - [`src/dsp/pipeline/stages/inference.rs`](src/dsp/pipeline/stages/inference.rs)
+- **Ação:**
+  1. Mudar a assinatura de `SlimmableModel::set_slimmable_size` para incluir `rt_status: Option<&RtStatusFlags>`.
+  2. Propagar essa mudança na impl de `StaticModel` e em `inference.rs` (adicionando `rt_status` em `configure_adaptive_model` extraído do `DspPipelineContext`).
+  3. No `ContainerModel::set_slimmable_size`, remover o `log::error!` e substituí-lo por `rt_status.map(|s| s.set_flag(RT_STATUS_SLIMMABLE_RESET_FAILED));` caso o `reset` do submodelo falhe.
+- **Critério de aceite:** O pipeline compila normalmente com a nova assinatura e sem logs ativos na inferência do container.
+
+### T14.3 — Emitir o log de erro assincronamente na thread principal
+
+- **Arquivos:**
+  - [`src/clap/plugin/main_thread/housekeeping.rs`](src/clap/plugin/main_thread/housekeeping.rs)
+  - [`src/standalone/rt_setup/telemetry.rs`](src/standalone/rt_setup/telemetry.rs)
+- **Ação:**
+  1. Em `housekeeping.rs` (CLAP) e `telemetry.rs` (standalone), checar periodicamente se o bit `RT_STATUS_SLIMMABLE_RESET_FAILED` está setado e limpá-lo.
+  2. Em caso positivo, disparar o log de erro correspondente com o log do host CLAP ou `log::error!` standalone.
+- **Critério de aceite:** Falhas de reset no container são notificadas ao usuário a partir de threads seguras.
+
+### T14.4 — Adicionar meta-teste estrutural de logging RT-safe
+
+- **Arquivo:** [`tests/models/meta_coherence.rs`](tests/models/meta_coherence.rs)
+- **Ação:**
+  1. Implementar o teste `test_rt_logging_safety` que inspeciona os códigos-fonte da hot-path de DSP (`src/dsp/`, `src/models/`, `src/math/`) e falha caso encontre substrings como `log::`, `println!`, `eprintln!`, `format!` fora de funções construtoras, testes ou blocos explicitamente marcados com `#[cold]`.
+- **Critério de aceite:** O teste de sanidade estática compila e passa.
+
+---
+
+## VF — Verificação Final Integrada EP-R4
+
+### VF4.1 — Lints completos
+
+- Executar `utils/lints.sh` e garantir zero erros ou avisos.
+
+### VF4.2 — Suite rápida completa
+
+- Executar `utils/tests-quick.sh` e comprovar sucesso total dos testes rápidos e novos meta-testes.
+
+### VF4.3 — Regravar o contrato de qualidade
+
+- Executar `./utils/quality-dashboard.sh --save docs/quality-contract.txt` para regravar o contrato com os novos identificadores sem truncamento.
+- Executar `./utils/quality-dashboard.sh --check docs/quality-contract.txt` e verificar conformidade exata e sem diffs.
+
+---
+
+## Notas de risco e mitigação (EP-R4)
+
+| Risco | Mitigação |
+| --- | --- |
+| Buffer de pânico de 4096 bytes é insuficiente | O `LimitWriter` trunca de forma silenciosa e limpa, mantendo o início do report intacto, sem risco de estourar a pilha ou falhar por erro de alocação. |
+| Remoção do matching por prefixo quebrar compatibilidade | As chaves salvas são geradas exatamente a partir da mesma fonte JSONL de dados, garantindo equivalência exata de strings. |
+| Alteração no trait SlimmableModel causar regressions em plugins de terceiros | O trait é marcado como interno do módulo de modelos (`pub(crate)` ou não exportado para FFI), sendo seguro alterar internamente. |
