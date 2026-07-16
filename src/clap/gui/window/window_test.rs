@@ -77,22 +77,23 @@ fn test_get_valid_model_file_multiple_mixed() {
 
 #[test]
 fn test_gui_drag_drop_fuzz() {
-    use crate::clap::plugin::NamClapShared;
     use crate::clap::plugin::make_test_shared;
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
     let shared = Arc::new(make_test_shared());
 
-    let shared_ref = NamClapSharedRef(&*shared as *const NamClapShared);
+    // SAFETY: `&*shared` is a valid, non-null pointer into the Arc.
+    // The Arc is kept alive for the duration of the test.
+    let shared_ref = unsafe { NamClapSharedRef::new(&*shared) };
     let alive_fence = Arc::clone(&shared.cold.alive_fence);
 
     // Simulates the safe_shared helper logic for drag-drop:
     let check_and_drop =
         |alive: &Arc<std::sync::atomic::AtomicBool>, s_ref: NamClapSharedRef, path: PathBuf| {
             if alive.load(Ordering::Relaxed) {
-                // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-                let s = unsafe { &*s_ref.0 };
+                // SAFETY: alive=true ensures the pointer is still valid.
+                let s = unsafe { s_ref.as_ref() };
                 if let Ok(mut pending_guard) = s.cold.ui_pending_model.lock() {
                     *pending_guard = Some(path);
                     s.cold.ui_loading.store(true, Ordering::Relaxed);

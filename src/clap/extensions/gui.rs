@@ -74,7 +74,9 @@ impl<'a> NamClapMainThread<'a> {
         clack_plugin::host::HostSharedHandle<'static>,
         crate::clap::plugin::NamClapSharedRef,
     ) {
-        let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
+        // SAFETY: `self.shared` is a valid reference to the live plugin shared state.
+        // The caller guarantees the window is closed before plugin destruction (see fn doc).
+        let shared_ptr = unsafe { crate::clap::plugin::NamClapSharedRef::new(self.shared) };
         let host_shared = self.host.shared();
         let host_static: clack_plugin::host::HostSharedHandle<'static> =
             unsafe { crate::clap::gui::extend_host_lifetime(host_shared) };

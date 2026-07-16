@@ -69,8 +69,12 @@ pub struct NamModelMetadata {
 }
 
 /// Safe wrapper for a NamClapShared pointer passed to the GUI thread.
+///
+/// Encapsulates a `NonNull<NamClapShared>` privately so the pointer is never
+/// exposed directly. Access is mediated through [`as_ptr`] and [`as_ref`],
+/// with the SAFETY contract clearly documented at each call site.
 #[derive(Clone, Copy)]
-pub struct NamClapSharedRef(pub *const NamClapShared);
+pub struct NamClapSharedRef(std::ptr::NonNull<NamClapShared>);
 
 // SAFETY: the pointer is obtained from a leaked `Arc` — the pointee is
 // never deallocated while the process runs. All interior mutation uses
@@ -79,6 +83,42 @@ pub struct NamClapSharedRef(pub *const NamClapShared);
 // allows reading the pointer itself (not dereferencing the pointee).
 unsafe impl Send for NamClapSharedRef {}
 unsafe impl Sync for NamClapSharedRef {}
+
+impl NamClapSharedRef {
+    /// Creates a new `NamClapSharedRef` from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// The pointer must be valid, non-null, and obtained from a leaked `Arc<NamClapShared>`.
+    /// The pointee must outlive all uses of this wrapper.
+    #[inline]
+    pub unsafe fn new(ptr: *const NamClapShared) -> Self {
+        let nn = std::ptr::NonNull::new(ptr as *mut NamClapShared)
+            .expect("NamClapSharedRef::new: pointer must not be null");
+        Self(nn)
+    }
+
+    /// Returns the raw pointer without dereferencing it.
+    ///
+    /// Use this only for FFI or type-erased storage; use [`as_ref`](Self::as_ref)
+    /// for safe access to the shared state.
+    #[inline]
+    pub fn as_ptr(&self) -> *const NamClapShared {
+        self.0.as_ptr()
+    }
+
+    /// Returns a static reference to the shared state.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the `alive_fence` is active (see
+    /// `NamPluginWindow::safe_shared`) — the returned reference can
+    /// outlive the plugin if the fence is not checked.
+    #[inline]
+    pub unsafe fn as_ref(&self) -> &'static NamClapShared {
+        unsafe { self.0.as_ref() }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Cache-line-isolated sub-structs grouped by access pattern

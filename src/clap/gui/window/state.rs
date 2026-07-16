@@ -176,7 +176,7 @@ impl NamPluginWindow {
             // pairs with Release store em plugin/shared.rs:262
             // SAFETY: If alive_fence is true, the plugin and its shared state
             // are still alive in memory, so the pointer is valid.
-            unsafe { Some(&*self.shared.0) }
+            unsafe { Some(self.shared.as_ref()) }
         } else {
             None
         }
@@ -230,7 +230,9 @@ mod tests {
         use std::sync::atomic::Ordering;
 
         let shared = Arc::new(make_test_shared());
-        let shared_ref = NamClapSharedRef(&*shared as *const NamClapShared);
+        // SAFETY: `&*shared` is a valid, non-null pointer into the Arc.
+        // The Arc is kept alive for the duration of the test.
+        let shared_ref = unsafe { NamClapSharedRef::new(&*shared) };
         let alive_fence = Arc::clone(&shared.cold.alive_fence);
 
         // Emulates the accessor logic of safe_shared()
@@ -238,7 +240,7 @@ mod tests {
             |fence: &Arc<AtomicBool>, sref: NamClapSharedRef| -> Option<&'static NamClapShared> {
                 if fence.load(Ordering::Acquire) {
                     // SAFETY: fence Acquire ensures the shared state is still alive
-                    unsafe { Some(&*sref.0) }
+                    unsafe { Some(sref.as_ref()) }
                 } else {
                     None
                 }
