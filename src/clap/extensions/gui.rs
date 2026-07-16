@@ -179,8 +179,18 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             let close_signal = Arc::new(AtomicBool::new(false));
             let cs = Arc::clone(&close_signal);
 
+            let alive_fence = self.shared.cold.alive_fence.clone();
+            let scale_factor = {
+                let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
+                if stored == 0 {
+                    1.0f32
+                } else {
+                    f32::from_bits(stored)
+                }
+            };
+
             let window_handle = baseview::Window::open_parented(&_window, options, move |win| {
-                NamPluginWindow::new(win, shared_ptr, host_static, cs)
+                NamPluginWindow::new(win, shared_ptr, host_static, cs, alive_fence, scale_factor)
             });
 
             self.window_handle = Some(window_handle);
@@ -210,9 +220,26 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             let window_ready = Arc::new(AtomicBool::new(false));
             let ready = Arc::clone(&window_ready);
 
+            let alive_fence = self.shared.cold.alive_fence.clone();
+            let scale_factor = {
+                let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
+                if stored == 0 {
+                    1.0f32
+                } else {
+                    f32::from_bits(stored)
+                }
+            };
+
             let handle = std::thread::spawn(move || {
                 baseview::Window::open_blocking(options, move |win| {
-                    let window = NamPluginWindow::new(win, shared_ptr, host_static, cs);
+                    let window = NamPluginWindow::new(
+                        win,
+                        shared_ptr,
+                        host_static,
+                        cs,
+                        alive_fence,
+                        scale_factor,
+                    );
                     ready.store(true, Ordering::Relaxed);
                     window
                 });

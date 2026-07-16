@@ -66,6 +66,8 @@ impl NamPluginWindow {
         shared: NamClapSharedRef,
         host: clack_plugin::host::HostSharedHandle<'static>,
         close_signal: Arc<AtomicBool>,
+        alive_fence: Arc<std::sync::atomic::AtomicBool>,
+        scale_factor: f32,
     ) -> Self {
         if let (true, Some(log), Ok(c_msg)) = (
             std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland"),
@@ -130,21 +132,7 @@ impl NamPluginWindow {
 
         let width = crate::clap::gui::GUI_WIDTH;
         let height = crate::clap::gui::GUI_HEIGHT;
-        let scale = {
-            // SAFETY: shared.0 is valid during window construction — the plugin
-            // outlives the GUI thread (enforced by extend_host_lifetime).
-            let stored = unsafe {
-                (*shared.0)
-                    .cold
-                    .gui_scale_factor
-                    .load(std::sync::atomic::Ordering::Relaxed)
-            };
-            if stored == 0 {
-                1.0f32
-            } else {
-                f32::from_bits(stored)
-            }
-        };
+        let scale = scale_factor;
 
         let mut raw_input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -163,9 +151,6 @@ impl NamPluginWindow {
             vu_vao,
             ..Default::default()
         };
-
-        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-        let alive_fence = unsafe { &*shared.0 }.cold.alive_fence.clone();
 
         Self {
             egui_ctx,

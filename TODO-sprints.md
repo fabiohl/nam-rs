@@ -1707,7 +1707,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. No caso de sucesso de escalonamento RT e afinidade, imprimir a mensagem detalhada de otimização de thread clássica com cores adequadas.
 - **Critério de aceite:** Compilação com sucesso e logs de inicialização visíveis e corretos no standalone.
 
-### T20.4 — Extrair `alive_fence` e escala no main thread CLAP [ ]
+### T20.4 — Extrair `alive_fence` e escala no main thread CLAP [x]
 
 - **Arquivo:** [`src/clap/extensions/gui.rs`](src/clap/extensions/gui.rs)
 - **Ação:**
