@@ -35,17 +35,20 @@ impl PluginPresetLoadImpl for NamClapMainThread<'_> {
         let path_buf = PathBuf::from(path_str);
 
         // Enqueue the model for loading via the existing pipeline (same as GUI/drag-drop).
-        if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock() {
-            *pending_guard = Some(path_buf);
-            self.shared
-                .cold
-                .ui_loading
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-        } else {
-            return Err(PluginError::Message(
-                "Failed to acquire ui_pending_model lock",
-            ));
-        }
+        let mut pending_guard = self
+            .shared
+            .cold
+            .ui_pending_model
+            .lock()
+            .unwrap_or_else(|e| {
+                log::error!("PoisonError in ui_pending_model lock: {e:?}");
+                e.into_inner()
+            });
+        *pending_guard = Some(path_buf);
+        self.shared
+            .cold
+            .ui_loading
+            .store(true, std::sync::atomic::Ordering::Relaxed);
 
         self.host.shared().request_callback();
 

@@ -1807,7 +1807,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Invocar o helper `debug_assert_main_thread` no início de cada um dos métodos para assegurar a corretude do threading da chamada vinda do host em builds debug.
 - **Critério de aceite:** `cargo check` passa em todos os arquivos modificados.
 
-### T21.5 — Tratar `PoisonError` graciosamente nos locks de `ColdShared` [ ]
+### T21.5 — Tratar `PoisonError` graciosamente nos locks de `ColdShared` [x]
 
 - **Arquivos:**
   - [`src/clap/plugin/main_thread/housekeeping.rs`](src/clap/plugin/main_thread/housekeeping.rs)

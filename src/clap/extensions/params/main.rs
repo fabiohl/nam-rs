@@ -220,14 +220,14 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 }
             }
             PARAM_ACTIVE_MODEL => {
-                let name = if let Ok(guard) = self.shared.cold.ui_model_name.lock() {
-                    if guard.is_empty() {
-                        "None".to_string()
-                    } else {
-                        guard.clone()
-                    }
-                } else {
+                let guard = self.shared.cold.ui_model_name.lock().unwrap_or_else(|e| {
+                    log::error!("PoisonError in ui_model_name lock: {e:?}");
+                    e.into_inner()
+                });
+                let name = if guard.is_empty() {
                     "None".to_string()
+                } else {
+                    guard.clone()
                 };
                 writer.write_str(&name)
             }
@@ -268,14 +268,14 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 _ => None,
             },
             PARAM_ACTIVE_MODEL => {
-                let current_name = if let Ok(guard) = self.shared.cold.ui_model_name.lock() {
-                    if guard.is_empty() {
-                        "None".to_string()
-                    } else {
-                        guard.clone()
-                    }
-                } else {
+                let guard = self.shared.cold.ui_model_name.lock().unwrap_or_else(|e| {
+                    log::error!("PoisonError in ui_model_name lock: {e:?}");
+                    e.into_inner()
+                });
+                let current_name = if guard.is_empty() {
                     "None".to_string()
+                } else {
+                    guard.clone()
                 };
 
                 if text_str == current_name {

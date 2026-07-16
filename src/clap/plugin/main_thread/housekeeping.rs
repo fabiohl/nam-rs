@@ -176,21 +176,36 @@ impl<'a> NamClapMainThread<'a> {
         }
 
         // Propagate dialog_state → ui_pending_model (R2: Arc-backed, UAF-safe)
-        if let Some(dialog_state) = self.shared.cold.dialog_state.as_ref()
-            && let Ok(mut dialog_guard) = dialog_state.pending_model.lock()
-            && let Some(path) = dialog_guard.take()
-            && let Ok(mut ui_guard) = self.shared.cold.ui_pending_model.lock()
-        {
-            *ui_guard = Some(path);
+        if let Some(dialog_state) = self.shared.cold.dialog_state.as_ref() {
+            let mut dialog_guard = dialog_state.pending_model.lock().unwrap_or_else(|e| {
+                log::error!("PoisonError in dialog_state.pending_model lock: {e:?}");
+                e.into_inner()
+            });
+            if let Some(path) = dialog_guard.take() {
+                let mut ui_guard = self
+                    .shared
+                    .cold
+                    .ui_pending_model
+                    .lock()
+                    .unwrap_or_else(|e| {
+                        log::error!("PoisonError in ui_pending_model lock: {e:?}");
+                        e.into_inner()
+                    });
+                *ui_guard = Some(path);
+            }
         }
 
         // Check if there is a pending model sent by the UI
-        let pending_model = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock()
-        {
-            pending_guard.take()
-        } else {
-            None
-        };
+        let pending_model = self
+            .shared
+            .cold
+            .ui_pending_model
+            .lock()
+            .unwrap_or_else(|e| {
+                log::error!("PoisonError in ui_pending_model lock: {e:?}");
+                e.into_inner()
+            })
+            .take();
         if let Some(path) = pending_model {
             let res = self.load_model(&path);
             self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
@@ -198,9 +213,16 @@ impl<'a> NamClapMainThread<'a> {
                 Ok(_) => {}
                 Err(e) => {
                     let err_msg = e.error_code().message();
-                    if let Ok(mut msg_guard) = self.shared.cold.ui_load_error_msg.lock() {
-                        *msg_guard = err_msg.to_string();
-                    }
+                    let mut msg_guard =
+                        self.shared
+                            .cold
+                            .ui_load_error_msg
+                            .lock()
+                            .unwrap_or_else(|e| {
+                                log::error!("PoisonError in ui_load_error_msg lock: {e:?}");
+                                e.into_inner()
+                            });
+                    *msg_guard = err_msg.to_string();
                     self.shared
                         .cold
                         .ui_load_error
@@ -228,19 +250,30 @@ impl<'a> NamClapMainThread<'a> {
             use crate::clap::plugin::ClapParamPayload;
 
             // Propagate ir_dialog_state → ui_pending_ir (R2: Arc-backed, UAF-safe)
-            if let Some(ir_dialog_state) = self.shared.cold.ir_dialog_state.as_ref()
-                && let Ok(mut dialog_guard) = ir_dialog_state.pending_ir.lock()
-                && let Some(path) = dialog_guard.take()
-                && let Ok(mut ui_guard) = self.shared.cold.ui_pending_ir.lock()
-            {
-                *ui_guard = Some(path);
+            if let Some(ir_dialog_state) = self.shared.cold.ir_dialog_state.as_ref() {
+                let mut dialog_guard = ir_dialog_state.pending_ir.lock().unwrap_or_else(|e| {
+                    log::error!("PoisonError in ir_dialog_state.pending_ir lock: {e:?}");
+                    e.into_inner()
+                });
+                if let Some(path) = dialog_guard.take() {
+                    let mut ui_guard = self.shared.cold.ui_pending_ir.lock().unwrap_or_else(|e| {
+                        log::error!("PoisonError in ui_pending_ir lock: {e:?}");
+                        e.into_inner()
+                    });
+                    *ui_guard = Some(path);
+                }
             }
 
-            let pending_ir = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_ir.lock() {
-                pending_guard.take()
-            } else {
-                None
-            };
+            let pending_ir = self
+                .shared
+                .cold
+                .ui_pending_ir
+                .lock()
+                .unwrap_or_else(|e| {
+                    log::error!("PoisonError in ui_pending_ir lock: {e:?}");
+                    e.into_inner()
+                })
+                .take();
             if let Some(path) = pending_ir {
                 let res = self.load_cabsim(&path);
                 self.shared
@@ -251,9 +284,16 @@ impl<'a> NamClapMainThread<'a> {
                     Ok(_) => {}
                     Err(e) => {
                         let err_msg = e.error_code().message();
-                        if let Ok(mut msg_guard) = self.shared.cold.ui_ir_load_error_msg.lock() {
-                            *msg_guard = err_msg.to_string();
-                        }
+                        let mut msg_guard = self
+                            .shared
+                            .cold
+                            .ui_ir_load_error_msg
+                            .lock()
+                            .unwrap_or_else(|e| {
+                                log::error!("PoisonError in ui_ir_load_error_msg lock: {e:?}");
+                                e.into_inner()
+                            });
+                        *msg_guard = err_msg.to_string();
                         self.shared
                             .cold
                             .ui_ir_load_error
@@ -280,10 +320,19 @@ impl<'a> NamClapMainThread<'a> {
                 let _ = self
                     .param_tx
                     .push(ClapParamPayload::LoadCabIr { engine: None });
-                if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {
+                {
+                    let mut ir_guard = self.shared.cold.ir_path.lock().unwrap_or_else(|e| {
+                        log::error!("PoisonError in ir_path lock: {e:?}");
+                        e.into_inner()
+                    });
                     *ir_guard = None;
                 }
-                if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
+                {
+                    let mut raw_guard =
+                        self.shared.cold.ir_raw_samples.lock().unwrap_or_else(|e| {
+                            log::error!("PoisonError in ir_raw_samples lock: {e:?}");
+                            e.into_inner()
+                        });
                     *raw_guard = None;
                 }
             }
