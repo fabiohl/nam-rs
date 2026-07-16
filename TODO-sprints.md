@@ -1871,7 +1871,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   4. Tratar o erro de forma idêntica propagando via `?`.
 - **Critério de aceite:** `cargo check` passa; sem ocorrências de `.expect(` de produção no arquivo.
 
-### T22.2 — Propagar erro de alocação no dispatcher WaveNet Standard [ ]
+### T22.2 — Propagar erro de alocação no dispatcher WaveNet Standard [x]
 
 - **Arquivo:** [`src/loader/dispatcher/wavenet/standard.rs`](src/loader/dispatcher/wavenet/standard.rs)
 - **Ação:**
