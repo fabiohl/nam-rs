@@ -97,17 +97,17 @@ cargo check --all-targets --all-features
 phase "Executando análise estática estrita (cargo clippy)..."
 
 echo -e "  ${YELLOW}${BOLD}Clippy: Pure Core (lib, no features)...${NC}"
-cargo clippy --lib --no-default-features -- -D warnings
+cargo clippy --lib --no-default-features
 
 echo -e "  ${YELLOW}${BOLD}Clippy: Standalone prod...${NC}"
 # No --all-targets: see check phase rationale (tests need `testing`).
-cargo clippy --no-default-features --features standalone -- -D warnings
+cargo clippy --no-default-features --features standalone
 
 echo -e "  ${YELLOW}${BOLD}Clippy: CLAP Plugin + testing...${NC}"
-cargo clippy --all-targets --no-default-features --features clap-plugin,testing -- -D warnings
+cargo clippy --all-targets --no-default-features --features clap-plugin,testing
 
 echo -e "  ${YELLOW}${BOLD}Clippy: All Features (catch-all)...${NC}"
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --all-features
 
 echo -e "\n${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}             Suíte de qualidade concluída com sucesso!           ${NC}"

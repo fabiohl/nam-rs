@@ -2159,13 +2159,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Configurar `build.warnings = "deny"` no `.cargo/config.toml` para tratar avisos do compilador como erros de forma nativa e eficiente, evitando invalidação desnecessária do cache de compilação (diferente de RUSTFLAGS), e ajustar `utils/lints.sh` para remover `-- -D warnings`.
 
-### T28.1 — Configurar `warnings = "deny"` no Cargo [ ]
+### T28.1 — Configurar `warnings = "deny"` no Cargo [x]
 
 - **Arquivo:** [`.cargo/config.toml`](.cargo/config.toml)
 - **Ação:** Adicionar a linha `warnings = "deny"` sob a seção `[build]`.
 - **Critério de aceite:** `cargo check` compila com a nova configuração.
 
-### T28.2 — Ajustar script de lints [ ]
+### T28.2 — Ajustar script de lints [x]
 
 - **Arquivo:** [`utils/lints.sh`](utils/lints.sh)
 - **Ação:** Remover o sufixo `-- -D warnings` de todas as chamadas do Clippy (linhas 100, 104, 107, 110), delegando a checagem de erros ao Cargo Config.
