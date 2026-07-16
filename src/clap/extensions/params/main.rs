@@ -322,6 +322,8 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
         self.shared.write_gui_events(output);
 
+        let mut param_changed = false;
+
         for event in input {
             let Some(param_event) = event.as_event::<ParamValueEvent>() else {
                 continue;
@@ -395,10 +397,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 }
                 _ => continue,
             }
+            param_changed = true;
+        }
 
-            let _ = self.param_tx.push(ClapParamPayload::Params(
-                RtPluginParams::from_plugin_params(&self.params),
-            ));
+        if param_changed
+            && self
+                .param_tx
+                .push(ClapParamPayload::Params(
+                    RtPluginParams::from_plugin_params(&self.params),
+                ))
+                .is_err()
+        {
+            self.shared.bump_generation();
         }
     }
 }

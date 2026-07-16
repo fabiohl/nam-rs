@@ -2366,7 +2366,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - ⚠️ Os métodos residem em `gain.rs` como a API canônica, mas o hot-path (`process_sub_block` em orquestrador) usa funções livres equivalentes (`apply_input_gain_sub_block_inner`, `apply_output_gain_sub_block_inner`) para evitar conflitos de borrow com `DspPipelineContext`.
   - ✅ `cargo check` e clippy passam sem warnings.
 
-### T32.3 — Mover push SPSC de flush para fora do loop e adicionar fallback (R29)
+### T32.3 — Mover push SPSC de flush para fora do loop e adicionar fallback (R29) ✅
 
 - **Arquivo:** [`src/clap/extensions/params/main.rs`](src/clap/extensions/params/main.rs)
 - **Ação:**
@@ -2374,6 +2374,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Executar o push de snapshot de parâmetro apenas uma vez se houver alguma mudança (`param_changed == true`).
   3. Se o canal estiver cheio (`push().is_err()`), chamar `self.shared.bump_generation()` para garantir que o processador sincronize os valores alterados via atomics na reativação.
 - **Critério de aceite:** Flush compila perfeitamente.
+- **Conclusão (2026-07-16):**
+  - ✅ `push` movido para fora do loop de eventos: única snapshot ao final do flush, em vez de N pushes para N eventos.
+  - ✅ Flag `param_changed` evita push quando nenhum parâmetro relevante mudou.
+  - ✅ Fallback via `bump_generation()`: se SPSC estiver cheio, incrementa `gui_param_generation` com Release — o RT thread sincroniza via atomics.
+  - ✅ `cargo check` e clippy passam sem warnings.
 
 ### T32.4 — Warm reset de ParamSmoother no activate (R30)
 
