@@ -2,18 +2,18 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use nam_rs::loader::nam_json::{
-    NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
-    get_lstm_topology, get_wavenet_topology, parse_nam_json,
+    A2TopologyResult, NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
+    get_lstm_topology, get_wavenet_topology, is_a2_shape, parse_nam_json,
 };
 use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee_update, parse_namb};
 use proptest::prelude::*;
 use std::fs;
 
 use nam_rs::loader::nam_json::{
-    MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE, MAX_DILATION, MAX_DILATIONS_PER_ARRAY,
-    MAX_HEAD_SIZE, MAX_HIDDEN_SIZE, MAX_KERNEL_SIZE, MAX_LAYERS, MAX_LSTM_HIDDEN_SIZE,
-    MAX_LSTM_LAYERS, MAX_RECEPTIVE_FIELD, MAX_TOTAL_STATE_FRAMES, MAX_WAVENET_ARRAYS,
-    MAX_WAVENET_FREE_CHANNELS,
+    MAX_A2_DYN_BOTTLENECK, MAX_A2_DYN_CHANNELS, MAX_CONVNET_CHANNELS, MAX_CONVNET_KERNEL_SIZE,
+    MAX_DILATION, MAX_DILATIONS_PER_ARRAY, MAX_HEAD_SIZE, MAX_HIDDEN_SIZE, MAX_KERNEL_SIZE,
+    MAX_LAYERS, MAX_LSTM_HIDDEN_SIZE, MAX_LSTM_LAYERS, MAX_RECEPTIVE_FIELD, MAX_TOTAL_STATE_FRAMES,
+    MAX_WAVENET_ARRAYS, MAX_WAVENET_FREE_CHANNELS,
 };
 
 // Fuzz 1: Sends fully arbitrary bytes to the JSON parser.
@@ -770,6 +770,329 @@ fn adversarial_linear_json_strategy() -> impl Strategy<Value = String> {
 }
 
 // ---------------------------------------------------------------------------
+// T23.2 — Adversarial A2-Dynamic dimensions: channels, bottleneck, kernel
+//         sizes, dilations, multi-array cascades — exercise A2 shape detection
+//         under stress, never abort/panic.
+// ---------------------------------------------------------------------------
+
+/// Strategy: generates a WaveNet model JSON targeting the A2-Dynamic code path
+/// with adversarial dimension values (channels, bottleneck, kernel_sizes,
+/// dilations, multi-array cascades with A2 features).
+fn adversarial_a2_dynamic_json_strategy() -> impl Strategy<Value = String> {
+    let a2_kernel_sizes: [usize; 23] = [
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6,
+    ];
+    let a2_dilations: [usize; 23] = [
+        1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
+    ];
+
+    (
+        any::<usize>(),
+        any::<usize>(),
+        any::<usize>(),
+    )
+        .prop_map(move |(raw, seed, pattern)| {
+            match pattern % 8 {
+                // 0: channels > MAX_A2_DYN_CHANNELS, canonical kernel_sizes/dilations, LeakyReLU
+                0 => {
+                    let ch = MAX_A2_DYN_CHANNELS + 1 + (raw % 512);
+                    let ch = ch.min(usize::MAX / 4096);
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": ch,
+                                "bottleneck": ch,
+                                "kernel_sizes": a2_kernel_sizes,
+                                "dilations": a2_dilations,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 1: extreme non-canonical kernel_sizes, canonical dilations, LeakyReLU → Dynamic
+                1 => {
+                    let mut ks = a2_kernel_sizes;
+                    let idx = raw % 23;
+                    ks[idx] = MAX_KERNEL_SIZE + 1 + (seed % 64);
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": 8,
+                                "bottleneck": 8,
+                                "kernel_sizes": ks,
+                                "dilations": a2_dilations,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 2: extreme dilations with non-canonical values → Dynamic
+                2 => {
+                    let mut dils = a2_dilations;
+                    let idx = raw % 23;
+                    dils[idx] = MAX_DILATION + 1 + (seed % 4096);
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": 8,
+                                "bottleneck": 8,
+                                "kernel_sizes": a2_kernel_sizes,
+                                "dilations": dils,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 3: multi-array A2 cascade with head1x1 active + extreme channels
+                3 => {
+                    let n_arrays = 2usize + (raw % 3);
+                    let ch = 16usize + (seed % 240);
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    let layers: Vec<serde_json::Value> = (0..n_arrays)
+                        .map(|i| {
+                            let mut layer = serde_json::json!({
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": ch + i,
+                                "bottleneck": ch + i,
+                                "kernel_sizes": a2_kernel_sizes,
+                                "dilations": a2_dilations,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                }
+                            });
+                            if i == n_arrays - 1 {
+                                layer["layer_raw"]["head1x1"] =
+                                    serde_json::json!({"active": true, "out_channels": ch + i, "groups": 1});
+                            } else {
+                                layer["layer_raw"]["head1x1"] =
+                                    serde_json::json!({"active": false});
+                            }
+                            layer["layer_raw"]["head"] =
+                                serde_json::json!({"out_channels": 1, "kernel_size": 16, "bias": true});
+                            layer
+                        })
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": layers
+                        },
+                        "weights": vec![0.0f32; 4096],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 4: bottleneck != channels, valid A2 shape (ch=8, bn > MAX_A2_DYN_BOTTLENECK)
+                4 => {
+                    let bn = MAX_A2_DYN_BOTTLENECK + 1 + (raw % 512);
+                    let bn = bn.min(usize::MAX / 4096);
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": 8,
+                                "bottleneck": bn,
+                                "kernel_sizes": a2_kernel_sizes,
+                                "dilations": a2_dilations,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 5: non-canonical channels (not 3 or 8) → Dynamic
+                5 => {
+                    let ch_variants: [usize; 7] = [4, 12, 16, 32, 64, 128, 256];
+                    let ch = ch_variants[raw % 7];
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": ch,
+                                "bottleneck": ch,
+                                "kernel_sizes": a2_kernel_sizes,
+                                "dilations": a2_dilations,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 6: gated mode with canonical shape → Dynamic or None
+                6 => {
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    let gates: Vec<&str> = vec!["Gated"; 23];
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": 8,
+                                "bottleneck": 8,
+                                "kernel_sizes": a2_kernel_sizes,
+                                "dilations": a2_dilations,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "gating_mode": gates,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+                // 7: scalar kernel_size (non-canonical, no kernel_sizes array) — A2 generic
+                _ => {
+                    let k = 3usize + (raw % 64);
+                    let dils: Vec<usize> = a2_dilations.to_vec();
+                    let acts: Vec<serde_json::Value> = (0..23)
+                        .map(|_| serde_json::json!({"type": "LeakyReLU", "negative_slope": 0.01}))
+                        .collect();
+                    serde_json::to_string(&serde_json::json!({
+                        "version": "0.7.0",
+                        "architecture": "WaveNet",
+                        "config": {
+                            "in_channels": 1,
+                            "head_scale": 0.02,
+                            "layers": [{
+                                "input_size": 1,
+                                "condition_size": 1,
+                                "channels": 8,
+                                "bottleneck": 8,
+                                "kernel_size": k,
+                                "dilations": dils,
+                                "head_size": 1,
+                                "head_bias": true,
+                                "activation": acts,
+                                "layer_raw": {
+                                    "activation": acts,
+                                    "layer1x1": {"active": true, "groups": 1},
+                                    "head1x1": {"active": false},
+                                    "head": {"out_channels": 1, "kernel_size": 16, "bias": true}
+                                }
+                            }]
+                        },
+                        "weights": vec![0.0f32; 1024],
+                        "sample_rate": 48000
+                    })).unwrap()
+                }
+            }
+        })
+}
+
+// ---------------------------------------------------------------------------
 // F12 — Adversarial state budget. Generates models that combine near-max
 //       kernel_size × dilation × channels × layer count to stress the new
 //       MAX_TOTAL_STATE_FRAMES bound.
@@ -1135,6 +1458,30 @@ proptest! {
                 Err(e) => {
                     // Also acceptable: explicit error from validation
                     let _ = e;
+                }
+            }
+        }
+    }
+
+    /// T23.2 — Adversarial A2-Dynamic dimensions: ensures A2 shape detection
+    /// handles WaveNet models with adversarial channel, bottleneck, kernel,
+    /// dilation, multi-array, and gating dimensions (never abort/panic).
+    #[test]
+    #[ignore]
+    fn prop_fuzz_adversarial_a2_dynamic_dims(json_str in adversarial_a2_dynamic_json_strategy()) {
+        if let Ok(parsed) = parse_nam_json(&json_str) {
+            let result = is_a2_shape(&parsed);
+            match result {
+                Some(A2TopologyResult::KnownFastPath(ch)) => {
+                    panic!(
+                        "adversarial A2-Dynamic should not resolve KnownFastPath (ch={ch})"
+                    );
+                }
+                Some(A2TopologyResult::Dynamic) => {
+                    // Expected: adversarial dimensions trigger Dynamic path
+                }
+                None => {
+                    // Acceptable: model does not qualify as A2
                 }
             }
         }

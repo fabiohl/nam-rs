@@ -1920,7 +1920,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Marcar o teste com `#[test]` e `#[ignore]`.
 - **Critério de aceite:** `cargo test` passa (com o teste ignorado por padrão).
 
-### T23.2 — Adicionar estratégia e teste adversarial para A2-Dynamic [ ]
+### T23.2 — Adicionar estratégia e teste adversarial para A2-Dynamic [x]
 
 - **Arquivo:** [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
 - **Ação:**
