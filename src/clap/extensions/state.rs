@@ -92,7 +92,8 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
 
         if buffer.is_empty() {
             if let Some(log) = self.host.get_extension::<HostLog>() {
-                let msg = CString::new("NAM-rs: Empty state buffer, returning false").unwrap();
+                let msg =
+                    CString::new("NAM-rs: Empty state buffer, returning false").unwrap_or_default();
                 log.log(&self.host.shared(), LogSeverity::Debug, &msg);
             }
             return Err(PluginError::Message("Empty state buffer"));

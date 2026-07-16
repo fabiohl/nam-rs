@@ -2034,7 +2034,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Arquivo:** [`src/standalone/rt_setup/thread.rs`](src/standalone/rt_setup/thread.rs)
 - **Ação:** Trocar inicializações com `mem::zeroed` por `MaybeUninit` (para `cpu_set_t`) e inicializações de struct explícitas (para `sched_param`).
 
-### T25.4 — Corrigir `unwrap` em `state.rs` [ ]
+### T25.4 — Corrigir `unwrap` em `state.rs` [X]
 
 - **Arquivo:** [`src/clap/extensions/state.rs`](src/clap/extensions/state.rs)
 - **Ação:** Substituir `.unwrap()` por `.unwrap_or_default()`.
