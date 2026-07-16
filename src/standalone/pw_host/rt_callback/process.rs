@@ -38,7 +38,12 @@ pub fn process_dsp_buffer(
 ) {
     let mut _buf = match stream.dequeue_buffer() {
         Some(b) => b,
-        None => return,
+        None => {
+            rt_status_for_process
+                .pw_buffer_miss
+                .fetch_add(1, Ordering::Relaxed);
+            return;
+        }
     };
 
     let datas = _buf.datas_mut();

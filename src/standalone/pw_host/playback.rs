@@ -4,11 +4,13 @@
 //! PipeWire playback stream configuration (`Stream/Output/Audio`) — reads from
 //! `DspBridge` and delivers processed audio to the hardware.
 
+use crate::common::spsc::RtStatusFlags;
 use crate::dsp::pipeline::{BridgeRef, DspBridgeReader, build_spa_format_pod, playback_dsp_cycle};
 use crate::standalone::colors::Colorize;
 
 use pipewire as pw;
 use pw::properties::properties;
+use std::sync::Arc;
 
 /// Configures the playback stream and its RT listener.
 ///
@@ -19,8 +21,10 @@ pub fn setup_playback_stream<'c>(
     bridge_ptr: BridgeRef,
     buffer_size: u32,
     latency_str: &str,
+    rt_status: Arc<RtStatusFlags>,
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let bridge_ptr_playback = unsafe { DspBridgeReader::new(bridge_ptr.as_ptr()) };
+    let rt_status_playback = rt_status.clone();
 
     let mut playback_props = properties! {
         *pw::keys::MEDIA_TYPE => "Audio",
@@ -45,7 +49,12 @@ pub fn setup_playback_stream<'c>(
     let playback_listener = playback_stream
         .add_local_listener::<()>()
         .process(move |stream: &pw::stream::Stream, _info| {
-            playback_dsp_cycle(stream, bridge_ptr_playback, &mut last_bridge_gen);
+            playback_dsp_cycle(
+                stream,
+                bridge_ptr_playback,
+                &mut last_bridge_gen,
+                &rt_status_playback,
+            );
         })
         .register()?;
 

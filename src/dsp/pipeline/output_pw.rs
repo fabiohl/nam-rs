@@ -5,7 +5,11 @@
 
 use super::bridge::DspBridgeReader;
 #[cfg(feature = "standalone")]
+use crate::common::spsc::RtStatusFlags;
+#[cfg(feature = "standalone")]
 use crate::dsp::oversample::OversampleFactor;
+#[cfg(feature = "standalone")]
+use std::sync::atomic::Ordering;
 
 #[cfg(feature = "standalone")]
 use crate::common::diagnostics::SystemSnapshot;
@@ -55,6 +59,7 @@ pub(crate) fn playback_dsp_cycle(
     stream: &pw::stream::Stream,
     bridge: DspBridgeReader,
     last_bridge_gen: &mut u64,
+    rt_status: &RtStatusFlags,
 ) {
     bridge.read_block(last_bridge_gen, |buf_l, buf_r| {
         let n_samples = buf_l.len();
@@ -62,10 +67,12 @@ pub(crate) fn playback_dsp_cycle(
             return;
         }
 
-        // Requests an empty space from the sound system (PipeWire) to place the audio.
         let mut buf = match stream.dequeue_buffer() {
             Some(b) => b,
-            None => return,
+            None => {
+                rt_status.playback_miss.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
         };
 
         let datas = buf.datas_mut();

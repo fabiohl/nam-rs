@@ -111,8 +111,13 @@ pub fn run_pipewire_host(
         capture_stream = cs;
         capture_listener = cl;
 
-        let (ps, pl) =
-            playback::setup_playback_stream(&core, bridge_ptr, buffer_size, &latency_str)?;
+        let (ps, pl) = playback::setup_playback_stream(
+            &core,
+            bridge_ptr,
+            buffer_size,
+            &latency_str,
+            rt_status.clone(),
+        )?;
         playback_stream = ps;
         playback_listener = pl;
     }

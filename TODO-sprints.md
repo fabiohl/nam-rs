@@ -1995,7 +1995,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - [`src/common/diagnostics/snapshot.rs`](src/common/diagnostics/snapshot.rs)
 - **Ação:** Adicionar `pw_buffer_miss` e `playback_miss` em `RtStatusFlags` (como `AtomicU32`) e na `TelemetrySnapshot`.
 
-### T24.2 — Incrementar contadores nas falhas de `dequeue_buffer` [ ]
+### T24.2 — Incrementar contadores nas falhas de `dequeue_buffer` [X]
 
 - **Arquivos:**
   - [`src/standalone/pw_host/rt_callback/process.rs`](src/standalone/pw_host/rt_callback/process.rs)
