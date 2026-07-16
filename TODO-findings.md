@@ -17,6 +17,13 @@ de alta severidade (nenhum achado abaixo foi registrado sem confirmação em `fi
 > confirmados RESOLVIDOS, 3 com pendência residual. Em seguida, nova rodada completa de
 > auditoria Resilience & Robustness + Pesquisador-Inovador produziu os achados **R17–R26** e as
 > propostas **P5–P10**, organizados nos épicos **EP-R7 a EP-R11** (todos ao final do documento).
+>
+> **Rodada 3 (2026-07-16, mesmo dia):** os épicos EP-R7 a EP-R12 foram implementados e
+> verificados — 13 de 15 sub-itens RESOLVIDOS, incluindo uma **correção histórica importante**:
+> o achado R8-h estava parcialmente equivocado (ver nota na seção de verificação). Nova rodada
+> de auditoria em áreas ainda não cobertas (IR/WAV, automação de parâmetros, parser NAMB,
+> conformidade SPDX) produziu os achados **R27–R31** e as propostas **P11–P12**, organizados nos
+> épicos **EP-R13 a EP-R17**.
 
 **Fora de escopo (por decisão de produto):** `TODO-wavenet_a2_max.md` e
 `TODO-convnet_parity.md`. Nenhum achado abaixo toca esses pântanos; onde a auditoria produziu
@@ -83,6 +90,18 @@ colisão de chaves por prefixo no contrato de qualidade) que permitem regressõe
 | P8  | Inovação: `cargo vet` para auditoria de supply-chain                                            | proposta   | Supply-chain    |
 | P9  | Inovação: `build.warnings = "deny"` (Cargo/Rust 1.97) substituindo `RUSTFLAGS`                  | proposta   | Build/CI        |
 | P10 | Inovação: `cargo semver-checks` para breaking changes de API pública                            | proposta   | Compatibilidade |
+
+### Rodada 3 (2026-07-16) — novos achados e propostas
+
+| ID  | Achado                                                                                       | Severidade | Área               |
+| --- | -------------------------------------------------------------------------------------------- | ---------- | ------------------ |
+| R27 | IR/WAV: `sample_rate` extremo (baixo) causa OOM garantido via upsampling catastrófico        | **ALTA**   | Robustez de input  |
+| R28 | Automação sample-accurate não implementada; eventos colapsam para o último valor do bloco    | **ALTA**   | Fidelidade CLAP    |
+| R29 | Push SPSC descartado silenciosamente em `MainThread::flush()`; perda de eventos de parâmetro | **MÉDIA**  | Lifecycle CLAP     |
+| R30 | Reset do smoother de ganho para 1.0 em cada `activate()` causa transiente audível            | **BAIXA**  | UX/Fidelidade      |
+| R31 | Higiene residual: bypass de CRC32 no NAMB v1 legado + `.expect()` em `MirroredBuffer::clone` | **BAIXA**  | Conformidade       |
+| P11 | Inovação: `shuttle` (AWS Labs) — concurrency testing randomizado complementar ao `loom`      | proposta   | QA de concorrência |
+| P12 | Inovação: `rtsan-standalone-rs` — RealtimeSanitizer para violações RT em runtime             | proposta   | RT-safety          |
 
 ---
 
@@ -1388,3 +1407,441 @@ migração de lint), depois P5 (aproveita o gate já em vigor para não reintrod
 espúrios), por fim P10 (guard independente, sem dependência dos outros dois). Risco: zero —
 as três são ferramentas/atributos Rust stable, puramente aditivos, sem tocar lógica de
 produção nem o hot path de áudio.
+
+---
+
+## Rodada 3 — Verificação pós-implementação (EP-R7…EP-R12) e nova auditoria (2026-07-16)
+
+## Verificação pós-implementação dos EP-R7…EP-R12
+
+Todos os seis épicos da Rodada 2 foram implementados (commits de `b8393373` a `6f9084fe`) e
+verificados linha a linha nesta data. Resultado: **13 de 15 sub-itens RESOLVIDOS**, **1
+pendência parcial** (R14) e **1 correção histórica** (R8-h — o achado original estava
+parcialmente equivocado; ver nota detalhada abaixo).
+
+| Épico  | Sub-item   | Status                                              | Nota                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------ | ---------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EP-R7  | R17        | ✅ RESOLVIDO                                        | Leitura de `alive_fence`/`gui_scale_factor` movida para o main thread, antes do `thread::spawn` (`src/clap/extensions/gui.rs:230-249`); passados por parâmetro para `NamPluginWindow::new` (`window/state.rs:64-71`). Zero `shared.0` fora de `safe_shared()`/`as_ref()` em `src/clap/`. Teste `test_window_safe_shared_boundary` passa.                                                 |
+| EP-R7  | R18        | ✅ RESOLVIDO                                        | `configure_realtime_thread` (`src/standalone/rt_setup/thread.rs`) com zero `log::*` — tudo via stores atômicos, traduzidos em `telemetry.rs:poll_rt_status()` no main thread. Escolheu a opção 2 da proposta (flags + poll) em vez da opção 1 (mover a chamada); ambas resolvem o problema real de RT-safety.                                                                            |
+| EP-R8  | R19        | ✅ RESOLVIDO                                        | `as_main_thread_unchecked` removido de `track_info.rs`; substituído por `with_arbitrary_lifetime()` (estende lifetime do handle já válido, sem reconstruir a partir de `HostSharedHandle`) + `debug_assert_main_thread` como guarda de runtime.                                                                                                                                          |
+| EP-R8  | R24        | ✅ RESOLVIDO (forma diferente)                      | `HostThreadCheck` não foi registrada via `builder.register()`, mas consultada em runtime pelo helper `debug_assert_main_thread` (`main_thread/mod.rs:248-258`), com **19 call-sites** em todas as extensions relevantes. Degrada graciosamente quando o host não provê a extensão — mais robusto que registro estático.                                                                  |
+| EP-R8  | R25        | ✅ RESOLVIDO                                        | Todos os 11+ `.lock()` de `ColdShared` em `housekeeping.rs`/`preset_load.rs` agora usam `.unwrap_or_else(\|e\| { log::error!(...); e.into_inner() })`; zero `if let Ok(...) else` silencioso remanescente.                                                                                                                                                                               |
+| EP-R9  | R20        | ✅ RESOLVIDO                                        | Zero `.expect()` em `src/clap/processor/mod.rs` e `src/loader/dispatcher/` fora de testes (`grep` confirma).                                                                                                                                                                                                                                                                             |
+| EP-R9  | R21        | ✅ RESOLVIDO                                        | `adversarial_lstm_json_strategy`, `adversarial_a2_dynamic_json_strategy`, `adversarial_container_json_strategy` implementadas (8 padrões cada) e exercitadas pelos testes `prop_fuzz_adversarial_{lstm,a2_dynamic,container}_dims`, todos passando.                                                                                                                                      |
+| EP-R10 | R22        | ✅ RESOLVIDO                                        | `pw_buffer_miss`/`playback_miss` em `RtStatusFlags`/`TelemetrySnapshot`, incrementados nos branches `None` corretos, expostos em `poll_rt_status` com `log::warn!` quando > 0.                                                                                                                                                                                                           |
+| EP-R10 | R23        | ✅ RESOLVIDO                                        | SAFETY específico confirmado por amostragem em todos os arquivos citados; `libc::madvise` com SAFETY + verificação de retorno (`bridge.rs:42-61`).                                                                                                                                                                                                                                       |
+| EP-R10 | R26        | ✅ RESOLVIDO                                        | `alive: AtomicBool` removido; `#[allow(unused)]` removido dos `os_*` buffers (agora documentados); `mem::zeroed()` substituído por `MaybeUninit`/init direta; `state.rs:96` usa `.unwrap_or_default()`.                                                                                                                                                                                  |
+| EP-R11 | R8-h       | ⚠️ **DIAGNÓSTICO ORIGINAL PARCIALMENTE EQUIVOCADO** | Ver nota dedicada abaixo — a "correção" quebrou `test_gc_stress_1000_swaps`, foi revertida (`9879fffc`), e depois reaplicada silenciosamente junto com ajuste do teste (`f354d540`), sem que o commit declarasse a mudança de semântica no `gc.rs`.                                                                                                                                      |
+| EP-R11 | R10        | ✅ RESOLVIDO                                        | `test_host_contract_violation_block_size` (`processor_stress_test.rs:521-593`) cobre block-size de 600 acima do `max_frames_count=512`, valida `Err` em debug e flag `RT_STATUS_HOST_CONTRACT_VIOLATION` em release.                                                                                                                                                                     |
+| EP-R11 | R2/NonNull | ✅ RESOLVIDO                                        | `NamClapSharedRef` agora encapsula `std::ptr::NonNull<NamClapShared>` privado, com `new()`/`as_ptr()`/`as_ref()` como única API; `unsafe impl Send/Sync` documentado; 18 call-sites migrados.                                                                                                                                                                                            |
+| EP-R11 | R14        | ⚠️ PARCIAL                                          | `tests/models/proptest_parsers.rs:270-512` **continua órfão** (~240 linhas, zero call-sites) — item **não resolvido**. `generate_sine_440hz` ainda tem 2 wrappers idênticos em `benches/common.rs` e `tests/common/signals.rs`, mas ambos delegam para a mesma função subjacente (`testing::aliasing::generate_sine`) — risco de divergência eliminado, duplicação textual remanescente. |
+| EP-R11 | P3         | ✅ RESOLVIDO                                        | `src/dsp/stage.rs` migrado para `hint::assert_unchecked` (16 chamadas); `as_chunks`/`as_chunks_mut` adotado como prova de conceito em `src/models/a2/film.rs:196-198`.                                                                                                                                                                                                                   |
+| EP-R12 | P5         | ⚠️ PARCIAL                                          | `dead_code`: 100% migrado (0 `#[allow]`, 5 `#[expect]`). `too_many_arguments`: apenas 11 de ~42 locais migrados (31 `#[allow]` remanescentes). `[lints.clippy] allow_attributes` **não configurado** em `Cargo.toml`.                                                                                                                                                                    |
+| EP-R12 | P9         | ✅ RESOLVIDO                                        | `.cargo/config.toml:5` com `[build] warnings = "deny"`; `utils/lints.sh` não depende mais de `RUSTFLAGS=-Dwarnings`; `cargo clippy --all-features --all-targets` passa limpo.                                                                                                                                                                                                            |
+| EP-R12 | P10        | ❌ **NÃO RESOLVIDO**                                | Nenhuma integração de `cargo semver-checks` encontrada — sem baseline, sem workflow de CI (o repositório não tem `.github/`), sem script utilitário.                                                                                                                                                                                                                                     |
+
+**Build/testes de evidência objetiva:** `cargo build --release` limpo (~1m12s); `cargo clippy
+--all-features --all-targets` limpo; `test_window_safe_shared_boundary`,
+`test_host_contract_violation_block_size`, `prop_fuzz_adversarial_{lstm,a2_dynamic,container}_dims`
+e `test_gc_stress_no_leak` verdes nas verificações pontuais.
+
+### Nota dedicada — correção histórica do achado R8-h
+
+O achado **R8-h** (Rodada 1: "`RT_STATUS_GC_OVERFLOW` setado mesmo quando `push` não
+sobrescreveu — condicionar ao retorno `true`") estava **parcialmente equivocado** no
+diagnóstico original. A cronologia real, reconstruída via `git log -- src/common/spsc/gc.rs`:
+
+1. `46087896` (Rodada 1, EP-R3) e depois `bff0c4b8` (Rodada 2, EP-R11) aplicaram o gate
+   condicional exatamente como proposto: `if gc_overflow.push(i) { rt_status.set_flag(...) }`.
+2. Isso **quebrou** `test_gc_stress_1000_swaps` — o teste esperava (corretamente, por design
+   original) que a flag disparasse na simples **entrada no tier 3** do GC cascade (o buffer de
+   overflow de 64 slots sendo *necessário*), não apenas quando ele *sobrescreve* um slot já
+   ocupado. São dois sinais diagnósticos diferentes: "sistema sob pressão" (tier 3 alcançado)
+   vs. "leak real" (overwrite). O achado original da Rodada 1 confundiu os dois.
+3. `9879fffc` reverteu o gate corretamente, restaurando o comportamento incondicional e citando
+   explicitamente o motivo no commit message.
+4. `f354d540` — commit intitulado sobre `test_host_contract_violation_block_size` (R10, sem
+   qualquer menção a `gc.rs` na mensagem) — **reaplicou silenciosamente** o gate condicional em
+   `src/common/spsc/gc.rs:304-308` e ajustou `test_gc_stress_1000_swaps` para a nova semântica.
+   O código final está funcionalmente consistente com o teste, mas a mudança de contrato não
+   foi declarada, e o comentário de documentação em `gc.rs:276` ainda descreve apenas "sets
+   RT_STATUS_GC_OVERFLOW on overflow" — ambíguo entre as duas semânticas possíveis.
+
+**Lição para auditorias futuras:** antes de propor uma correção "mecânica" de 1 linha em código
+de diagnóstico/telemetria, confirmar o *contrato comportamental* esperado pelos testes de
+stress existentes — um flag de telemetria pode ter uma semântica de "sinalização de pressão"
+intencionalmente mais ampla do que seu nome sugere. Esta lição está registrada como ação
+concreta no EP-R15 (documentar a semântica atual em `gc.rs:276`) e como prática recomendada para
+as próximas rodadas de auditoria.
+
+---
+
+## Novos achados (Resilience & Robustness) — Rodada 3
+
+## R27 · IR/WAV: `sample_rate` extremo (baixo) causa OOM garantido via upsampling catastrófico — **ALTA**
+
+### R27 · Evidência
+
+* `src/dsp/cabsim/loader.rs:177-182` — apenas `sample_rate == 0` é rejeitado; qualquer valor
+  minúsculo não-zero (ex.: `sample_rate = 1`) é aceito:
+
+  ```rust
+  if sample_rate == 0 {
+      return Err(io::Error::new(
+          io::ErrorKind::InvalidData,
+          "IR WAV: sample rate is zero",
+      ));
+  }
+  ```
+
+* `src/dsp/cabsim/loader.rs:375-377` — a estimativa de tamanho do buffer de resample cresce
+  linearmente com a razão de taxas, sem teto:
+
+  ```rust
+  let est_len =
+      ((input.len() as f64 * output_rate as f64 / input_rate as f64).ceil() as usize) + 256;
+  let mut output = Vec::with_capacity(est_len);
+  ```
+
+* `src/dsp/resampler/mod.rs:82-85` — `NamResampler::new` só valida `== 0`, não um piso mínimo
+  plausível.
+
+### R27 · Diagnóstico
+
+Um WAV de ~44 bytes com `sample_rate=1` no chunk `fmt` (mono, PCM16, 1 sample de dados) passa
+todas as validações existentes (tamanho de arquivo, canais, bit depth, duração, NaN/Inf — todas
+robustas, confirmado nesta auditoria). Ao reamostrar de 1 Hz para 48 kHz, `est_len` calcula
+`ceil(N * 48000 / 1) + 256` — para uma IR de 192.000 amostras (o limite máximo já validado por
+`MAX_IR_LENGTH`), isso é **9.216.000.256 amostras f32 (~37 GB)**. `Vec::with_capacity` dispara o
+OOM handler do alocador padrão do Rust, abortando o processo.
+
+**Sub-achados relacionados** (mesma área de código, severidade menor, mesmo fix):
+
+* **b) Sample_rate extremamente alto sem teto** (MÉDIA) — `sample_rate = u32::MAX` também passa;
+  sem crash demonstrado, mas gera parâmetros degenerados no filtro polyphase (cutoff ≈ 2e-8),
+  violando fail-closed defensivo.
+* **c) Denormals não detectados na validação** (BAIXA) — `validate_samples()`
+  (`loader.rs:282-289`) usa `is_finite()`, que aceita denormals; `normalize_in_place`
+  (`loader.rs:416-428`) pode amplificá-los. Impacto mitigado pelo FTZ/DAZ já ativo no pipeline
+  (`src/main.rs:24`), mas defesa em profundidade ausente na fronteira de entrada.
+
+### R27 · Impacto
+
+WAV malicioso de ~44 bytes causa crash/abort garantido e incondicional do processo (plugin CLAP
+ou standalone) ao tentar carregar a IR — DoS trivial via arquivo de IR compartilhado entre
+usuários (presets, IRs de terceiros).
+
+### R27 · Proposta de solução
+
+Adicionar piso e teto de `sample_rate` no parser WAV, cobrindo a faixa fisicamente plausível
+para áudio (incluindo oversampling até 8×):
+
+```rust
+const MIN_IR_SAMPLE_RATE: u32 = 4_000;
+const MAX_IR_SAMPLE_RATE: u32 = 384_000;
+
+if !(MIN_IR_SAMPLE_RATE..=MAX_IR_SAMPLE_RATE).contains(&sample_rate) {
+    return Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("IR WAV: sample rate {sample_rate} out of range \
+                 ({MIN_IR_SAMPLE_RATE}–{MAX_IR_SAMPLE_RATE})"),
+    ));
+}
+```
+
+Resolve simultaneamente os sub-achados (a) e (b). Para (c), opcional: flush explícito de
+denormals na entrada do loader, ou documentar que o FTZ/DAZ global já cobre o caso.
+
+Critério de aceite: teste `test_reject_ir_extreme_sample_rate` (baixo e alto) em
+`loader_malformed_test.rs`; nenhuma alocação > `MAX_IR_LENGTH * 4 bytes` possível a partir de
+qualquer combinação de `sample_rate`/`target_rate`.
+
+---
+
+## R28 · Automação sample-accurate não implementada; eventos de parâmetro colapsam para o último valor do bloco — **ALTA**
+
+### R28 · Evidência
+
+* `src/clap/processor/events.rs:56-84` — o loop de eventos do host aplica todos os
+  `ParamValueEvent` do bloco antes do DSP, cada um sobrescrevendo o target do anterior:
+
+  ```rust
+  for event in events.input {
+      if let Some(param_event) = event.as_event::<ParamValueEvent>() {
+          let val = param_event.value() as f32;
+          match clap_id.get() {
+              PARAM_INPUT_GAIN => self.set_input_gain(val),
+              ...
+  ```
+
+* `src/clap/processor/dsp/gain.rs:13-14,26` — o ramp é uma única rampa linear cobrindo o bloco
+  inteiro, do valor atual ao target **final** (pós-loop):
+
+  ```rust
+  let start = self.smoother_in.peek();
+  let target = self.smoother_in.target_value();
+  let step = (target - start) / n_samples as f32;
+  ```
+
+### R28 · Diagnóstico
+
+O campo `event.header().time` (sample offset dentro do bloco, parte do `clap_event_header_t` da
+spec CLAP) nunca é lido. Todos os parâmetros são declarados `IS_AUTOMATABLE`, mas múltiplos
+pontos de automação no mesmo bloco de áudio são colapsados para um único valor (o último
+processado), e a rampa de ganho trata esse valor como válido desde o sample 0 do bloco — não há
+suporte real a automação sample-accurate, apesar de a spec CLAP documentar explicitamente que
+"the plugin may use the sample offset in `process()`" (`clap/ext/params.h`).
+
+### R28 · Impacto
+
+Hosts que emitem automação de alta resolução no mesmo bloco (curvas rápidas, moduladores
+sample-accurate do Bitwig, envelopes de modulação de alta frequência) têm a resolução
+degradada para block-level — o comportamento sonoro observado difere do que o host pretendia
+enviar, especialmente audível em automações rápidas de ganho/parâmetros com bloco grande
+(hosts com buffer de 1024+ samples a 44.1kHz = ~23ms por bloco).
+
+### R28 · Proposta de solução
+
+Subdividir o processamento do bloco de áudio nos pontos onde eventos de parâmetro ocorrem:
+processar sub-blocos delimitados por `event.header().time`, aplicando o ramp parcial em cada
+sub-bloco com o valor vigente naquele intervalo. Padrão comum em plugins CLAP/VST3 maduros
+("block splitting"). Alternativa de custo zero, mas semanticamente incorreta: não fazer nada e
+aceitar a limitação documentando-a — não recomendado, pois a spec permite verificação via
+`clap-validator` de conformidade de automação sample-accurate.
+
+Critério de aceite: novo teste de integração que envia múltiplos `ParamValueEvent` com `time`
+distintos no mesmo bloco e verifica que a saída de áudio reflete os valores intermediários
+(não apenas o último); `clap-validator` sem regressão.
+
+---
+
+## R29 · Push SPSC descartado silenciosamente em `MainThread::flush()`; perda de eventos de parâmetro — **MÉDIA**
+
+### R29 · Evidência
+
+* `src/clap/extensions/params/main.rs:399-401` — dentro do loop de eventos, cada evento produz
+  um push SPSC cujo erro é descartado:
+
+  ```rust
+  let _ = self.param_tx.push(ClapParamPayload::Params(
+      RtPluginParams::from_plugin_params(&self.params),
+  ));
+  ```
+
+* `src/clap/plugin/mod.rs:64` — capacidade do canal: `RingBuffer::new(8)`.
+
+* `MainThread::flush()` não chama `bump_generation()` em nenhum ponto do método — diferente de
+  `AudioProcessor::flush()`, que atualiza atomics + `bump_generation()` e não depende do SPSC.
+
+### R29 · Diagnóstico
+
+Cada evento no `flush()` do main thread (chamado quando o plugin está inativo) gera um push
+SPSC com snapshot **completo** de todos os parâmetros. Com capacidade 8, se 9+ eventos distintos
+chegarem numa única chamada de `flush()` (automação densa com múltiplos parâmetros), os pushes
+excedentes falham silenciosamente (`PushError::Full` descartado) e não há fallback via
+`bump_generation()` para que o processador sincronize os atomics na próxima `activate()`. Além
+disso, cada push é redundante — carrega o estado completo a cada evento, desperdiçando
+capacidade do canal e trabalho de drain no RT thread quando drenado.
+
+### R29 · Impacto
+
+Em cenário raro (9+ eventos de parâmetro distintos numa única chamada de `flush()`, plugin
+inativo), eventos de automação podem ser perdidos sem qualquer sinal de erro. Adicionalmente,
+desperdício mensurável de capacidade do canal SPSC mesmo no caso comum.
+
+### R29 · Proposta de solução
+
+1. Mover o push SPSC para **fora** do loop de eventos — uma única snapshot após processar todos
+   os eventos do `flush()`, eliminando os pushes redundantes.
+2. Verificar o retorno de `push()`; em caso de `Full`, chamar `bump_generation()` como fallback
+   para que o processador sincronize dos atomics na reativação, garantindo que nenhum evento
+   seja perdido silenciosamente mesmo no caso extremo.
+
+Critério de aceite: teste que envia 20 eventos de parâmetro num único `flush()` inativo e
+verifica que o estado final pós-`activate()` reflete o último valor de cada parâmetro.
+
+---
+
+## R30 · Reset do smoother de ganho para 1.0 em cada `activate()` causa transiente audível — **BAIXA**
+
+### R30 · Evidência
+
+`src/clap/processor/mod.rs:168-169`:
+
+```rust
+let smoother_in = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
+let smoother_out = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
+```
+
+### R30 · Diagnóstico
+
+Cada ciclo `deactivate()` → `activate()` recria o `ParamSmoother` com `current = target = 1.0`,
+independentemente do valor de ganho vigente antes da desativação. Se o ganho estava, por
+exemplo, em +12dB (~3.98 linear), o primeiro bloco após reativação aplica um ramp de 1.0 até o
+target recuperado — um "pulo" de ganho perceptível no primeiro bloco (~5ms num bloco de 256
+samples a 48kHz).
+
+### R30 · Impacto
+
+Transiente audível apenas em reativações, e apenas no primeiro bloco. Baixo impacto em uso
+normal (hosts raramente ciclam activate/deactivate durante reprodução), mas perceptível em
+hosts que implementam bypass nativo via toggle de activate/deactivate.
+
+### R30 · Proposta de solução
+
+Em `activate()`, antes de criar os smoothers, ler o valor atual dos atomics
+`param_input_gain`/`param_output_gain` e inicializar `ParamSmoother::new(valor_atual, ...)` em
+vez de `1.0`. Elimina o transiente sem custo adicional.
+
+---
+
+## R31 · Higiene residual: bypass de CRC32 no NAMB v1 legado + `.expect()` em `MirroredBuffer::clone` — **BAIXA**
+
+### R31 · Evidência
+
+* `src/loader/namb/parse.rs:75-87` — arquivos NAMB v1 com `crc32_header == 0` E seção de pesos
+  vazia/toda-zerada pulam a verificação de integridade:
+
+  ```rust
+  let pesos_empty = pesos_raw.is_empty() || pesos_raw.iter().all(|&b| b == 0);
+  if crc32_header == 0 && pesos_empty {
+      log::warn!("CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check. \
+                  Support for NAMB v1 files without CRC is deprecated and will be removed...");
+  }
+  ```
+
+* `src/dsp/mirror_buf.rs:200` — `Clone` delega para `try_clone()` com `.expect()`:
+
+  ```rust
+  fn clone(&self) -> Self {
+      self.try_clone()
+          .expect("MirroredBuffer::clone: allocation failed (use try_clone for fallible path)")
+  }
+  ```
+
+### R31 · Diagnóstico
+
+Ambos são riscos residuais já conhecidos e conscientemente aceitos em rodadas anteriores (R9 da
+Rodada 1 documentou explicitamente a escolha de manter `Clone` com `.expect()` dado que
+`try_clone()` está disponível para o caminho fallível real; o bypass de CRC32 do NAMB v1 está
+marcado como deprecated no próprio log). Nenhum dos dois é um bug novo — são registrados aqui
+para consolidar o registro de conformidade textual estrita com a regra "zero unwrap/expect" do
+projeto (`.agents/rules/rust.md`), identificada nesta rodada por um sweep de conformidade
+mecânica dedicado.
+
+### R31 · Impacto
+
+Bypass de CRC32: um atacante pode injetar um NAMB v1 com pesos zerados sem detecção — o modelo
+resultante produz saída nula (silêncio), sem dano ao áudio além da perda de funcionalidade,
+mitigado por warning já logado. `.expect()` no `Clone`: painic teórico apenas sob OOM real com
+alocador customizado (não o padrão do Rust, que já aborta antes do `expect`).
+
+### R31 · Proposta de solução
+
+1. NAMB v1: remover o bypass de CRC32 na próxima major release, exigindo CRC32 válido para
+   todos os arquivos v1 (paridade com v2).
+2. `MirroredBuffer::Clone`: nenhuma ação obrigatória — decisão já documentada e aceita; se se
+   desejar conformidade textual estrita, considerar remover `impl Clone` e exigir `try_clone()`
+   explícito em todos os 2-3 call-sites remanescentes (baixo custo, baixo risco).
+
+---
+
+## Novas propostas do Pesquisador-Inovador — Rodada 3 (stable-only, pesquisadas via web)
+
+### P11 · `shuttle` (AWS Labs) — concurrency testing randomizado complementar ao `loom` [ADIADO]
+
+O projeto já adotou `loom` (P1, implementado) para model-checking exaustivo de interleavings
+pequenos nos 3 protocolos SPSC/GC críticos — mas `loom` sofre de explosão combinatória em
+espaços de estado grandes (o `gc_stress_1000_swaps`, 167s no tests-long, é inacessível ao
+`loom`). [`shuttle`](https://github.com/awslabs/shuttle) (AWS Labs, v0.9, Rust stable) implementa
+*randomized concurrency testing* via algoritmo PCT (Probabilistic Concurrency Testing, Microsoft
+Research, ASPLOS 2016), com garantia probabilística >99.9999% de detecção de bugs não-
+adversariais em casos grandes onde `loom` não escala — aplicável aos mesmos 3 protocolos já
+modelados em `tests/loom_tests.rs`. Proposta: `shuttle = "0.9"` em dev-deps + `tests/shuttle_tests.rs`
+com `#[cfg(shuttle)]`, mesmo padrão de cfg-flag do loom já estabelecido; fase dedicada em
+`utils/tests-long.sh`. Custo: ~1-2h; risco zero (dev-dependency).
+
+### P12 · `rtsan-standalone-rs` — RealtimeSanitizer para detecção de violações RT em runtime [ADIADO]
+
+As rodadas de auditoria já encontraram duas violações reais de RT-safety (R5 e R18) através de
+grep manual — a mitigação atual (`test_rt_logging_safety`, meta-teste estrutural) só detecta
+padrões textuais conhecidos, não alocações implícitas do std, locks acidentais, ou syscalls
+bloqueantes indiretas. [`rtsan-standalone-rs`](https://github.com/realtime-sanitizer/rtsan-standalone-rs)
+é um wrapper Rust stable para o RealtimeSanitizer do LLVM (RTSan, LLVM 20+), que detecta **em
+runtime** `malloc`/`free`/`pthread_mutex_lock`/syscalls bloqueantes em funções anotadas
+`#[nonblocking]`. É a ferramenta que faltava para substituir os meta-testes grep frágeis por
+detecção real de violação RT. Proposta: dev-dependency + anotar `process_block_internal`
+(WaveNet), `DspPipeline::process`, callbacks `.process()` do PipeWire com `#[nonblocking]`;
+rodar em modo debug no tests-long, complementando (não substituindo) os meta-testes grep
+existentes. Custo: ~2-3h (build da lib C na primeira vez); risco baixo-médio (apenas
+dev/testing, nunca no binário de release).
+
+---
+
+## Novos épicos (Rodada 3)
+
+### EP-R13 — Robustez de carregamento de IR/WAV (R27) — **primeiro, único achado ALTA desta rodada com exploit trivial**
+
+Escopo: adicionar piso (`4_000 Hz`) e teto (`384_000 Hz`) de `sample_rate` no parser WAV de IR
+(`src/dsp/cabsim/loader.rs`), eliminando o vetor de OOM catastrófico via upsampling e o caso
+degenerado de sample_rate extremamente alto no mesmo gate. Critério de aceite: teste
+`test_reject_ir_extreme_sample_rate` (baixo e alto) cobrindo o WAV de 44 bytes descrito no
+achado; nenhuma alocação de resample pode exceder `MAX_IR_LENGTH * fator_máximo_de_upsampling`.
+Risco: baixo (validação aditiva num parser já bem estruturado, sem tocar o motor de convolução).
+
+### EP-R14 — Fidelidade de automação de parâmetros (R28 + R29 + R30)
+
+Escopo: implementar block-splitting para automação sample-accurate usando `event.header().time`
+(R28); mover o push SPSC do `MainThread::flush()` para fora do loop de eventos + fallback via
+`bump_generation()` em caso de `Full` (R29); inicializar o `ParamSmoother` com o valor atual dos
+atomics em `activate()` em vez de `1.0` fixo (R30). Critério de aceite: teste de automação
+sample-accurate com múltiplos eventos por bloco refletidos na saída de áudio;
+`clap-validator` completo sem regressão; teste de 20 eventos em `flush()` inativo sem perda;
+ausência de transiente audível em ciclo activate/deactivate com ganho não-unitário (verificável
+via `regression_gate`/golden). Risco: médio (R28 é a mudança de maior escopo do épico, toca o
+núcleo do processamento de eventos; R29/R30 são cirúrgicos e de baixo risco).
+
+### EP-R15 — Fechar pendências residuais das Rodadas 2 e 3 (R8-h/doc + R14 + P5 + P10)
+
+Escopo mecânico, consolidando todas as pendências identificadas nas verificações desta rodada:
+
+1. **R8-h (documentação)**: adicionar comentário em `src/common/spsc/gc.rs:276` explicitando a
+   semântica ATUAL da flag (`RT_STATUS_GC_OVERFLOW` dispara apenas em overwrite/leak real, não
+   na mera entrada em tier 3), prevenindo que uma futura auditoria repita o mesmo engano
+   documentado na nota histórica desta rodada. Avaliar introduzir um segundo flag
+   (`RT_STATUS_GC_TIER3` ou similar) se o sinal de "pressão do sistema" original ainda for
+   valioso para diagnóstico.
+2. **R14 (definitivo)**: integrar `tests/models/proptest_parsers.rs:270-512` a testes reais ou
+   removê-lo (~240 linhas órfãs, pendente desde a Rodada 1); consolidar os dois wrappers de
+   `generate_sine_440hz` num único local canônico.
+3. **P5 (completar)**: migrar os 31 `#[allow(clippy::too_many_arguments)]` remanescentes para
+   `#[expect(...)]`; ativar `[lints.clippy] allow_attributes = "warn"` em `Cargo.toml` para
+   evitar regressão futura de `#[allow]` sem tracking.
+4. **P10 (implementar)**: baseline inicial de `cargo semver-checks` contra a v3.0.0 atual; como
+   o repositório não tem `.github/workflows/`, documentar o comando em `utils/` (ex.:
+   `utils/semver-check.sh`) para execução manual pré-release, já que não há CI configurado.
+
+Critério de aceite: cada sub-item fechado individualmente; nenhuma mudança de comportamento
+sonoro. Risco: mínimo — execução mecânica de itens já especificados.
+
+### EP-R16 — Higiene residual de conformidade (R31)
+
+Escopo: remover o bypass de CRC32 para NAMB v1 legado na próxima major release (R31.1);
+decisão explícita (manter ou remover) sobre `impl Clone` de `MirroredBuffer` (R31.2, já
+documentado como aceito — ação opcional). Critério de aceite: nenhum arquivo NAMB v1 sem CRC32
+válido é aceito (breaking change intencional, deve ser comunicado no changelog); testes NAMB
+existentes (`namb_test.rs`) atualizados para exigir CRC32 em todos os fixtures v1. Risco: baixo,
+mas é uma **mudança de comportamento visível ao usuário** (arquivos v1 antigos sem CRC deixam de
+carregar) — deve ser sinalizada com antecedência (major version bump), não é "risco zero" como
+os demais itens mecânicos deste documento.
+
+### EP-R17 — Segunda geração de verificação de concorrência e RT-safety (P11 + P12) [ADIADO]
+
+Escopo: adicionar `shuttle` como complemento randomizado ao `loom` já existente, cobrindo os
+mesmos 3 protocolos críticos em espaços de estado grandes (P11); avaliar `rtsan-standalone-rs`
+para detecção real (não apenas textual/grep) de violações RT-safety, anotando as funções de
+hot path com `#[nonblocking]` (P12). Critério de aceite: `tests/shuttle_tests.rs` rodando em
+`tests-long.sh` sem falso-positivo; prova de conceito de `rtsan` detectando uma violação
+conhecida (ex.: reintroduzir temporariamente um `log::error!` no hot path e confirmar que o
+sanitizer o pega, depois remover). Risco: baixo — ambas são ferramentas de dev/teste, nenhuma
+toca o binário de release.

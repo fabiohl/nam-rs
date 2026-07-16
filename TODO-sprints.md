@@ -2233,3 +2233,75 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   ```bash
   PATH=$PWD/target/bin:$PATH cargo semver-checks check-release --baseline-version 0.3.0
   ```
+
+---
+
+## Épico EP-R13 — Robustez de carregamento de IR/WAV (R27)
+
+> **Origem:** [TODO-findings.md §EP-R13](TODO-findings.md#ep-r13--robustez-de-carregamento-de-irwav-r27--primeiro-único-achado-alta-desta-rodada-com-exploit-trivial) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R27 (OOM via sample rate extremo no parser WAV, **ALTA**).
+>
+> **Invariante absoluto:** zero alteração de comportamento funcional e de áudio no caminho feliz.
+>
+> **Risco:** Baixo (validação defensiva no parser off-RT).
+
+## EP-R13 — Sumário dos Sprints
+
+| Sprint  | Finding                                     | Risco | Arquivos tocados | Estimativa |
+| ------- | ------------------------------------------- | ----- | ---------------- | ---------- |
+| **S31** | R27 — Limites de sample_rate e resampler    | Baixo | 4                | ~30 min    |
+| **VF**  | Verificação final integrada EP-R13          | —     | 0                | ~10 min    |
+
+---
+
+## Sprint S31 — R27: Limites de sample_rate e robustez do parser WAV
+
+> **Ref:** [TODO-findings.md §R27](TODO-findings.md#r27--irwav-sample_rate-extremo-baixo-causa-oom-garantido-via-upsampling-catastrófico--alta)
+>
+> **Objetivo:** Adicionar limites mínimo (4.000 Hz) e máximo (384.000 Hz) ao sample rate de arquivos IR WAV e do resampler para evitar alocações gigantescas e instabilidades de filtragem. Além disso, introduzir sanitização de números subnormais (denormais) para defesa em profundidade no loader de IR.
+
+### T31.1 — Definir limites no parser WAV
+
+- **Arquivo:** [`src/dsp/cabsim/loader.rs`](src/dsp/cabsim/loader.rs)
+- **Ação:**
+  1. Definir constantes `MIN_IR_SAMPLE_RATE: u32 = 4_000;` e `MAX_IR_SAMPLE_RATE: u32 = 384_000;` no topo do arquivo.
+  2. Na função `parse_wav`, substituir a validação `if sample_rate == 0` por:
+
+     ```rust
+     if !(MIN_IR_SAMPLE_RATE..=MAX_IR_SAMPLE_RATE).contains(&sample_rate) {
+         return Err(io::Error::new(
+             io::ErrorKind::InvalidData,
+             format!("IR WAV: sample rate {} out of range ({}-{})", sample_rate, MIN_IR_SAMPLE_RATE, MAX_IR_SAMPLE_RATE),
+         ));
+     }
+     ```
+
+- **Critério de aceite:** `cargo check` passa.
+
+### T31.2 — Flush de subnormais (denormais) no parser WAV
+
+- **Arquivo:** [`src/dsp/cabsim/loader.rs`](src/dsp/cabsim/loader.rs)
+- **Ação:** Refatorar a assinatura de `validate_samples` para aceitar `samples: &mut [f32]`. Na sua implementação, iterar sobre os samples de forma mutável e, caso um sample não seja normal e não seja exatamente zero, realizar o flush para `0.0f32`.
+- **Critério de aceite:** Todos os valores denormais de entrada são reduzidos a zero. `cargo check` passa.
+
+### T31.3 — Adicionar proteção no construtor de resampler
+
+- **Arquivo:** [`src/dsp/resampler/mod.rs`](src/dsp/resampler/mod.rs)
+- **Ação:** Em `NamResampler::new`, adicionar verificação para garantir que tanto `pw_rate` quanto `nam_rate` estão contidos na faixa `4_000..=384_000`. Retornar erro se as taxas forem inválidas.
+- **Critério de aceite:** `cargo check` passa.
+
+### T31.4 — Implementar testes de erro com sample rate extremo
+
+- **Arquivo:** [`src/dsp/cabsim/loader_test.rs`](src/dsp/cabsim/loader_test.rs) (ou criar [`src/dsp/cabsim/loader_malformed_test.rs`](src/dsp/cabsim/loader_malformed_test.rs))
+- **Ação:** Implementar o teste unitário `test_reject_ir_extreme_sample_rate` gerando cabeçalhos de WAV de 44 bytes com taxas extremas (ex: 1 Hz e `u32::MAX`) e assegurando que `CabSimIr::load` rejeita apropriadamente com `io::ErrorKind::InvalidData`. E testar a sanitização de denormais.
+- **Critério de aceite:** Testes unitários executados e aprovados via `cargo test`.
+
+---
+
+## VF — Verificação Final Integrada EP-R13
+
+### VF13.1 — Execução de Lints e Suite de Testes
+
+- Rodar `./utils/lints.sh` e assegurar que tudo compila sem warnings e sem erros.
+- Rodar `./utils/tests-quick.sh` para atestar a estabilidade e funcionamento de todas as suítes rápidas de testes, incluindo os novos testes do parser e resampler.
