@@ -159,6 +159,15 @@ pub struct RtStatusFlags {
     /// Requested oversampling factor (0=Off, 1=X2, 2=X4) for engine rebuild.
     /// Set by RT thread, read and cleared by main thread after rebuild.
     pub requested_os_factor: AtomicU32,
+
+    /// errno from `pthread_setaffinity_np` (0 = success).
+    pub rt_affinity_err: AtomicI32,
+    /// errno from `pthread_setschedparam` (0 = success).
+    pub rt_sched_err: AtomicI32,
+    /// errno from `pthread_getschedparam` (0 = success).
+    pub rt_getsched_err: AtomicI32,
+    /// Target CPU requested for affinity pinning (-1 = not set).
+    pub rt_target_cpu: AtomicI32,
 }
 
 impl RtStatusFlags {
@@ -186,6 +195,10 @@ impl RtStatusFlags {
             requested_cabsim_partition_size: AtomicU32::new(0),
             requested_slimmable_ch: AtomicU32::new(0),
             requested_os_factor: AtomicU32::new(0),
+            rt_affinity_err: AtomicI32::new(0),
+            rt_sched_err: AtomicI32::new(0),
+            rt_getsched_err: AtomicI32::new(0),
+            rt_target_cpu: AtomicI32::new(-1),
         }
     }
 

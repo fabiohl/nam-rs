@@ -1674,7 +1674,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Eliminar o UAF na inicialização da janela flutuante passando o `alive_fence` e escala diretamente do main thread, e expurgar chamadas `log::*` síncronas de dentro de `configure_realtime_thread` na thread RT salvando erros em flags atômicas.
 
-### T20.1 — Adicionar campos de erros e telemetria atômicos em `RtStatusFlags` [ ]
+### T20.1 — Adicionar campos de erros e telemetria atômicos em `RtStatusFlags` [x]
 
 - **Arquivo:** [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
 - **Ação:**
@@ -1686,7 +1686,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Inicializar os campos com seus respectivos valores padrão em `new()`.
 - **Critério de aceite:** `cargo check` passa.
 
-### T20.2 — Remover logs e repassar erros atômicos em `configure_realtime_thread` [ ]
+### T20.2 — Remover logs e repassar erros atômicos em `configure_realtime_thread` [x]
 
 - **Arquivo:** [`src/standalone/rt_setup/thread.rs`](src/standalone/rt_setup/thread.rs)
 - **Ação:**
