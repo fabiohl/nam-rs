@@ -1367,7 +1367,7 @@ Critério de aceite: cada sub-item fechado individualmente com o mesmo rigor de 
 de origem; nenhuma mudança de comportamento sonoro (contrato bit-exact preservado). Risco:
 mínimo — todos os itens já têm solução especificada, é execução, não descoberta.
 
-### EP-R12 — Modernização de lint/build/compat (P5 + P9 + P10) [DOING]
+### EP-R12 — Modernização de lint/build/compat (P5 + P9 + P10) [DONE]
 
 Escopo: (1) migração gradual de `#[allow(...)]` para `#[expect(...)]` (P5), priorizando
 `dead_code` e `clippy::too_many_arguments` — os dois padrões mais numerosos entre os 98

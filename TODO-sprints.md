@@ -2203,13 +2203,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Sprint S30 — P10: Integração de cargo semver-checks & Pipeline de CI
+## Sprint S30 — P10: Integração de cargo semver-checks & Pipeline de CI [ADIADO]
 
 > **Ref:** [TODO-findings.md §P10](TODO-findings.md#p10--cargo-semver-checks--breaking-changes-de-api-pública--ver-ep-r12)
 >
 > **Objetivo:** Adicionar configuração de integração contínua (CI) e salvaguardar a API pública do crate (`src/models/`, `src/math/`, `src/loader/`) contra alterações incompatíveis acidentais a partir da v3.0.0.
 
-### T30.1 — Criar workflow do GitHub Actions [ ]
+### T30.1 — Criar workflow do GitHub Actions [ADIADO]
 
 - **Arquivo:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 - **Ação:** Criar um arquivo de CI padrão contendo:

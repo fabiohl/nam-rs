@@ -37,7 +37,10 @@ use super::playback;
 /// - `resampler_producer`: Producer of the resampler channel — the main thread
 ///   builds `NamResampler::new().expect("construction should succeed for test-sized buffers")` here (allocation outside RT) and sends to the callback.
 /// - `rt_status`: Atomic flags for silent RT→Main communication.
-#[expect(clippy::too_many_arguments, reason = "FFI design or complex DSP kernel signature required by construction")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "FFI design or complex DSP kernel signature required by construction"
+)]
 pub fn run_pipewire_host(
     consumer: Consumer<ParamPayload>,
     gc_producer: rtrb::Producer<GcItem>,

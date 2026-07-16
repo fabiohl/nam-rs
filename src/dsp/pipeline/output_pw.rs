@@ -25,7 +25,10 @@ use rtrb;
 /// may warn about unused fields; that is expected and safe here.
 /// Removing the fields would cause premature deallocation and audio dropout.
 #[cfg(feature = "standalone")]
-#[expect(dead_code, reason = "RAII anchor — fields held solely for drop-semantics lifetime management")]
+#[expect(
+    dead_code,
+    reason = "RAII anchor — fields held solely for drop-semantics lifetime management"
+)]
 pub(crate) struct AppState<S1, L1, S2, L2> {
     pub capture_stream: S1,
     pub capture_listener: L1,
