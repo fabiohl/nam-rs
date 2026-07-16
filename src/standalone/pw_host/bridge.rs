@@ -39,11 +39,25 @@ pub fn allocate_dsp_bridge() -> BridgeRef {
     }));
     let bridge_ptr = unsafe { BridgeRef::new(bridge as *const DspBridge as *mut DspBridge) };
 
-    unsafe {
+    // SAFETY: `bridge` points to a valid `DspBridge` allocation produced
+    // by `Box::leak` immediately above — the pointer and size are correct.
+    // `MADV_DONTFORK | MADV_DONTDUMP` are advisory hints; they cannot
+    // corrupt memory, crash, or invalidate the allocation. The kernel may
+    // ignore the hint on older versions (pre-4.4 for DONTFORK, pre-3.4 for
+    // DONTDUMP), which is benign.
+    let ret = unsafe {
         libc::madvise(
             bridge as *const DspBridge as *mut libc::c_void,
             std::mem::size_of::<DspBridge>(),
             libc::MADV_DONTFORK | libc::MADV_DONTDUMP,
+        )
+    };
+    if ret != 0 {
+        log::warn!(
+            "madvise(MADV_DONTFORK|MADV_DONTDUMP) returned {} (errno: {}). \
+             Buffers may be included in forks/core-dumps.",
+            ret,
+            std::io::Error::last_os_error()
         );
     }
 

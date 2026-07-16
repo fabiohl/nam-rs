@@ -2060,7 +2060,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - [`src/models/convnet/batch_norm.rs`](src/models/convnet/batch_norm.rs)
 - **Ação:** Adicionar comentários explicando as invariantes garantidas por construção para cada bloco unsafe/get_unchecked/transmute.
 
-### T26.2 — Tratar e documentar `madvise` em `bridge.rs` [ ]
+### T26.2 — Tratar e documentar `madvise` em `bridge.rs` [X]
 
 - **Arquivo:** [`src/standalone/pw_host/bridge.rs`](src/standalone/pw_host/bridge.rs)
 - **Ação:** Adicionar comentário de SAFETY e validar o retorno de `madvise`, emitindo log de aviso em caso de erro.
