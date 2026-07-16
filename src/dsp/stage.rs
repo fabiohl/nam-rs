@@ -16,7 +16,6 @@ use core::arch::x86_64::*;
 const HB_ODD_COUNT: usize = HB_TAPS / 2;
 
 const UP_DELAY_LINE_LEN: usize = HB_DELAY * 2;
-#[allow(dead_code)]
 const _: () = const { assert!(UP_DELAY_LINE_LEN > (HB_DELAY - 1) + (HB_ODD_COUNT - 1)) };
 const DOWN_EVEN_LEN: usize = HB_TAPS.div_ceil(2);
 const DOWN_ODD_LEN: usize = HB_TAPS / 2;

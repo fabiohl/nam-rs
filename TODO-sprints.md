@@ -2179,7 +2179,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Substituir diretivas `#[allow(...)]` por `#[expect(..., reason = "...")]` para os dois padrões mais populosos (`dead_code` e `clippy::too_many_arguments`), garantindo que suppressões não utilizadas acionem erros do compilador.
 
-### T29.1 — Migrar `dead_code` para `expect` [ ]
+### T29.1 — Migrar `dead_code` para `expect` [x]
 
 - **Arquivos:**
   - [`src/dsp/stage.rs`](src/dsp/stage.rs)
