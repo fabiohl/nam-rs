@@ -1075,7 +1075,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Risco:** Baixo.
 
-### T10.1 — Novo estágio de loom no tests-long.sh [ ]
+### T10.1 — Novo estágio de loom no tests-long.sh [x]
 
 - **Arquivo:** [`utils/tests-long.sh`](utils/tests-long.sh)
 - **Ação:** Adicionar fase que executa `RUSTFLAGS="--cfg loom" cargo test --test loom_tests --release`.

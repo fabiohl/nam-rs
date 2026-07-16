@@ -637,6 +637,20 @@ run_rt_deadline_phase() {
 }
 run_phase "RT Deadline Gate & Jitter Stress" "run_rt_deadline_phase" "phase7-rt-deadline.log" || true
 
+# --- Phase 8: Loom Concurrency Model Checking (release) ---
+# Model-checks the SPSC/GC/DspBridge lock-free primitives under loom's
+# exhaustive permutation engine. Runs with --cfg loom so the production
+# atomic paths are replaced by loom's instrumented wrappers. No quick-suite
+# equivalent — loom is too slow for a per-push gate and needs release mode
+# to keep permutation-space exploration bounded within a few minutes.
+run_loom_phase() {
+    local status=0
+    echo "  Compilando e executando testes loom com cfg=loom..."
+    RUSTFLAGS="--cfg loom" timed_cargo_test "loom_tests" --release --no-fail-fast --test loom_tests -- --nocapture || status=1
+    return $status
+}
+run_phase "Loom Concurrency Model Checking" "run_loom_phase" "phase8-loom.log" || true
+
 # --- Print beautifully structured summary ---
 echo -e "\n${BLUE}${BOLD}================================================================${NC}"
 echo -e "${BLUE}${BOLD}                  AUDIT SUMMARY REPORT                          ${NC}"
