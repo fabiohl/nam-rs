@@ -1774,7 +1774,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Objetivo:** Hardening da fronteira FFI do CLAP entre o host e o plugin via thread checking em debug e tratamento resiliente de envenenamento de mutexes.
 
-### T21.1 — Adicionar o feature "thread-check" no Cargo.toml [ ]
+### T21.1 — Adicionar o feature "thread-check" no Cargo.toml [x]
 
 - **Arquivo:** [`Cargo.toml`](Cargo.toml)
 - **Ação:** Adicionar `"thread-check"` à lista de features da dependência `clack-extensions`.
