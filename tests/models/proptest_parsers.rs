@@ -516,6 +516,13 @@ pub fn arbitrary_nam_model_data() -> impl Strategy<Value = NamModelData> {
 // ---------------------------------------------------------------------------
 // S16.T03 — JSON serialization roundtrip for NamModelData
 // ---------------------------------------------------------------------------
+//
+// prop_model_data_serialization_roundtrip is executed in Fase 3
+// of utils/tests-quick.sh (proptest suite, #[ignore]d by default,
+// invoked via -- --ignored). Not orphaned: the ignore attribute is
+// intentional because the 200-case sweep would slow down the fast
+// pass. CI and pre-release workflows run the full suite including
+// ignored proptest cases.
 
 proptest! {
     #![proptest_config(ProptestConfig {

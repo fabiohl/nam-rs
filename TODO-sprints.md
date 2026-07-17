@@ -2459,7 +2459,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Em `gc.rs` (L276 e L307), adicionar comentário documentando que `RT_STATUS_GC_OVERFLOW` só é ativado em overwrite/leak real, e atualizar `gc_cascade` para setar `RT_STATUS_GC_TIER3` ao usar o overflow buffer.
   3. Em `telemetry.rs` e `logging.rs`, monitorar, logar e limpar a flag `RT_STATUS_GC_TIER3` sob pressão.
 
-### T33.2 — R14: Consolidar `generate_sine_440hz` e documentar `proptest_parsers` [ ]
+### T33.2 — R14: Consolidar `generate_sine_440hz` e documentar `proptest_parsers` [x]
 
 - **Arquivos:**
   - [`src/testing/aliasing.rs`](src/testing/aliasing.rs)

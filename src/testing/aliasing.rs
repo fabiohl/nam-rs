@@ -98,6 +98,15 @@ pub fn generate_sine(f0: f64, sample_rate: u32, num_samples: usize, gain: f64) -
         .collect()
 }
 
+/// Canonical 440 Hz sine generator at 48 kHz, 0 dBFS.
+///
+/// Preferred entry point for any code that needs a reference A4 sine
+/// (test signals, benchmarks, validation). Eliminates redundant per-crate
+/// implementations.
+pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
+    generate_sine(440.0, 48_000, num_samples, 1.0)
+}
+
 /// Returns the 4-term Blackman-Harris window coefficients.
 ///
 /// Coefficients (Nuttall 1981):
