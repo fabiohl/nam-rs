@@ -1,10 +1,10 @@
 ╔══════════════════════════════════════════════════════════════════╗
 ║              nam-rs Quality Dashboard                            ║
 ║              ------------------------------                      ║
-║              Medido em: 2026-07-15 23:14:20 -0300                ║
+║              Medido em: 2026-07-17 00:07:45 -0300                ║
 ║              ISA: AVX2 (x86-64-v3)                               ║
 ║              CPU: AMD Ryzen 7 5700U with Radeon Graphics         ║
-║              rustc: rustc 1.97.0 (2d8144b78 2026-07-07)          ║
+║              rustc: rustc 1.97.1 (8bab26f4f 2026-07-14)          ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 🎯 RESUMO RAPIDO (para nao-cientistas)
@@ -83,16 +83,16 @@
 
   Modelo                       │ Latencia Mediana │ % do Budget  │ Folga
   ──────────────────────────── │ ──────────────── │ ──────────── │ ────────────────────
-  WaveNet Standard CH16        │ 43.0 us          │ 3.2%         │ 96.8% ok
-  WaveNet Feather CH8          │ 27.0 us          │ 2.0%         │ 98.0% ok
-  WaveNet Lite CH12            │ 64.7 us          │ 4.9%         │ 95.1% ok
-  WaveNet Nano CH4             │ 21.7 us          │ 1.6%         │ 98.4% ok
-  A2 Full CH8                  │ 28.0 us          │ 2.1%         │ 97.9% ok
-  A2 Lite CH3                  │ 18.4 us          │ 1.4%         │ 98.6% ok
+  WaveNet Standard CH16        │ 43.1 us          │ 3.2%         │ 96.8% ok
+  WaveNet Feather CH8          │ 26.8 us          │ 2.0%         │ 98.0% ok
+  WaveNet Lite CH12            │ 67.2 us          │ 5.0%         │ 95.0% ok
+  WaveNet Nano CH4             │ 21.9 us          │ 1.6%         │ 98.4% ok
+  A2 Full CH8                  │ 27.4 us          │ 2.1%         │ 97.9% ok
+  A2 Lite CH3                  │ 18.5 us          │ 1.4%         │ 98.6% ok
   LSTM 1x16                    │ 7.7 us           │ 0.6%         │ 99.4% ok
-  LSTM 2x8                     │ 8.1 us           │ 0.6%         │ 99.4% ok
+  LSTM 2x8                     │ 7.5 us           │ 0.6%         │ 99.4% ok
   Linear RF=2048               │ 0.3 us           │ 0.0%         │ 100.0% ok
-  ConvNet                      │ 10.3 us          │ 0.8%         │ 99.2% ok
+  ConvNet                      │ 10.5 us          │ 0.8%         │ 99.2% ok
 
   (i) Folga > 50%:  Pode usar oversampling 2x sem xruns
   (i) Folga > 75%:  Pode usar oversampling 4x sem xruns
@@ -123,7 +123,7 @@
       campo receptivo e maior que a janela de 256 amostras, entao o
       ESR total abaixo reflete majoritariamente o transiente de
       preenchimento do buffer, nao o piso de precisao em regime
-      permanente. Ver docs/perceptual_validation.md#lstm-recurrent-state-drift e TODO-findings.md Achado F3.
+      permanente. Ver docs/perceptual_validation.md#decomposition-cold-start.
 
   test reference_oracle_f64::test_decomposition_lstm ... LSTM-H3:
     test reference_oracle_f64::test_decomposition_lstm ... LSTM-H3 Decomposition:
@@ -194,4 +194,4 @@
   (i) Nao coberto no modo quick — rode tests-long para verificacao completa.
 
 ───────────────────────────────────────────────────────────────
-  Dashboard gerado em 112.0s (fidelidade: 39.4s, performance: 70.5s)
+  Dashboard gerado em 109.3s (fidelidade: 36.8s, performance: 70.2s)
