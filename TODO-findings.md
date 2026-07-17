@@ -1789,7 +1789,7 @@ degenerado de sample_rate extremamente alto no mesmo gate. Critério de aceite: 
 achado; nenhuma alocação de resample pode exceder `MAX_IR_LENGTH * fator_máximo_de_upsampling`.
 Risco: baixo (validação aditiva num parser já bem estruturado, sem tocar o motor de convolução).
 
-### EP-R14 — Fidelidade de automação de parâmetros (R28 + R29 + R30) [DOING]
+### EP-R14 — Fidelidade de automação de parâmetros (R28 + R29 + R30) [DONE]
 
 Escopo: implementar block-splitting para automação sample-accurate usando `event.header().time`
 (R28); mover o push SPSC do `MainThread::flush()` para fora do loop de eventos + fallback via
@@ -1801,7 +1801,7 @@ ausência de transiente audível em ciclo activate/deactivate com ganho não-uni
 via `regression_gate`/golden). Risco: médio (R28 é a mudança de maior escopo do épico, toca o
 núcleo do processamento de eventos; R29/R30 são cirúrgicos e de baixo risco).
 
-### EP-R15 — Fechar pendências residuais das Rodadas 2 e 3 (R8-h/doc + R14 + P5 + P10)
+### EP-R15 — Fechar pendências residuais das Rodadas 2 e 3 (R8-h/doc + R14 + P5 + P10) [DOING]
 
 Escopo mecânico, consolidando todas as pendências identificadas nas verificações desta rodada:
 
@@ -1824,7 +1824,7 @@ Escopo mecânico, consolidando todas as pendências identificadas nas verificaç
 Critério de aceite: cada sub-item fechado individualmente; nenhuma mudança de comportamento
 sonoro. Risco: mínimo — execução mecânica de itens já especificados.
 
-### EP-R16 — Higiene residual de conformidade (R31)
+### EP-R16 — Higiene residual de conformidade (R31) [DOING]
 
 Escopo: remover o bypass de CRC32 para NAMB v1 legado na próxima major release (R31.1);
 decisão explícita (manter ou remover) sobre `impl Clone` de `MirroredBuffer` (R31.2, já

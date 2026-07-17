@@ -1661,10 +1661,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## EP-R7 — Sumário dos Sprints
 
-| Sprint  | Finding                                                    | Risco       | Arquivos tocados | Estimativa |
-| ------- | ---------------------------------------------------------- | ----------- | ---------------- | ---------- |
-| **S20** | R17 + R18 — Segurança de Lifecycle e RT-safety de thread   | Baixo-Médio | 6                | ~60 min    |
-| **VF**  | Verificação final integrada EP-R7                          | —           | 0                | ~15 min    |
+| Sprint  | Finding                                                  | Risco       | Arquivos tocados | Estimativa |
+| ------- | -------------------------------------------------------- | ----------- | ---------------- | ---------- |
+| **S20** | R17 + R18 — Segurança de Lifecycle e RT-safety de thread | Baixo-Médio | 6                | ~60 min    |
+| **VF**  | Verificação final integrada EP-R7                        | —           | 0                | ~15 min    |
 
 ---
 
@@ -1761,10 +1761,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## EP-R8 — Sumário dos Sprints
 
-| Sprint  | Finding                                                    | Risco | Arquivos tocados | Estimativa |
-| ------- | ---------------------------------------------------------- | ----- | ---------------- | ---------- |
-| **S21** | R19 + R24 + R25 — Blindagem da fronteira CLAP host↔plugin  | Baixo | 8                | ~45 min    |
-| **VF**  | Verificação final integrada EP-R8                          | —     | 0                | ~15 min    |
+| Sprint  | Finding                                                   | Risco | Arquivos tocados | Estimativa |
+| ------- | --------------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S21** | R19 + R24 + R25 — Blindagem da fronteira CLAP host↔plugin | Baixo | 8                | ~45 min    |
+| **VF**  | Verificação final integrada EP-R8                         | —     | 0                | ~15 min    |
 
 ---
 
@@ -1973,12 +1973,12 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## EP-R10 — Sumário dos Sprints
 
-| Sprint  | Finding                                                  | Risco  | Arquivos tocados | Estimativa |
-| ------- | -------------------------------------------------------- | ------ | ---------------- | ---------- |
-| **S24** | R22 — Telemetria de buffer-miss no PipeWire              | Baixo  | 7                | ~30 min    |
-| **S25** | R26 — Resolução e Limpeza de Campos Mortos/Incorretos    | Baixo  | 6                | ~30 min    |
-| **S26** | R23 — Higiene de unsafe com comentários SAFETY           | Baixo  | 8                | ~30 min    |
-| **VF**  | Verificação final integrada EP-R10                       | —      | 0                | ~15 min    |
+| Sprint  | Finding                                               | Risco | Arquivos tocados | Estimativa |
+| ------- | ----------------------------------------------------- | ----- | ---------------- | ---------- |
+| **S24** | R22 — Telemetria de buffer-miss no PipeWire           | Baixo | 7                | ~30 min    |
+| **S25** | R26 — Resolução e Limpeza de Campos Mortos/Incorretos | Baixo | 6                | ~30 min    |
+| **S26** | R23 — Higiene de unsafe com comentários SAFETY        | Baixo | 8                | ~30 min    |
+| **VF**  | Verificação final integrada EP-R10                    | —     | 0                | ~15 min    |
 
 ---
 
@@ -2227,7 +2227,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 ### VF12.1 — Lints e Cobertura de Verificação
 
 - Executar `./utils/lints.sh` e assegurar que tudo compila sem warnings e sem erros (e que o clippy passa com o Cargo Config configurado).
+
 - Executar `./utils/tests-quick.sh` para atestar a estabilidade e funcionamento de todas as suítes rápidas de testes.
+
 - Rodar o semver-checks localmente para garantir a integridade da API pública:
 
   ```bash
@@ -2248,10 +2250,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## EP-R13 — Sumário dos Sprints
 
-| Sprint  | Finding                                     | Risco | Arquivos tocados | Estimativa |
-| ------- | ------------------------------------------- | ----- | ---------------- | ---------- |
-| **S31** | R27 — Limites de sample_rate e resampler    | Baixo | 4                | ~30 min    |
-| **VF**  | Verificação final integrada EP-R13          | —     | 0                | ~10 min    |
+| Sprint  | Finding                                  | Risco | Arquivos tocados | Estimativa |
+| ------- | ---------------------------------------- | ----- | ---------------- | ---------- |
+| **S31** | R27 — Limites de sample_rate e resampler | Baixo | 4                | ~30 min    |
+| **VF**  | Verificação final integrada EP-R13       | —     | 0                | ~10 min    |
 
 ---
 
@@ -2264,8 +2266,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 ### T31.1 — Definir limites no parser WAV [DONE]
 
 - **Arquivo:** [`src/dsp/cabsim/loader.rs`](src/dsp/cabsim/loader.rs)
+
 - **Ação:**
+
   1. Definir constantes `MIN_IR_SAMPLE_RATE: u32 = 4_000;` e `MAX_IR_SAMPLE_RATE: u32 = 384_000;` no topo do arquivo.
+
   2. Na função `parse_wav`, substituir a validação `if sample_rate == 0` por:
 
      ```rust
@@ -2320,10 +2325,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## EP-R14 — Sumário dos Sprints
 
-| Sprint  | Finding                                     | Risco | Arquivos tocados | Estimativa |
-| ------- | ------------------------------------------- | ----- | ---------------- | ---------- |
-| **S32** | R28 + R29 + R30 — Automação de Parâmetros   | Médio | 6                | ~90 min    |
-| **VF**  | Verificação final integrada EP-R14          | —     | 0                | ~15 min    |
+| Sprint  | Finding                                   | Risco | Arquivos tocados | Estimativa |
+| ------- | ----------------------------------------- | ----- | ---------------- | ---------- |
+| **S32** | R28 + R29 + R30 — Automação de Parâmetros | Médio | 6                | ~90 min    |
+| **VF**  | Verificação final integrada EP-R14        | —     | 0                | ~15 min    |
 
 ---
 
@@ -2420,3 +2425,103 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - Rodar `./utils/lints.sh` e assegurar que tudo compila sem warnings e sem erros.
 - Rodar `./utils/tests-quick.sh` para atestar a estabilidade e funcionamento de todas as suítes rápidas de testes, incluindo os novos testes de automação e smoothers.
 - Executar `./utils/quality-dashboard.sh --check docs/quality-contract.txt` para validar bit-exactness.
+
+---
+
+## Épico EP-R15 — Fechar pendências residuais das Rodadas 2 e 3 (R8-h/doc + R14 + P5 + P10)
+
+> **Origem:** [TODO-findings.md §EP-R15](TODO-findings.md#ep-r15--fechar-pendências-residuais-das-rodadas-2-e-3-r8-hdoc--r14--p5--p10) (L1804-1826)
+>
+> **Objetivo:** Consolidar e fechar pendências mecânicas de documentação, testes, lints e ferramentas de CI das rodadas anteriores.
+>
+> **Risco:** Mínimo (mudanças de documentação, lints, script utilitário de semver-checks e consolidação de sinal de teste).
+
+## EP-R15 — Sumário dos Sprints
+
+| Sprint  | Finding                                      | Risco | Arquivos tocados | Estimativa |
+| ------- | -------------------------------------------- | ----- | ---------------- | ---------- |
+| **S33** | R8-h + R14 + P5 + P10 — Pendências Residuais | Baixo | ~35              | ~45 min    |
+| **VF**  | Verificação final integrada EP-R15           | —     | 0                | ~10 min    |
+
+---
+
+## Sprint S33 — R8-h + R14 + P5 + P10: Pendências Residuais de Robustez e Lints
+
+### T33.1 — R8-h: Documentação e nova flag de Tier 3 no GC [ ]
+
+- **Arquivos:**
+  - [`src/common/spsc/status.rs`](src/common/spsc/status.rs)
+  - [`src/common/spsc/gc.rs`](src/common/spsc/gc.rs)
+  - [`src/standalone/rt_setup/telemetry.rs`](src/standalone/rt_setup/telemetry.rs)
+  - [`src/clap/plugin/main_thread/logging.rs`](src/clap/plugin/main_thread/logging.rs)
+- **Ação:**
+  1. Em `status.rs`, definir a flag `RT_STATUS_GC_TIER3: u64 = 1 << 22;` para indicar entrada no overflow buffer.
+  2. Em `gc.rs` (L276 e L307), adicionar comentário documentando que `RT_STATUS_GC_OVERFLOW` só é ativado em overwrite/leak real, e atualizar `gc_cascade` para setar `RT_STATUS_GC_TIER3` ao usar o overflow buffer.
+  3. Em `telemetry.rs` e `logging.rs`, monitorar, logar e limpar a flag `RT_STATUS_GC_TIER3` sob pressão.
+
+### T33.2 — R14: Consolidar `generate_sine_440hz` e documentar `proptest_parsers` [ ]
+
+- **Arquivos:**
+  - [`src/testing/aliasing.rs`](src/testing/aliasing.rs)
+  - [`tests/common/signals.rs`](tests/common/signals.rs)
+  - [`benches/common.rs`](benches/common.rs)
+  - [`tests/models/proptest_parsers.rs`](tests/models/proptest_parsers.rs)
+- **Ação:**
+  1. Em `aliasing.rs`, criar a função pública canônica `generate_sine_440hz`.
+  2. Em `signals.rs` e `common.rs`, remover a implementação redundante de `generate_sine_440hz` e reutilizar a função de `aliasing.rs`.
+  3. Em `proptest_parsers.rs`, adicionar comentário aclarando a execução do teste `prop_model_data_serialization_roundtrip` na Fase 3 do `tests-quick.sh` (garantindo que não está órfão).
+
+### T33.3 — P5: Migrar clippy allows para expects remanescentes [ ]
+
+- **Arquivos:**
+  - [`Cargo.toml`](Cargo.toml)
+  - ~31 arquivos contendo `#[allow(clippy::too_many_arguments)]`
+- **Ação:**
+  1. Em `Cargo.toml`, habilitar `[lints.clippy] allow_attributes = "warn"`.
+  2. Migrar os 31 `#[allow(clippy::too_many_arguments)]` para `#[expect(clippy::too_many_arguments, reason = "...")]` documentando as razões técnicas específicas.
+
+---
+
+## Épico EP-R16 — Higiene residual de conformidade (R31)
+
+> **Origem:** [TODO-findings.md §EP-R16](TODO-findings.md#ep-r16--higiene-residual-de-conformidade-r31) (Auditoria de Resiliência & Robustez, 2026-07-16)
+>
+> **Escopo:** R31.1 (Remoção do bypass de CRC32 para NAMB v1, **BAIXA**), R31.2 (Decisão de manter `impl Clone` em `MirroredBuffer`, **BAIXA**).
+>
+> **Risco:** Baixo (mudança de comportamento em arquivos v1 antigos sem CRC, mas sob controle).
+
+## EP-R16 — Sumário dos Sprints
+
+| Sprint  | Finding                                     | Risco | Arquivos tocados | Estimativa |
+| ------- | ------------------------------------------- | ----- | ---------------- | ---------- |
+| **S34** | R31 — Remoção de bypass de CRC32 no NAMB v1 | Baixo | 3                | ~20 min    |
+| **VF**  | Verificação final integrada EP-R16          | —     | 0                | ~10 min    |
+
+---
+
+## Sprint S34 — R31: Higiene Residual de Conformidade e CRC32
+
+> **Objetivo:** Remover o bypass legado de CRC32 para arquivos NAMB v1 (R31.1) e formalizar a decisão de manter o `impl Clone` de `MirroredBuffer` (R31.2).
+
+### T34.1 — Remover o bypass de CRC32 para arquivos NAMB v1 (R31.1)
+
+- **Arquivo:** [`src/loader/namb/parse.rs`](src/loader/namb/parse.rs)
+- **Ação:**
+  1. Remover a lógica condicional que pula a verificação de CRC32 para arquivos v1 quando `crc32_header == 0`.
+  2. Adicionar uma verificação explícita de erro: se `version == 1` e `crc32_header == 0`, retornar `NambError::CrcMismatch` para sinalizar a rejeição do arquivo sem CRC.
+  3. Chamar `check_crc` incondicionalmente para todos os arquivos.
+- **Critério de aceite:** O parser de NAMB v1 exige de forma estrita um checksum de CRC32 não nulo e correspondente.
+
+### T34.2 — Formalizar decisão arquitetural de manter `impl Clone` em `MirroredBuffer` (R31.2)
+
+- **Arquivo:** [`src/dsp/mirror_buf.rs`](src/dsp/mirror_buf.rs)
+- **Ação:** Documentar por meio de comentários que a implementação manual de `Clone` que chama `try_clone().expect(...)` é mantida de forma intencional para permitir o uso de `#[derive(Clone)]` em contêineres e estruturas do Rust, enquanto `try_clone()` é exposto como a API preferencial para o FFI (caminho seguro no CLAP).
+- **Critério de aceite:** Decisão documentada no cabeçalho ou implementação de `Clone` do `MirroredBuffer`.
+
+### T34.3 — Atualizar suite de testes unitários do NAMB (R31.1)
+
+- **Arquivo:** [`src/loader/namb_test.rs`](src/loader/namb_test.rs)
+- **Ação:**
+  1. Renomear e refatorar `test_v1_crc32_zero_empty_weights_skips` para `test_v1_crc32_zero_empty_weights_rejected`.
+  2. Ajustar o teste para assegurar que um arquivo NAMB v1 com pesos vazios e `crc32 == 0` é rejeitado com erro `NambError::CrcMismatch`.
+- **Critério de aceite:** `cargo test` passa com a nova suite de testes do NAMB.

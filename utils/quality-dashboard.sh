@@ -342,7 +342,7 @@ run_benchmarks() {
     echo -e "\n${BLUE}${BOLD}-> Executando regression_gate benchmarks...${NC}"
     local start_t end_t
     start_t=$(date +%s%N)
-    cargo bench --bench regression_gate > "$log" 2>&1 || true
+    cargo bench --bench regression_gate --features testing > "$log" 2>&1 || true
     end_t=$(date +%s%N)
     BENCH_DURATION_S=$(awk -v ns=$((end_t - start_t)) 'BEGIN { printf "%.1f", ns / 1000000000 }')
     echo -e "  ${GREEN}ok${NC} regression_gate concluido (${BENCH_DURATION_S}s)"
