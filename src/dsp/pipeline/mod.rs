@@ -64,6 +64,7 @@ pub(crate) mod test_util {
     pub mod infra {
         #[cfg(test)]
         pub use crate::common::alloc_audit::CountingAllocator;
+        #[allow(unused_imports, clippy::allow_attributes)]
         pub use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
     }
 }
