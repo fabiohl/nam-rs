@@ -2380,7 +2380,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - ✅ Fallback via `bump_generation()`: se SPSC estiver cheio, incrementa `gui_param_generation` com Release — o RT thread sincroniza via atomics.
   - ✅ `cargo check` e clippy passam sem warnings.
 
-### T32.4 — Warm reset de ParamSmoother no activate (R30)
+### T32.4 — Warm reset de ParamSmoother no activate (R30) ✅
 
 - **Arquivo:** [`src/clap/processor/mod.rs`](src/clap/processor/mod.rs)
 - **Ação:**
@@ -2388,6 +2388,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Obter o look-up table de ganho via `crate::math::dsp::gain_lut::get_gain_lut()`.
   3. Converter as DBs para ganho linear e inicializar os smoothers com esses valores vigentes.
 - **Critério de aceite:** Ausência de "jump" transiente ao reativar o plugin com ganho diferente de 0 dB (1.0).
+- **Conclusão (2026-07-16):**
+  - ✅ `activate` agora lê `shared.ui_to_rt.param_input_gain` e `param_output_gain` (Relaxed), converte DB→linear via `get_gain_lut().db_to_linear()`, e inicializa os smoothers com o ganho vigente.
+  - ✅ Elimina o "jump" transiente ao reativar o plugin com ganho não-unitário.
+  - ✅ `cargo check` e clippy passam sem warnings.
 
 ### T32.5 — Criar testes automatizados de integração para automação de parâmetros
 

@@ -164,9 +164,23 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let mono_hyst = DynamicHysteresis::new();
 
         // 4. Smoother initialization (Sample-Accurate)
-        // Start at 1.0 (unity gain) to avoid silence on the first block.
-        let smoother_in = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
-        let smoother_out = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
+        // Warm reset from shared atomics to avoid transient jump on reactivation
+        // when gain differs from 0 dB (1.0).
+        let gain_lut = get_gain_lut();
+        let input_db =
+            f32::from_bits(shared.ui_to_rt.param_input_gain.load(Ordering::Relaxed));
+        let output_db =
+            f32::from_bits(shared.ui_to_rt.param_output_gain.load(Ordering::Relaxed));
+        let smoother_in = ParamSmoother::new(
+            gain_lut.db_to_linear(input_db),
+            audio_config.sample_rate as f32,
+            20.0,
+        );
+        let smoother_out = ParamSmoother::new(
+            gain_lut.db_to_linear(output_db),
+            audio_config.sample_rate as f32,
+            20.0,
+        );
 
         // Rebuild ConvEngine from stored raw IR samples with the new partition size
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
