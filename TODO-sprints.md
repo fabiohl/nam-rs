@@ -2393,16 +2393,23 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - ✅ Elimina o "jump" transiente ao reativar o plugin com ganho não-unitário.
   - ✅ `cargo check` e clippy passam sem warnings.
 
-### T32.5 — Criar testes automatizados de integração para automação de parâmetros
+### T32.5 — Criar testes automatizados de integração para automação de parâmetros ✅
 
 - **Arquivos:**
-  - [`tests/params_automation_test.rs`](tests/params_automation_test.rs) (novo)
+  - [`src/clap/processor_automation_test.rs`](src/clap/processor_automation_test.rs) (novo)
   - [`src/clap/processor_bypass_test.rs`](src/clap/processor_bypass_test.rs) (extensão)
 - **Ação:**
   1. Implementar um teste simulando múltiplos eventos `ParamValueEvent` no mesmo bloco com offsets de tempo diferentes (ex: t=0, t=64, t=128) e verificar se a saída de áudio muda de acordo com os tempos do bloco (sample-accurate).
   2. Implementar um teste que sature o `flush` com 20 eventos e comprove que o fallback `bump_generation` sincroniza os valores pós-activate sem perdas.
   3. Implementar teste unitário para validar que reativar o plugin com ganho não-unitário inicializa o smoother corretamente.
 - **Critério de aceite:** Novos testes criados e verdes via `cargo test`.
+- **Conclusão (2026-07-16):**
+  - ✅ `test_sample_accurate_input_gain_mid_block` — eventos em t=0 e t=n/2 com ganho -60dB→0dB, verifica diferença de amplitude entre metades do bloco.
+  - ✅ `test_sample_accurate_input_gain_three_events` — eventos em t=0, t=64, t=128 com ganho -60/0/-60dB, verifica três segmentos com amplitudes distintas.
+  - ✅ `test_block_splitting_preserves_event_order` — múltiplos offsets, verifica estado interno (params.input_gain_db) após processamento.
+  - ✅ `test_flush_saturate_spsc_bump_generation_fallback` (em `processor_bypass_test.rs`) — satura flush com 20 eventos, verifica `bump_generation` e sincronização pós-activate.
+  - ✅ `test_smoother_warm_reset_on_reactivate` (em `processor_bypass_test.rs`) — ciclo activate→flush(-12dB)→deactivate→activate, verifica smoother.in com valor correto.
+  - 1208 testes passam (5 novos), 0 falhas, clippy limpo.
 
 ---
 

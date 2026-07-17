@@ -167,10 +167,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // Warm reset from shared atomics to avoid transient jump on reactivation
         // when gain differs from 0 dB (1.0).
         let gain_lut = get_gain_lut();
-        let input_db =
-            f32::from_bits(shared.ui_to_rt.param_input_gain.load(Ordering::Relaxed));
-        let output_db =
-            f32::from_bits(shared.ui_to_rt.param_output_gain.load(Ordering::Relaxed));
+        let input_db = f32::from_bits(shared.ui_to_rt.param_input_gain.load(Ordering::Relaxed));
+        let output_db = f32::from_bits(shared.ui_to_rt.param_output_gain.load(Ordering::Relaxed));
         let smoother_in = ParamSmoother::new(
             gain_lut.db_to_linear(input_db),
             audio_config.sample_rate as f32,
@@ -430,3 +428,7 @@ mod processor_gc_stress_test;
 #[cfg(test)]
 #[path = "../processor_calibration_test.rs"]
 mod processor_calibration_test;
+
+#[cfg(test)]
+#[path = "../processor_automation_test.rs"]
+mod processor_automation_test;
