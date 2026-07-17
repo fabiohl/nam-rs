@@ -2526,7 +2526,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ação:** Documentar por meio de comentários que a implementação manual de `Clone` que chama `try_clone().expect(...)` é mantida de forma intencional para permitir o uso de `#[derive(Clone)]` em contêineres e estruturas do Rust, enquanto `try_clone()` é exposto como a API preferencial para o FFI (caminho seguro no CLAP).
 - **Critério de aceite:** Decisão documentada no cabeçalho ou implementação de `Clone` do `MirroredBuffer`.
 
-### T34.3 — Atualizar suite de testes unitários do NAMB (R31.1)
+### T34.3 — Atualizar suite de testes unitários do NAMB (R31.1) ✅ *(2026-07-16)* — antecipado em T34.1
 
 - **Arquivo:** [`src/loader/namb_test.rs`](src/loader/namb_test.rs)
 - **Ação:**

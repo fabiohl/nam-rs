@@ -607,17 +607,20 @@ mod tests {
     #[test]
     fn test_invalid_header_sample_rate_nan() {
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size];
+        let mut data = vec![0u8; header_size + 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = f32::NAN;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
+        // v1 CRC32 covers weights section only; add a weight so CRC32 ≠ 0.
+        let w = 1.0f32;
+        data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -639,17 +642,19 @@ mod tests {
     #[test]
     fn test_invalid_header_sample_rate_negative() {
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size];
+        let mut data = vec![0u8; header_size + 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = -44100.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
+        let w = 1.0f32;
+        data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -671,17 +676,19 @@ mod tests {
     #[test]
     fn test_invalid_header_sample_rate_zero() {
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size];
+        let mut data = vec![0u8; header_size + 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = 0.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
+        let w = 1.0f32;
+        data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -703,17 +710,19 @@ mod tests {
     #[test]
     fn test_invalid_header_input_level_inf() {
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size];
+        let mut data = vec![0u8; header_size + 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = 48000.0;
         header.input_level_dbu = f32::INFINITY;
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
+        let w = 1.0f32;
+        data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
@@ -735,17 +744,19 @@ mod tests {
     #[test]
     fn test_invalid_header_output_level_neg_inf() {
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size];
+        let mut data = vec![0u8; header_size + 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0;
         header.sample_rate = 48000.0;
         header.input_level_dbu = 12.0;
         header.output_level_dbu = f32::NEG_INFINITY;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
+        let w = 1.0f32;
+        data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
