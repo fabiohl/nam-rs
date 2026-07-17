@@ -425,6 +425,7 @@ fn apply_input_gain_sub_block_inner(
         let start = smoother_in.peek();
         let target = smoother_in.target_value();
         if (start - target).abs() < 1e-9 {
+            // Fast-path: gain is stable — use SIMD constant-gain with clipping detection.
             let clipped = unsafe {
                 crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
                     &mut buf_host_l[offset..offset + n_samples],
@@ -435,7 +436,21 @@ fn apply_input_gain_sub_block_inner(
             if clipped {
                 *input_clipped = true;
             }
+        } else if n_samples < 8 {
+            // Transition path for very small sub-blocks: run the IIR smoother tick-per-sample
+            // to prevent zipper noise when block-splitting fatias the block aggressively (e.g. size 1).
+            let slice_l = &mut buf_host_l[offset..offset + n_samples];
+            let slice_r = &mut buf_host_r[offset..offset + n_samples];
+            for (l, r) in slice_l.iter_mut().zip(slice_r.iter_mut()) {
+                let g = smoother_in.tick();
+                *l *= g;
+                *r *= g;
+                if l.abs() > 1.0 || r.abs() > 1.0 {
+                    *input_clipped = true;
+                }
+            }
         } else {
+            // For larger sub-blocks, use the efficient linear ramp and snap to target at the end.
             let step = (target - start) / n_samples as f32;
             unsafe {
                 crate::math::dsp::gain::apply_ramp_stereo(
@@ -463,6 +478,7 @@ fn apply_input_gain_sub_block_inner(
         let start = smoother_in.peek();
         let target = smoother_in.target_value();
         if (start - target).abs() < 1e-9 {
+            // Fast-path: gain is stable — use SIMD constant-gain with clipping detection.
             let clipped = unsafe {
                 crate::math::dsp::gain::apply_gain_and_detect_clipping_mono(
                     &mut buf_host_l[offset..offset + n_samples],
@@ -471,6 +487,15 @@ fn apply_input_gain_sub_block_inner(
             };
             if clipped {
                 *input_clipped = true;
+            }
+        } else if n_samples < 8 {
+            // Transition path: run the IIR smoother tick-per-sample.
+            for sample in &mut buf_host_l[offset..offset + n_samples] {
+                let g = smoother_in.tick();
+                *sample *= g;
+                if sample.abs() > 1.0 {
+                    *input_clipped = true;
+                }
             }
         } else {
             let step = (target - start) / n_samples as f32;
@@ -502,12 +527,23 @@ fn apply_output_gain_sub_block_inner(
         let start = smoother_out.peek();
         let target = smoother_out.target_value();
         if (start - target).abs() < 1e-9 {
+            // Fast-path: gain is stable — SIMD constant-gain.
             unsafe {
                 crate::math::dsp::gain::apply_gain_stereo(
                     &mut buf_out_l[..n_out],
                     &mut buf_out_r[..n_out],
                     start,
                 );
+            }
+        } else if n_out < 8 {
+            // Transition path: IIR tick-per-sample to prevent zipper noise.
+            for (l, r) in buf_out_l[..n_out]
+                .iter_mut()
+                .zip(buf_out_r[..n_out].iter_mut())
+            {
+                let g = smoother_out.tick();
+                *l *= g;
+                *r *= g;
             }
         } else {
             let step = (target - start) / n_out as f32;
@@ -528,7 +564,14 @@ fn apply_output_gain_sub_block_inner(
         let start = smoother_out.peek();
         let target = smoother_out.target_value();
         if (start - target).abs() < 1e-9 {
+            // Fast-path: gain is stable — SIMD constant-gain.
             crate::math::dsp::gain::apply_gain_simd(&mut buf_out_l[..n_out], start);
+        } else if n_out < 8 {
+            // Transition path: IIR tick-per-sample to prevent zipper noise.
+            for sample in &mut buf_out_l[..n_out] {
+                let g = smoother_out.tick();
+                *sample *= g;
+            }
         } else {
             let step = (target - start) / n_out as f32;
             crate::math::dsp::gain::apply_ramp_simd(&mut buf_out_l[..n_out], start, step);
