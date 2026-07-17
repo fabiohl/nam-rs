@@ -62,6 +62,9 @@ pub const RT_STATUS_HOST_CONTRACT_VIOLATION: u64 = 1 << 20;
 /// Flag indicating that `ContainerModel::set_slimmable_size` failed to reset a submodel.
 /// Replaces `log::error!` for RT-zero-IO compliance. Set by RT callback, read by main thread.
 pub const RT_STATUS_SLIMMABLE_RESET_FAILED: u64 = 1 << 21;
+/// Flag indicating that the GC cascade reached Tier 3 (overflow buffer).
+/// Set whenever an item is parked in the overflow buffer, regardless of overwrite.
+pub const RT_STATUS_GC_TIER3: u64 = 1 << 22;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -95,6 +98,7 @@ pub const RT_STATUS_SLIMMABLE_RESET_FAILED: u64 = 1 << 21;
 /// | 19 | `NEEDS_OS_REBUILD` | DSP thread requests oversampling engine rebuild |
 /// | 20 | `HOST_CONTRACT_VIOLATION` | PipeWire buffer FFI contract violated (misaligned or OOB) |
 /// | 21 | `SLIMMABLE_RESET_FAILED` | ContainerModel submodel reset failed on RT thread |
+/// | 22 | `GC_TIER3` | GC cascade reached Tier 3 (overflow buffer) — item parked |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

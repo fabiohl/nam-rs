@@ -46,6 +46,17 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_TIER3) {
+        NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
+            .message("Garbage Collection (GC) cascade reached Tier 3 (overflow buffer).")
+            .hint(
+                "The SPSC channel and parking lot are both full — items are being parked \
+                   in the overflow buffer. This indicates sustained GC pressure. \
+                   NAM-rs will drain the overflow buffer aggressively now.",
+            )
+            .emit_warning();
+    }
+
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_CORRUPTED) {
         NamDiagnostic::new(NamErrorCode::GcCorrupted, sys)
             .message("Garbage Collection overflow buffer corruption detected.")

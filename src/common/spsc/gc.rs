@@ -268,12 +268,22 @@ impl Default for GcOverflowBuffer {
 /// RT-safe GC cascade: tries the SPSC channel, then a 16-slot parking lot,
 /// then the overflow buffer as a last resort.
 ///
+/// # Tier progression and status flags
+///
+/// - **Tier 1** (SPSC): no flag set — normal fast-path drain.
+/// - **Tier 2** (parking lot): no flag set — auxiliary drain.
+/// - **Tier 3** (overflow buffer): `RT_STATUS_GC_TIER3` is always set,
+///   indicating the cascade reached the overflow buffer.
+/// - `RT_STATUS_GC_OVERFLOW` is **only** set on an actual overwrite/leak
+///   (i.e. the slot was already occupied), not on every Tier 3 entry.
+///
 /// # Parameters
 /// - `item`: The `GcItem` to dispose of outside the RT thread.
 /// - `gc_producer`: SPSC GC channel.
 /// - `parking_lot`: 16-slot fallback array shared across all drainers.
 /// - `gc_overflow`: Overflow ring buffer.
-/// - `rt_status`: Status flags (sets `RT_STATUS_GC_OVERFLOW` on overflow).
+/// - `rt_status`: Status flags (sets `RT_STATUS_GC_TIER3` and
+///   `RT_STATUS_GC_OVERFLOW` on actual overwrite).
 #[inline(always)]
 pub fn gc_cascade(
     mut item: Option<GcItem>,
@@ -301,10 +311,11 @@ pub fn gc_cascade(
         item = i_opt;
     }
 
-    if let Some(i) = item.take()
-        && gc_overflow.push(i)
-    {
-        rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW);
+    if let Some(i) = item.take() {
+        rt_status.set_flag(super::RT_STATUS_GC_TIER3);
+        if gc_overflow.push(i) {
+            rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW);
+        }
     }
 }
 

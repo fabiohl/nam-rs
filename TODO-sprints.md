@@ -2447,7 +2447,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint S33 — R8-h + R14 + P5 + P10: Pendências Residuais de Robustez e Lints
 
-### T33.1 — R8-h: Documentação e nova flag de Tier 3 no GC [ ]
+### T33.1 — R8-h: Documentação e nova flag de Tier 3 no GC [x]
 
 - **Arquivos:**
   - [`src/common/spsc/status.rs`](src/common/spsc/status.rs)

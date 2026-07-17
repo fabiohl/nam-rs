@@ -41,6 +41,19 @@ impl<'a> NamClapMainThread<'a> {
                 .shared
                 .cold
                 .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_TIER3)
+            {
+                let msg = CString::new(
+                    "NAM-rs: GC cascade reached Tier 3 (overflow buffer). Sustained GC pressure.",
+                )
+                .unwrap_or_default();
+                log.log(&shared, LogSeverity::Warning, &msg);
+            }
+
+            if self
+                .shared
+                .cold
+                .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_CORRUPTED)
             {
                 let msg =
