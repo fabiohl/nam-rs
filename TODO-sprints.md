@@ -2520,7 +2520,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   3. Chamar `check_crc` incondicionalmente para todos os arquivos.
 - **Critério de aceite:** O parser de NAMB v1 exige de forma estrita um checksum de CRC32 não nulo e correspondente.
 
-### T34.2 — Formalizar decisão arquitetural de manter `impl Clone` em `MirroredBuffer` (R31.2)
+### T34.2 — Formalizar decisão arquitetural de manter `impl Clone` em `MirroredBuffer` (R31.2) ✅ *(2026-07-16)*
 
 - **Arquivo:** [`src/dsp/mirror_buf.rs`](src/dsp/mirror_buf.rs)
 - **Ação:** Documentar por meio de comentários que a implementação manual de `Clone` que chama `try_clone().expect(...)` é mantida de forma intencional para permitir o uso de `#[derive(Clone)]` em contêineres e estruturas do Rust, enquanto `try_clone()` é exposto como a API preferencial para o FFI (caminho seguro no CLAP).

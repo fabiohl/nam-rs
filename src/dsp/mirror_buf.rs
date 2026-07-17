@@ -193,6 +193,16 @@ impl<T: Clone> MirroredBuffer<T> {
     }
 }
 
+/// ## Architectural decision: `impl Clone` for `MirroredBuffer<T>`
+///
+/// `Clone` is **intentionally infallible** (panics on OOM) to enable `#[derive(Clone)]`
+/// on container structs (e.g. `NamModelData`, `ManagedConvolutionEngine`) that own a
+/// `MirroredBuffer<T>`. Rust's derive macro requires all fields to implement `Clone`,
+/// and an infallible `Clone` satisfies that constraint.
+///
+/// For **fallible** duplication in CLAP activation paths, use `try_clone()` instead.
+/// Panicking across the FFI boundary is undefined behavior, so `Clone::clone()` must
+/// only be called in initialization/control paths where allocation failures are fatal.
 impl<T: Clone> Clone for MirroredBuffer<T> {
     #[cold]
     fn clone(&self) -> Self {
