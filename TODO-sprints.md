@@ -2503,7 +2503,15 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > **Objetivo:** Remover o bypass legado de CRC32 para arquivos NAMB v1 (R31.1) e formalizar a decisão de manter o `impl Clone` de `MirroredBuffer` (R31.2).
 
-### T34.1 — Remover o bypass de CRC32 para arquivos NAMB v1 (R31.1)
+### T34.1 — Remover o bypass de CRC32 para arquivos NAMB v1 (R31.1) ✅ *(2026-07-16)*
+
+- **Arquivo:** [`src/loader/namb/parse.rs`](src/loader/namb/parse.rs)
+- **Ação:**
+  1. Remover a lógica condicional que pula a verificação de CRC32 para arquivos v1 quando `crc32_header == 0`.
+  2. Adicionar uma verificação explícita de erro: se `version == 1` e `crc32_header == 0`, retornar `NambError::CrcMismatch` para sinalizar a rejeição do arquivo sem CRC.
+  3. Chamar `check_crc` incondicionalmente para todos os arquivos.
+- **Critério de aceite:** O parser de NAMB v1 exige de forma estrita um checksum de CRC32 não nulo e correspondente.
+- **Nota:** O teste `test_v1_crc32_zero_empty_weights_skips` foi renomeado e refatorado para `test_v1_crc32_zero_empty_weights_rejected` (adiantando T34.3).
 
 - **Arquivo:** [`src/loader/namb/parse.rs`](src/loader/namb/parse.rs)
 - **Ação:**

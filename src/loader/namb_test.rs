@@ -167,8 +167,8 @@ mod tests {
     }
 
     #[test]
-    fn test_v1_crc32_zero_empty_weights_skips() -> Result<()> {
-        // v1 with crc==0 AND empty weights: CRC check is skipped.
+    fn test_v1_crc32_zero_empty_weights_rejected() {
+        // v1 with crc==0 AND empty weights: CRC32 bypass removed, now rejected.
         let header_size = std::mem::size_of::<NambHeader>();
         let mut data = vec![0u8; header_size];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
@@ -181,9 +181,15 @@ mod tests {
         header.output_level_dbu = -6.0;
         header.crc32 = 0;
 
-        let parsed = parse_namb(&data)?;
-        assert!(parsed.weights.is_empty());
-        Ok(())
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Error should be NambError::CrcMismatch");
+        assert!(
+            matches!(namb_err, NambError::CrcMismatch { .. }),
+            "Expected CrcMismatch, got: {:?}",
+            namb_err
+        );
     }
 
     #[test]

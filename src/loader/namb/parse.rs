@@ -67,25 +67,20 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // 3. Integrity Validation (CRC32)
     let version = header.version;
     let crc32_header = header.crc32;
-    if version >= 2 {
-        if header.flags & FLAG_HAS_CRC32 == 0 {
-            return Err(NambError::CrcMissing { version }.into());
-        }
-        check_crc(data, version, weights_offset, crc32_header)?;
-    } else {
-        let pesos_raw = &data[weights_offset..];
-        let pesos_empty = pesos_raw.is_empty() || pesos_raw.iter().all(|&b| b == 0);
-        if crc32_header == 0 && pesos_empty {
-            // For backwards compatibility, NAMB v1 files with crc32=0 sentinel and empty/all-zero weights
-            // skip integrity check. This behavior and NAMB v1 files without CRC are deprecated.
-            log::warn!(
-                "CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check. \
-                 Support for NAMB v1 files without CRC is deprecated and will be removed in a future release."
-            );
-        } else {
-            check_crc(data, version, weights_offset, crc32_header)?;
-        }
+
+    if version >= 2 && header.flags & FLAG_HAS_CRC32 == 0 {
+        return Err(NambError::CrcMissing { version }.into());
     }
+
+    if version == 1 && crc32_header == 0 {
+        return Err(NambError::CrcMismatch {
+            got: 0,
+            expected: 0,
+        }
+        .into());
+    }
+
+    check_crc(data, version, weights_offset, crc32_header)?;
 
     // 4. Reads the binary weights
     let pesos_raw = &data[weights_offset..];
