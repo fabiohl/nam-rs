@@ -34,7 +34,10 @@ pub(crate) unsafe fn store_4_accums(out: &mut [f32], out_c: usize, r: [f32; 4], 
 /// # Safety
 /// `out_c` must be < `out.len()`. On the fast path, `out_c + 7 < out_n`.
 #[inline(always)]
-#[allow(clippy::needless_range_loop)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+)]
 pub(crate) unsafe fn store_8_accums(out: &mut [f32], out_c: usize, r: [f32; 8], out_n: usize) {
     if out_n.is_multiple_of(8) || out_c + 7 < out_n {
         let v = unsafe { _mm256_loadu_ps(r.as_ptr()) };
@@ -54,7 +57,10 @@ pub(crate) unsafe fn store_8_accums(out: &mut [f32], out_c: usize, r: [f32; 8], 
 /// # Safety
 /// `out_c` must be < `out.len()`. On the fast path, `out_c + 15 < out_n`.
 #[inline(always)]
-#[allow(clippy::needless_range_loop)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+)]
 pub(crate) unsafe fn store_16_accums(out: &mut [f32], out_c: usize, r: [f32; 16], out_n: usize) {
     if out_n.is_multiple_of(16) || out_c + 15 < out_n {
         let v0 = unsafe { _mm256_loadu_ps(r.as_ptr()) };

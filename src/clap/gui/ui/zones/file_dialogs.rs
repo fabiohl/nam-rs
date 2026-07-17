@@ -93,7 +93,10 @@ pub(crate) fn spawn_ir_file_dialog(
 
 #[cfg(test)]
 mod file_dialogs_test {
-    #[allow(unused_imports)]
+    #[expect(
+        unused_imports,
+        reason = "Import used conditionally via cfg features — kept for cross-feature compilation"
+    )]
     use super::*;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;

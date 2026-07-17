@@ -246,7 +246,10 @@ impl A2Layer {
     /// * `layer_in_out` — mutable reference to this frame's layer_in (will be updated).
     /// * `is_first` — layer 0 writes to head, layers 1-22 accumulate.
     /// * `is_last` — layer 22 skips l1x1 residual.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "A2 neural network layer requiring many shape/stride/buffer parameters for dynamic topology construction"
+    )]
     #[inline(always)]
     pub fn process_single_frame<M: SimdMath>(
         &self,
@@ -318,7 +321,10 @@ impl A2Layer {
 /// Replicates the exact computation using the scalar conv fallback, then
 /// applies mixin, LeakyReLU, head accumulation, and l1x1 residual.
 /// Used as oracle in parity tests.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 neural network layer requiring many shape/stride/buffer parameters for dynamic topology construction"
+)]
 pub fn a2_layer_single_frame_scalar_ref(
     conv_weights: &[f32],
     conv_bias: &[f32],

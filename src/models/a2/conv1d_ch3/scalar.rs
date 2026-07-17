@@ -55,7 +55,11 @@ pub fn conv1d_ch3_single_frame_ref(
 /// Scalar reference for the full CH=3 layer forward pass using f32 native weights.
 ///
 /// Used as oracle in parity tests against `layer_forward_ch3_block`.
-#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+#[expect(
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    reason = "Audio DSP kernel with many dimension parameters and explicit SIMD indexing — struct consolidation would add indirection overhead in the hot path"
+)]
 pub fn layer_forward_ch3_scalar_ref(
     conv_weights: &[f32], // col-major-per-tap f32 weights (A2Conv1dCh3 layout)
     conv_bias: &[f32],    // [4] bias (3 valid + 1 zero)

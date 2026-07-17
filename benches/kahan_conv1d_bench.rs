@@ -115,7 +115,6 @@ fn bench_kahan_inner_loop_isolated(c: &mut Criterion) {
     group.finish();
 }
 
-#[allow(non_snake_case)]
 fn make_static_conv<const IN: usize, const OUT: usize, const K: usize>(
     raw: &[f32],
 ) -> Conv1d<IN, OUT, K> {

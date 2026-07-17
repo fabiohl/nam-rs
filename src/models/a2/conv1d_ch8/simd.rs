@@ -128,7 +128,10 @@ pub unsafe fn conv1d_ch8_t8_avx2(
 /// # Safety
 /// Buffers must be sized appropriately. Caller ensures linear ring history
 /// includes lookback + block frames.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 CH=8 SIMD convolution kernel requiring many shape/stride parameters for optimized audio processing"
+)]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn layer_forward_ch8_block(
     conv: &A2Conv1dCh8,
@@ -301,7 +304,10 @@ pub unsafe fn layer_forward_ch8_block(
 /// # Safety
 /// Buffers must be sized appropriately. Caller ensures linear ring history
 /// includes lookback + block frames.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 CH=8 SIMD convolution kernel requiring many shape/stride parameters for optimized audio processing"
+)]
 #[inline(always)]
 pub unsafe fn layer_forward_ch8_block_simdmath<M: SimdMath>(
     conv: &A2Conv1dCh8,

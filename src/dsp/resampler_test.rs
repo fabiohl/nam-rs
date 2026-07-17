@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::dsp::sinc_kernel::NUM_PHASES;
 
 #[test]
 fn test_bypass_asymmetric_buffers() {

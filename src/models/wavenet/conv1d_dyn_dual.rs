@@ -31,7 +31,10 @@ use crate::math::common::{SimdMath, prefetch_strategy_2stage, prefetch_strategy_
 
 impl Conv1dDyn {
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "WaveNet dynamic dual conv1d kernel requiring many dimension/stride parameters for adaptive dilated convolution"
+    )]
     pub(crate) unsafe fn process_dual_frame<M: SimdMath>(
         &self,
         layer_buffer: &[f32],

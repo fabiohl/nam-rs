@@ -30,7 +30,10 @@ use log::info;
 ///     one_by_one.weights[CH*CH] + one_by_one.bias[CH]    (DoBias=true)
 /// head_rechannel.weights[CH*HEAD] + head_rechannel.bias[HEAD]? (HasHeadBias)
 /// ```
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "WaveNet dynamic model builder requiring many topology parameters for runtime layer construction"
+)]
 fn build_wavenet_array_dyn(
     cursor: &mut WeightCursor<'_>,
     in_ch: usize,

@@ -167,7 +167,10 @@ impl WaveNetA2Dyn {
     ///
     /// `kernel_sizes` and `dilations` must have length `num_layers`.
     /// The activation config vectors must also have length `num_layers`.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "A2 dynamic model constructor requiring many topology parameters for runtime-adaptive neural network initialization"
+    )]
     pub fn new(
         input_channels: usize,
         channels: usize,

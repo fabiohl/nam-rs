@@ -2471,7 +2471,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   2. Em `signals.rs` e `common.rs`, remover a implementação redundante de `generate_sine_440hz` e reutilizar a função de `aliasing.rs`.
   3. Em `proptest_parsers.rs`, adicionar comentário aclarando a execução do teste `prop_model_data_serialization_roundtrip` na Fase 3 do `tests-quick.sh` (garantindo que não está órfão).
 
-### T33.3 — P5: Migrar clippy allows para expects remanescentes [ ]
+### T33.3 — P5: Migrar clippy allows para expects remanescentes [x]
 
 - **Arquivos:**
   - [`Cargo.toml`](Cargo.toml)

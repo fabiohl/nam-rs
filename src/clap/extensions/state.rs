@@ -57,7 +57,10 @@ pub(crate) fn serialize_envelope(params: &NamPluginParams) -> Result<Vec<u8>, Pl
         .map_err(|e| PluginError::Error(Box::new(StateError::Serialize(e))))
 }
 
-#[allow(clippy::single_match)]
+#[expect(
+    clippy::single_match,
+    reason = "Match kept for exhaustiveness — future extensions expected at this dispatch site"
+)]
 fn migrate(version: u32, params: NamPluginParams) -> NamPluginParams {
     match version {
         0 => {

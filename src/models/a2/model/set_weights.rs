@@ -41,7 +41,10 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// ## Acceptance criteria
     /// - Calls `verify_exhaustion()` — consumed count must equal `weights.len()`.
     /// - Returns a clear error if the weight stream is shorter or longer than expected.
-    #[allow(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Function body contains exhaustive A2 kernel-size dispatch table — splitting into sub-functions would scatter related logic"
+    )]
     pub fn set_weights(&mut self, weights: &[f32]) -> Result<(), String> {
         let total = weights.len();
         let mut pos: usize = 0;
@@ -273,7 +276,13 @@ pub(crate) fn set_layer_film(
 }
 
 /// Convenience wrapper — see `weights_layout::film_weight_count`.
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Retained for future integration when gated feature is enabled"
+    )
+)]
 pub(crate) fn film_weight_count_cfg(
     config: &FiLMConfig,
     cond_size: usize,
@@ -283,12 +292,21 @@ pub(crate) fn film_weight_count_cfg(
 }
 
 /// Convenience wrapper — see `weights_layout::film_bias_count`.
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Retained for future integration when gated feature is enabled"
+    )
+)]
 pub(crate) fn film_bias_count_cfg(config: &FiLMConfig, channels: usize) -> usize {
     film_bias_count(channels, config.shift)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 model weight-setter requiring many dimension parameters to safely map weight slices to layer buffers"
+)]
 pub(crate) fn load_film_for_layer(
     layer: &mut A2Layer,
     configs: &[FiLMConfig; 8],

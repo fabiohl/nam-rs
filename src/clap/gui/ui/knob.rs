@@ -15,7 +15,10 @@ use super::colors::{COL_AMBER, COL_BG, COL_BORDER, COL_BYPASS_OFF, COL_MUTED, CO
 /// - Mapping halo, automation pulsation and override color (A.3)
 ///
 /// Returns `(response, new_value)`.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "GUI knob widget with many visual configuration parameters (position, size, colors, ranges, label) for flexible UI layout"
+)]
 pub fn knob_widget(
     ui: &mut egui::Ui,
     id: egui::Id,
@@ -204,7 +207,10 @@ pub fn knob_widget(
 }
 
 /// Manages a knob with label, dB value, automation gestures and double-click to reset.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "GUI knob widget with many visual configuration parameters (position, size, colors, ranges, label) for flexible UI layout"
+)]
 pub fn handle_knob(
     ui: &mut egui::Ui,
     id: egui::Id,

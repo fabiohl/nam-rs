@@ -199,7 +199,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             .take()
             .ok_or(PluginError::Message("slimmable_tx producer already taken"))?;
 
-        #[cfg_attr(test, allow(unused_mut))]
+        #[cfg_attr(test, allow(unused_mut, clippy::allow_attributes))]
         let main_thread = NamClapMainThread {
             shared,
             params: NamPluginParams::default(),

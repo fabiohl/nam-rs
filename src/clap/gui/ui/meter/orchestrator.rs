@@ -11,7 +11,10 @@ use super::super::state::{VuMeterSharedState, VuUniforms};
 
 /// Draws a vertical VU meter with tricolor gradient, analog peak hold fade (E2),
 /// persistent clipping LED on top (E4) and L/R labels above and below (m4).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Meter orchestrator with many GUI coordination parameters for multi-widget meter management"
+)]
 pub(crate) fn draw_vertical_meter(
     ui: &mut egui::Ui,
     peak_val: f32,

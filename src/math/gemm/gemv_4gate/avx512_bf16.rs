@@ -11,7 +11,10 @@ use core::arch::x86_64::*;
 /// GEMV 4-gate BF16 kernel AVX-512 for LSTM.
 /// This version uses the BF16 format from the start to be even faster.
 #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance-critical AVX-512 BF16 LSTM 4-gate kernel requiring many matrix strides/dimensions for maximum SIMD throughput"
+)]
 pub unsafe fn gemv_4gate_bf16_avx512(
     in_frame: &[u16],
     w0: &[u16],

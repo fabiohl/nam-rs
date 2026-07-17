@@ -36,7 +36,6 @@ impl A2Conv1d {
     /// # Panics
     /// Panics if `kernel_size` is not 6 or 15 (debug builds).
     /// In release, the assert is compiled out for performance.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,
@@ -92,7 +91,10 @@ impl A2Conv1d {
     ///
     /// # Panics
     /// Panics in debug if `in_ch % groups != 0` or `out_ch % groups != 0`.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "A2 grouped convolution kernel requiring many shape/stride/group parameters for efficient neural network inference"
+    )]
     pub fn new_grouped(
         raw_weights: &[f32],
         raw_bias: &[f32],

@@ -188,7 +188,10 @@ pub unsafe fn gemv_with_bias_f32_avx512(
                 while ic < in_len {
                     let v_w = _mm512_set1_ps(*weights.get_unchecked(ic));
                     let mut buf = [0.0f32; 16];
-                    #[allow(clippy::needless_range_loop)]
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+                    )]
                     for j in 0..16 {
                         buf[j] = *in_frames.get_unchecked((n + j) * in_len + ic);
                     }
@@ -520,7 +523,10 @@ pub unsafe fn gemv_no_bias_f32_avx512(
                 while ic < in_len {
                     let v_w = _mm512_set1_ps(*weights.get_unchecked(ic));
                     let mut buf = [0.0f32; 16];
-                    #[allow(clippy::needless_range_loop)]
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+                    )]
                     for j in 0..16 {
                         buf[j] = *in_frames.get_unchecked((n + j) * in_len + ic);
                     }

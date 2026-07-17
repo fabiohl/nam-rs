@@ -83,7 +83,6 @@ impl WaveNetA2Dyn {
     }
 
     /// Loads a single layer's weights (conv, mixin, l1x1, optional FiLM).
-    #[allow(clippy::too_many_lines)]
     fn load_per_layer_weights(
         &mut self,
         weights: &[f32],

@@ -223,7 +223,10 @@ pub fn sigmoid(x: f32) -> f32 {
 /// Scalar reference implementation for testing and benchmarks.
 /// Mirrors the SIMD kernel.
 #[inline]
-#[allow(clippy::excessive_precision)]
+#[expect(
+    clippy::excessive_precision,
+    reason = "High-precision constants required for bit-exact numerical validation against reference"
+)]
 pub fn scalar_minimax_sigmoid(x: f32) -> f32 {
     let c0 = 2.4885319190e-01_f32;
     let c1 = -1.9318685012e-02_f32;

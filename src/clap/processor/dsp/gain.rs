@@ -6,7 +6,10 @@ use std::sync::atomic::Ordering;
 
 impl<'a> NamClapProcessor<'a> {
     #[inline(always)]
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Code path retained for future feature integration but not yet wired"
+    )]
     pub(super) fn apply_input_gain_sub_block(&mut self, offset: usize, n_samples: usize) {
         let mut input_has_clipped = false;
         #[cfg(feature = "stereo")]
@@ -79,7 +82,10 @@ impl<'a> NamClapProcessor<'a> {
     }
 
     #[inline(always)]
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Code path retained for future feature integration but not yet wired"
+    )]
     pub(super) fn apply_output_gain_sub_block(&mut self, n_out: usize) {
         #[cfg(feature = "stereo")]
         {

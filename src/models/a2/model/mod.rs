@@ -49,7 +49,10 @@ pub const fn a2_receptive_field() -> usize {
 /// Common prewarm reset: zeroes all layer buffers, resets ring starts,
 /// clears `layer_in` and `head_accum`, and positions `head_write_pos`
 /// at the receptive field frontier — matching the C++ `DSP::Reset` preamble.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 model constructor requiring many topology and buffer parameters for neural network initialization"
+)]
 #[cold]
 pub(crate) fn a2_prewarm_common(
     num_layers: usize,

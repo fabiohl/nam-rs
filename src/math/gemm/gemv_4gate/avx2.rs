@@ -22,7 +22,10 @@ use core::arch::x86_64::*;
 /// doubling port utilization on x86-64-v3 (Haswell+) where FMA has ~4–5 cycle
 /// latency and 2 execution ports.
 #[target_feature(enable = "avx2,fma,f16c")]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance-critical AVX2 LSTM 4-gate kernel requiring many matrix strides/dimensions for maximum SIMD throughput"
+)]
 pub unsafe fn gemv_4gate_avx2(
     in_frame: &[f32],
     w0: &[f32],

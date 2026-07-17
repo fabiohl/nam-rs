@@ -763,7 +763,10 @@ fn test_complex_mac_overwrite_parity() {
             &mut scalar_im,
         );
 
-        #[allow(clippy::too_many_arguments)]
+        #[expect(
+            clippy::too_many_arguments,
+            reason = "Math unit test helper with many configuration parameters for comprehensive SIMD kernel testing"
+        )]
         fn test_simd<M: SimdMath>(
             h_re: &[f32],
             h_im: &[f32],
@@ -833,7 +836,10 @@ fn test_complex_mac_accumulate_parity() {
             &mut scalar_im,
         );
 
-        #[allow(clippy::too_many_arguments)]
+        #[expect(
+            clippy::too_many_arguments,
+            reason = "Math unit test helper with many configuration parameters for comprehensive SIMD kernel testing"
+        )]
         fn test_simd<M: SimdMath>(
             h_re: &[f32],
             h_im: &[f32],

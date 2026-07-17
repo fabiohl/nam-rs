@@ -3,7 +3,10 @@
 
 /// BF16 version for the 4 LSTM gates.
 /// Weights are f32; input is u16 BF16 (converted in-place from state).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Scalar reference LSTM implementation requiring many matrix dimension parameters for correct reference computation"
+)]
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 #[inline]
 pub unsafe fn gemv_4gate_bf16_fallback(

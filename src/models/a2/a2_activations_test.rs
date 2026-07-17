@@ -347,7 +347,10 @@ fn test_leaky_hard_tanh_avx2_large_slice() {
 #[test]
 fn test_fast_tanh_avx2_parity() {
     #[target_feature(enable = "avx2")]
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "High-precision constants required for bit-exact numerical validation against reference"
+    )]
     unsafe fn scalar_ref(data: &mut [f32]) {
         for x in data.iter_mut() {
             let xv = *x;
@@ -381,7 +384,10 @@ fn test_fast_tanh_avx2_parity() {
 
 #[test]
 fn test_fast_tanh_avx2_large_slice() {
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "High-precision constants required for bit-exact numerical validation against reference"
+    )]
     fn fast_tanh_scalar(x: f32) -> f32 {
         let ax = x.abs();
         let x2 = x * x;
@@ -600,7 +606,10 @@ fn test_fast_tanh_avx512_parity() {
         return;
     }
 
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "High-precision constants required for bit-exact numerical validation against reference"
+    )]
     fn fast_tanh_scalar(x: f32) -> f32 {
         let ax = x.abs();
         let x2 = x * x;
@@ -635,7 +644,10 @@ fn test_fast_tanh_avx512_large_slice() {
         return;
     }
 
-    #[allow(clippy::excessive_precision)]
+    #[expect(
+        clippy::excessive_precision,
+        reason = "High-precision constants required for bit-exact numerical validation against reference"
+    )]
     fn fast_tanh_scalar(x: f32) -> f32 {
         let ax = x.abs();
         let x2 = x * x;

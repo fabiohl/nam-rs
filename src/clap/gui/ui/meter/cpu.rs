@@ -7,7 +7,10 @@ use super::super::colors::{
 };
 
 /// Renders the VU meter bar using egui's CPU painter as a fallback when OpenGL is not available.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CPU meter widget with many visual parameters (position, size, colors, ranges) for flexible UI layout"
+)]
 pub(crate) fn render_cpu(
     ui: &egui::Ui,
     meter_rect: egui::Rect,

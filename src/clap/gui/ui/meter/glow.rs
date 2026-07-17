@@ -10,7 +10,10 @@ use super::super::state::{VuMeterSharedState, VuUniforms};
 
 /// Renders the VU meter bar using OpenGL via glow.
 /// Returns `true` if the GL path was used; `false` if the caller should fall back to CPU.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Meter glow render component with many OpenGL/visual configuration parameters for flexible rendering"
+)]
 pub(crate) fn render_glow(
     ui: &egui::Ui,
     vu_program: Option<glow::Program>,

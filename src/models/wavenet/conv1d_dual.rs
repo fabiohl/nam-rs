@@ -28,7 +28,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// # Safety
     /// `layer_buffer` and `mixin` must have appropriate sizes.
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "WaveNet dual conv1d kernel requiring many dimension/stride parameters for causal dilated convolution"
+    )]
     pub unsafe fn process_dual_frame_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[f32],

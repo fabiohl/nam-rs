@@ -33,7 +33,10 @@
 /// * `layer_buffer` — input buffer (f32 mirror buffer slice).
 /// * `frame_idx` — current frame index within `layer_buffer`.
 /// * `mixin` — optional conditioning vector of length `out_ch`.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 dilated convolution fallback kernel requiring many shape/stride parameters when SIMD path is unavailable"
+)]
 pub fn a2_conv1d_single_frame_fallback(
     weights: &[f32],
     bias: &[f32],
@@ -140,7 +143,10 @@ pub fn a2_conv1d_single_frame_fallback(
 /// Scalar reference for a block of `num_frames` consecutive frames.
 ///
 /// Iterates the single-frame fallback for each consecutive frame index.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 dilated convolution fallback kernel requiring many shape/stride parameters when SIMD path is unavailable"
+)]
 pub fn a2_conv1d_block_fallback(
     weights: &[f32],
     bias: &[f32],

@@ -90,7 +90,7 @@ macro_rules! dispatch_simd {
             use $crate::math::common::traits::SimdMath;
             let __isa = $crate::math::common::effective_instruction_set();
             // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
-            #[allow(clippy::macro_metavars_in_unsafe)]
+            #[allow(clippy::macro_metavars_in_unsafe, clippy::allow_attributes)]
             unsafe {
                 match __isa {
                     InstructionSet::Avx512VnniBf16 => {

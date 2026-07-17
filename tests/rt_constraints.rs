@@ -9,7 +9,7 @@ use common::alloc_audit::CountingAllocator;
     not(all(feature = "clap-plugin", feature = "heap-audit")),
     global_allocator
 )]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::allow_attributes)]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 #[path = "rt_constraints/a2_heap_audit.rs"]

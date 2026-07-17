@@ -44,8 +44,7 @@ const MIN_RATE: u32 = 4_000;
 /// Maximum sample rate for stability and reasonable mem usage (384 kHz).
 const MAX_RATE: u32 = 384_000;
 
-#[allow(unused_imports)]
-use super::sinc_kernel::{NUM_PHASES, generate_polyphase_bank, generate_polyphase_bank_linear};
+use super::sinc_kernel::{generate_polyphase_bank, generate_polyphase_bank_linear};
 
 mod core;
 mod delay_line;

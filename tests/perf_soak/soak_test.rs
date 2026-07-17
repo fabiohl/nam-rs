@@ -1116,7 +1116,10 @@ fn apply_tanh_scalar(slice: &mut [f32], use_exact: bool) {
 }
 
 /// Scalar Dense (GEMV): output = weights * input + bias (+ optional residual).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance soak test helper requiring many configuration parameters for comprehensive stress testing"
+)]
 fn dense_scalar(
     w: &[f32],
     bias: &[f32],
@@ -1149,7 +1152,10 @@ fn dense_scalar(
 }
 
 /// Scalar Dense with F16 (u16) weights.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance soak test helper requiring many configuration parameters for comprehensive stress testing"
+)]
 fn dense_scalar_f16(
     w: &[u16],
     bias: &[f32],
@@ -1182,7 +1188,10 @@ fn dense_scalar_f16(
 }
 
 /// Scalar dilated causal Conv1D with f32 weights.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance soak test helper requiring many configuration parameters for comprehensive stress testing"
+)]
 fn conv1d_scalar(
     w: &[f32],
     bias: &[f32],
@@ -1228,7 +1237,10 @@ fn conv1d_scalar(
 }
 
 /// Scalar dilated causal Conv1D with F16 (u16) weights.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance soak test helper requiring many configuration parameters for comprehensive stress testing"
+)]
 fn conv1d_scalar_f16(
     w: &[u16],
     bias: &[f32],
@@ -1280,7 +1292,6 @@ fn conv1d_scalar_f16(
 /// - `use_exact` → `f32::tanh()`, else Padé [5,4]
 ///
 /// Ring buffers are pre-filled with zeros (equivalent to silence prewarm).
-#[allow(clippy::too_many_arguments)]
 fn wavenet_standard_scalar(use_f32: bool, use_exact: bool, input: &[f32], nf: usize) -> Vec<f32> {
     let fw = 0.01f32;
     let uw = f32_to_f16_bits(fw);

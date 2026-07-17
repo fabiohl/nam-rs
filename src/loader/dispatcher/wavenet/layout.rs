@@ -10,7 +10,6 @@ use crate::math::common::AlignedVec;
 // Unified weight reading for static WaveNet models
 // =============================================================================
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     cursor: &mut WeightCursor<'_>,
     in_size: usize,

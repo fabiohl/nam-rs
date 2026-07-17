@@ -12,7 +12,10 @@ use core::arch::x86_64::*;
 /// # Safety
 /// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
-#[allow(clippy::excessive_precision)]
+#[expect(
+    clippy::excessive_precision,
+    reason = "High-precision constants required for bit-exact numerical validation against reference"
+)]
 pub unsafe fn fast_tanh_slice_avx2(data: &mut [f32]) {
     let ca = _mm256_set1_ps(2.45550750702956_f32);
     let cb = _mm256_set1_ps(0.893229853513558_f32);
@@ -81,7 +84,10 @@ pub unsafe fn fast_tanh_slice_avx2(data: &mut [f32]) {
 /// # Safety
 /// Requires AVX-512F, AVX-512VL, AVX-512DQ, and FMA support.
 #[target_feature(enable = "avx512f,avx512vl,avx512dq,fma")]
-#[allow(clippy::excessive_precision)]
+#[expect(
+    clippy::excessive_precision,
+    reason = "High-precision constants required for bit-exact numerical validation against reference"
+)]
 pub unsafe fn fast_tanh_slice_avx512(data: &mut [f32]) {
     let ca = _mm512_set1_ps(2.45550750702956_f32);
     let cb = _mm512_set1_ps(0.893229853513558_f32);
@@ -115,7 +121,10 @@ pub unsafe fn fast_tanh_slice_avx512(data: &mut [f32]) {
 
 /// Fast rational Padé approximation for the tanh function.
 #[inline(always)]
-#[allow(clippy::excessive_precision)]
+#[expect(
+    clippy::excessive_precision,
+    reason = "High-precision constants required for bit-exact numerical validation against reference"
+)]
 pub fn fast_tanh(x: f32) -> f32 {
     let ax = x.abs();
     let x2 = x * x;

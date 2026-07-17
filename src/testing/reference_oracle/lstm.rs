@@ -74,7 +74,10 @@ pub(crate) fn oracle_lstm_forward(
     let _orig_cell: Vec<Vec<f64>> = ll.iter().map(|l| l.cell.clone()).collect();
     let _orig_hidden: Vec<Vec<f64>> = ll.iter().map(|l| l.hidden.clone()).collect();
 
-    #[allow(clippy::needless_range_loop)]
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+    )]
     for f in 0..num_frames {
         let x = input[f];
 

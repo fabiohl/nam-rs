@@ -248,7 +248,10 @@ pub unsafe fn conv1d_ch3_f32_dispatch(
 ///
 /// # Safety
 /// Buffers must be sized as indicated by the `debug_assert!` guards.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A2 CH=3 SIMD convolution kernel requiring many shape/stride parameters for optimized audio processing"
+)]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn layer_forward_ch3_block(
     conv: &A2Conv1dCh3,
@@ -492,7 +495,10 @@ pub unsafe fn layer_forward_ch3_block(
     }
 
     // ── 3. Scalar tail (0 or 1 remaining frame) ─────────────────────────────
-    #[allow(clippy::needless_range_loop)]
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+    )]
     for f in n_paired..num_frames {
         let z_off = f * CH_PAD;
         let cond = &input_cond[f..f + 1];

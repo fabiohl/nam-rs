@@ -90,7 +90,10 @@ impl<T: FftFloat> FftPlannerRadix4<T> {
         let base4_digits = num_stages_radix4;
 
         let mut bit_reverse = vec![0usize; n];
-        #[allow(clippy::needless_range_loop)]
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+        )]
         for i in 0..n {
             let mut rev = 0usize;
             let mut x = i;

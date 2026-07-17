@@ -69,7 +69,6 @@ pub use tanh::*;
 /// values) keeps selecting the same underlying kernel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[repr(usize)]
-#[allow(clippy::module_name_repetitions)]
 pub enum ActivationPrecision {
     /// Polynomial exp-based tanh/sigmoid (~2.4e-7 / ~2.1e-7).
     /// Universal production default — exact-grade, matches the NAMCore

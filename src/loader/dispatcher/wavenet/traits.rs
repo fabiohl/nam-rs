@@ -9,7 +9,6 @@ use super::layout::select_interleave_width;
 
 /// Output type for convolution weights, unifying `Conv1d<IN,OUT,K>` and `Conv1dDyn`.
 pub(crate) trait ConvWeightsOutput: Sized {
-    #[allow(clippy::too_many_arguments)]
     fn from_parts(
         weights: AlignedVec<f32>,
         bias: AlignedVec<f32>,

@@ -170,3 +170,6 @@ split-debuginfo = "unpacked" # Faster linking on Linux
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+[lints.clippy]
+allow_attributes = "warn"

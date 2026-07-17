@@ -185,7 +185,10 @@ impl WaveNetA2Dyn {
     /// data are available at `input[pos..pos+nf]`. Internal conv/film/head
     /// accesses assume caller-verified buffer capacities.
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "A2 dynamic model process function requiring many buffer/stride parameters for real-time audio inference"
+    )]
     pub(crate) fn layer_forward_dispatch<M: SimdMath>(
         &mut self,
         li: usize,
@@ -329,7 +332,11 @@ impl WaveNetA2Dyn {
 ///
 /// `M` is the ISA monomorphization type propagated from the top-level
 /// `dispatch_simd!` in [`WaveNetA2Dyn::process`].
-#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+#[expect(
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    reason = "Audio DSP kernel with many dimension parameters and explicit SIMD indexing — struct consolidation would add indirection overhead in the hot path"
+)]
 #[inline(always)]
 unsafe fn process_frame_dyn<M: SimdMath>(
     layer: &mut A2Layer,
@@ -364,7 +371,10 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     let frame_idx = max_lookback_cols + f;
     let cond_slice = &cond_buf[f * cond_size..(f + 1) * cond_size];
 
-    #[allow(unused_assignments)]
+    #[expect(
+        unused_assignments,
+        reason = "Variable assigned for clarity but value consumed by debug_assert only in release builds"
+    )]
     let mut z_len = z_out_ch;
 
     // 1. Dilated conv → z_scratch.

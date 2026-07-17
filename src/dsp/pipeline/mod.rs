@@ -31,19 +31,22 @@ pub use bridge::{MAX_BRIDGE_BUF, MAX_RESAMP_BUF};
 pub use context::{DspBuffers, DspPipelineContext};
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-#[allow(unused_imports)]
+#[allow(unused_imports, clippy::allow_attributes)]
 pub(crate) use stages::DENORMAL_DITHER_OFFSET;
 #[cfg(feature = "testing")]
+#[allow(unused_imports, clippy::allow_attributes)]
 pub use stages::DISABLE_GATE;
 #[cfg(feature = "clap-plugin")]
 pub(crate) use stages::apply_input_stage;
 #[cfg(feature = "clap-plugin")]
 pub(crate) use stages::apply_output_stage;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[allow(unused_imports, clippy::allow_attributes)]
 pub use stages::handle_silence_bypass;
 #[cfg(feature = "clap-plugin")]
 pub(crate) use stages::run_inference;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[allow(unused_imports, clippy::allow_attributes)]
 pub use stages::write_bridge;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -57,7 +60,6 @@ pub use output_pw::PipewireHostConfig;
 pub(crate) use output_pw::{build_spa_format_pod, playback_dsp_cycle};
 
 #[cfg(any(test, feature = "testing"))]
-#[allow(unused_imports)]
 pub(crate) mod test_util {
     pub mod infra {
         #[cfg(test)]

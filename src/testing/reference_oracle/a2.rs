@@ -286,7 +286,10 @@ impl ActivationConfig {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "Range loop required for explicit SIMD lane indexing not expressible via iterator"
+)]
 pub(crate) fn oracle_a2_forward(
     model_data: &NamModelData,
     input: &[f64],
@@ -342,7 +345,6 @@ pub(crate) fn oracle_a2_forward(
     let num_arrays = layers.len();
 
     // Read all array configurations
-    #[allow(clippy::type_complexity)]
     struct ArrayState {
         ch: usize,
         head_accum_size: usize,
@@ -632,7 +634,10 @@ pub(crate) fn oracle_a2_forward(
 
     let mut output = vec![0.0f64; num_frames];
 
-    #[allow(clippy::explicit_counter_loop)]
+    #[expect(
+        clippy::explicit_counter_loop,
+        reason = "Explicit index required to synchronize progress across multiple arrays simultaneously"
+    )]
     for (f, out_val) in output.iter_mut().enumerate() {
         let fi = bs + f;
         let x = input[f];

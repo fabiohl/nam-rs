@@ -26,7 +26,10 @@ pub fn rdtsc_nanos() -> u64 {
 
     // SAFETY: Division by zero in the hot-path is fatal. If calibration failed
     // at boot, we use the system clock as a safety net.
-    #[allow(clippy::manual_checked_ops)]
+    #[expect(
+        clippy::manual_checked_ops,
+        reason = "Manual bounds check used for RT-predictable assembly over checked_add"
+    )]
     if freq_x1000 != 0 {
         let cycles = unsafe { core::arch::x86_64::_rdtsc() };
         (cycles * 1000) / freq_x1000

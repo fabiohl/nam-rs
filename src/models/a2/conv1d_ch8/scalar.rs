@@ -68,7 +68,11 @@ pub fn conv1d_ch8_block_ref(
 ///
 /// Matches `layer_forward_ch8_block` semantics exactly. Used as oracle
 /// for parity testing.
-#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+#[expect(
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    reason = "Audio DSP kernel with many dimension parameters and explicit SIMD indexing — struct consolidation would add indirection overhead in the hot path"
+)]
 pub fn layer_forward_ch8_scalar_ref(
     conv_weights: &[f32],
     conv_bias: &[f32],

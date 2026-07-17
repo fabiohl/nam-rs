@@ -140,7 +140,6 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// data are available at `input[pos..pos+nf]`. Internal conv/film/head
     /// accesses assume caller-verified buffer capacities.
     #[inline(always)]
-    #[allow(clippy::extra_unused_type_parameters)]
     unsafe fn layer_forward_dispatch<M: SimdMath>(
         &mut self,
         li: usize,

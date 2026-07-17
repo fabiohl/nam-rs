@@ -35,7 +35,7 @@ macro_rules! define_gc_item {
     ) => {
         /// Represents an item that should be safely disposed outside the audio thread.
         /// Dropping these items may involve heavy memory deallocations.
-        #[allow(missing_docs)]
+        #[expect(missing_docs, reason = "Docs for generated enum variants are provided by the macro invocation site — repeating would duplicate the doc contract")]
         pub enum GcItem {
             $(
                 $(#[$attr])*

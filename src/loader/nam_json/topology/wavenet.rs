@@ -68,7 +68,6 @@ pub struct FreeWavenetGeometry {
 /// - `Free`: valid geometry outside the catalog — destined for the dynamic engine.
 /// - `Rejected`: invalid or missing shape data (no channels, no dilations, etc.).
 #[derive(Debug, Clone, PartialEq)]
-#[allow(private_interfaces)]
 pub enum WavenetTopologyResult {
     /// Matches a known catalog SKU — use const-generic fast-path.
     Known(NamWavenetTopology),

@@ -64,10 +64,16 @@ pub const SIGMOID_MINIMAX_C8: f32 = 2.5585471676e-14;
 // Used by `simd_exp_poly_*` and `simd_tanh_poly_*`/`simd_sigmoid_poly_*`.
 
 /// ln(2) for range reduction in `simd_exp_poly`.
-#[allow(clippy::approx_constant)]
+#[expect(
+    clippy::approx_constant,
+    reason = "Constants derived from mathematical formulas, not accidental approximations"
+)]
 pub const POLY_LN2: f32 = 0.6931471805599453;
 /// 1 / ln(2) for range reduction in `simd_exp_poly`.
-#[allow(clippy::approx_constant)]
+#[expect(
+    clippy::approx_constant,
+    reason = "Constants derived from mathematical formulas, not accidental approximations"
+)]
 pub const POLY_LOG2_E: f32 = 1.4426950408889634;
 /// Taylor coefficient for x^6/720 in exp polynomial (degree 6).
 pub const POLY_EXP_C6: f32 = 1.3888889220953e-03;

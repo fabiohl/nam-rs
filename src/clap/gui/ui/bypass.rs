@@ -10,7 +10,10 @@ use super::colors::{COL_BORDER, COL_BYPASS_OFF, COL_MUTED, COL_PANEL};
 
 /// Draws the bypass toggle with LED and "BYPASS" / "ACTIVE" labels.
 /// `indication` encodes the bits of `param_indication`: bit 0=IS_MAPPED, bit 1=IS_AUTOMATING, bit 2=IS_OVERRIDING.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "GUI bypass button widget with many visual and layout parameters (position, size, colors, label) for flexible UI layout"
+)]
 pub fn handle_bypass(
     ui: &mut egui::Ui,
     id: egui::Id,

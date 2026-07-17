@@ -397,7 +397,10 @@ fn oracle_wavenet_forward_inner(
 /// When `all_channels` is `true`, writes `num_frames * head_size` interleaved samples
 /// for all head output channels — used for `condition_dsp` sub-model output.
 #[inline]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "WaveNet reference oracle requiring many parameters to reproduce original NAM implementation bit-exact behavior"
+)]
 fn oracle_wavenet_head_final(
     output: &mut Vec<f64>,
     head_accum: &[f64],

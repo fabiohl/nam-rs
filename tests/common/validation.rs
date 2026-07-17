@@ -189,7 +189,10 @@ pub const MRSTFT_SOFT_THRESHOLD: f64 = 0.50;
 ///   Samples = 2048 @ 48 kHz (stress signal)
 /// ```
 #[track_caller]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Test validation helper with many configuration parameters for comprehensive test fixture setup"
+)]
 pub fn report_dsp_fidelity(
     reference: &[f32],
     test: &[f32],
@@ -226,7 +229,10 @@ pub fn report_dsp_fidelity(
 /// are genuine opt-outs for models whose output loudness is inherently
 /// outside the [−50, +10] range, not a workaround for measurement error.
 #[track_caller]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Test validation helper with many configuration parameters for comprehensive test fixture setup"
+)]
 pub fn report_dsp_fidelity_no_lufs(
     reference: &[f32],
     test: &[f32],
@@ -251,7 +257,10 @@ pub fn report_dsp_fidelity_no_lufs(
 }
 
 #[track_caller]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Test validation helper with many configuration parameters for comprehensive test fixture setup"
+)]
 fn report_dsp_fidelity_impl(
     reference: &[f32],
     test: &[f32],
@@ -620,7 +629,7 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 /// `mse_limit` is `None` when MSE gate is not applicable (ESR is the primary gate,
 /// explicit `MseGate::NotApplicable` semantics).
 /// `mrstft_max` is asserted as a hard gate at 44.1/48 kHz (Tarefa 3.1, F-2).
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::allow_attributes)]
 pub fn get_calibrated_threshold(
     model_name: &str,
 ) -> Option<(Option<f64>, f64, Option<f64>, Option<f64>)> {

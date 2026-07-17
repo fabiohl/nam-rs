@@ -14,7 +14,10 @@ use core::arch::x86_64::*;
 // AVX-512F+VL is the baseline AVX-512 target for this kernel.
 // f16c kept for x86-64-v3 baseline compatibility with caller target-feature requirements.
 #[target_feature(enable = "avx512f,avx512vl,f16c")]
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Performance-critical AVX-512 LSTM 4-gate kernel requiring many matrix strides/dimensions for maximum SIMD throughput"
+)]
 pub unsafe fn gemv_4gate_avx512(
     in_frame: &[f32],
     w0: &[f32],
