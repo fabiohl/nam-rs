@@ -254,7 +254,7 @@ echo "  Render: $RENDER_BIN"
 phase "Building Rust tools (gen_stress + wav_to_golden)..."
 
 RUST_LOG="$LOGS_DIR/rust_build.log"
-cargo build --release --bin gen_stress --bin wav_to_golden > "$RUST_LOG" 2>&1 || {
+cargo build --release --features testing --bin gen_stress --bin wav_to_golden > "$RUST_LOG" 2>&1 || {
     rust_status=$?
     tail -5 "$RUST_LOG"
     echo "ERROR: cargo build failed (exit=$rust_status). Full log: $RUST_LOG"
