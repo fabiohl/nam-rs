@@ -51,12 +51,24 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 num_frames * CH,
                 self.scratch_mixin.len(),
             );
+            assert!(
+                num_frames * CH <= self.scratch_mixin.len(),
+                "process_block_internal: num_frames*CH ({}) exceeds scratch_mixin capacity ({})",
+                num_frames * CH,
+                self.scratch_mixin.len(),
+            );
+            assert!(
+                num_frames * CH <= self.scratch_conv.len(),
+                "process_block_internal: num_frames*CH ({}) exceeds scratch_conv capacity ({})",
+                num_frames * CH,
+                self.scratch_conv.len(),
+            );
 
-            let mixin_out = &mut self.scratch_mixin[..num_frames * CH];
+            let mixin_out = self.scratch_mixin.get_unchecked_mut(..num_frames * CH);
             self.input_mixin
                 .process_block::<M>(condition, mixin_out, num_frames);
 
-            let conv_slice = &mut self.scratch_conv[..num_frames * CH];
+            let conv_slice = self.scratch_conv.get_unchecked_mut(..num_frames * CH);
 
             let mut i = 0;
             let mut chunks = conv_slice.chunks_exact_mut(2 * CH);

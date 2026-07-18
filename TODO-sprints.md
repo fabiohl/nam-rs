@@ -348,7 +348,7 @@ latência se sobrepõem no OoO engine.
 >
 > **Estimativa:** 1 dia de engenharia.
 
-### T4.1 — Kernel `broadcast_scale_f32_avx2` const-generic e despacho direto nos call-sites
+### T4.1 — Kernel `broadcast_scale_f32_avx2` const-generic e despacho direto nos call-sites [DONE]
 
 **Responsável:** Engenheiro Rust/SIMD
 **Arquivos:** [`src/math/gemm/gemv/f32_avx2.rs`](./src/math/gemm/gemv/f32_avx2.rs) + call-sites

@@ -49,6 +49,10 @@ pub unsafe fn gemv_with_bias_f32_avx2(
     let out_len = out_frames.len() / num_frames;
     debug_assert!(weights.len() >= in_len * out_len);
     debug_assert!(bias.len() >= out_len);
+    assert!(in_frames.len() == num_frames * in_len);
+    assert!(out_frames.len() == num_frames * out_len);
+    assert!(weights.len() >= in_len * out_len);
+    assert!(bias.len() >= out_len);
 
     // ── in_len == 1: out[j] = bias[j] + in[0] * weights[j] ──────────────
     if in_len == 1 {
@@ -343,6 +347,9 @@ pub unsafe fn gemv_no_bias_f32_avx2(
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
     debug_assert!(weights.len() >= in_len * out_len);
+    assert!(in_frames.len() == num_frames * in_len);
+    assert!(out_frames.len() == num_frames * out_len);
+    assert!(weights.len() >= in_len * out_len);
 
     // ── in_len == 1: out[j] = in[0] * weights[j] ────────────────────────
     if in_len == 1 {

@@ -61,6 +61,13 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
     if do_bias {
         debug_assert!(bias.len() >= out_len);
     }
+    assert!(in_frames.len() == num_frames * in_len);
+    assert!(out_frames.len() == num_frames * out_len);
+    assert!(weights.len() >= in_len * out_len);
+    assert!(residual.len() >= num_frames * out_len);
+    if do_bias {
+        assert!(bias.len() >= out_len);
+    }
 
     let mut f = 0;
     gemm_batch_frame_loop_avx2!(
@@ -198,8 +205,12 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                 out_c += 8;
             }
             while out_c < out_len {
-                let mut sum = if do_bias { bias[out_c] } else { 0.0 };
-                sum += res_frame[out_c];
+                let mut sum = if do_bias {
+                    *bias.get_unchecked(out_c)
+                } else {
+                    0.0
+                };
+                sum += *res_frame.get_unchecked(out_c);
                 for in_c in 0..in_len {
                     sum += *in_frame.get_unchecked(in_c)
                         * *weights.get_unchecked(in_c * out_len + out_c);
@@ -247,6 +258,13 @@ pub unsafe fn fused_gemm_residual_batch_f32_avx2(
     debug_assert!(residual.len() >= out_frames.len());
     if do_bias {
         debug_assert!(bias.len() >= out_len);
+    }
+    assert!(in_frames.len() == num_frames * in_len);
+    assert!(out_frames.len() == num_frames * out_len);
+    assert!(weights.len() >= in_len * out_len);
+    assert!(residual.len() >= num_frames * out_len);
+    if do_bias {
+        assert!(bias.len() >= out_len);
     }
 
     let mut f = 0;
@@ -388,8 +406,12 @@ pub unsafe fn fused_gemm_residual_batch_f32_avx2(
                 out_c += 8;
             }
             while out_c < out_len {
-                let mut sum = if do_bias { bias[out_c] } else { 0.0 };
-                sum += res_frame[out_c];
+                let mut sum = if do_bias {
+                    *bias.get_unchecked(out_c)
+                } else {
+                    0.0
+                };
+                sum += *res_frame.get_unchecked(out_c);
                 let mut wp = weights.as_ptr().add(out_c);
                 for in_c in 0..in_len {
                     sum += *in_frame.get_unchecked(in_c) * *wp;
@@ -446,6 +468,13 @@ pub unsafe fn fused_gemm_residual_batch_f32_const<const IN: usize, const OUT: us
     debug_assert!(weights.len() >= IN * OUT);
     if do_bias {
         debug_assert!(bias.len() >= OUT);
+    }
+    assert!(in_frames.len() == num_frames * IN);
+    assert!(out_frames.len() == num_frames * OUT);
+    assert!(residual.len() == num_frames * OUT);
+    assert!(weights.len() >= IN * OUT);
+    if do_bias {
+        assert!(bias.len() >= OUT);
     }
 
     let mut f = 0;
@@ -577,8 +606,12 @@ pub unsafe fn fused_gemm_residual_batch_f32_const<const IN: usize, const OUT: us
                 out_c += 8;
             }
             while out_c < OUT {
-                let mut sum = if do_bias { bias[out_c] } else { 0.0 };
-                sum += res_frame[out_c];
+                let mut sum = if do_bias {
+                    *bias.get_unchecked(out_c)
+                } else {
+                    0.0
+                };
+                sum += *res_frame.get_unchecked(out_c);
                 for in_c in 0..IN {
                     sum +=
                         *in_frame.get_unchecked(in_c) * *weights.get_unchecked(in_c * OUT + out_c);
