@@ -172,14 +172,14 @@ simultaneamente (`acc_f0_lo{0..3}`, `acc_f0_hi{0..3}`, `acc_f1_lo{0..3}`,
 **Responsável:** Engenheiro Sênior DSP (pode ser o mesmo de T1.1)
 **Arquivo:** utilitários de build apenas.
 
-- [ ] Executar `utils/build-release.sh` (PGO+BOLT) para gerar o novo `target/dsp_hotpath.asm`.
-- [ ] Grep no loop interno de `dot_product_16x_f32_dual_accumulate_avx2`:
+- [x] Executar `utils/build-release.sh` (PGO+BOLT) para gerar o novo `target/dsp_hotpath.asm`.
+- [x] Grep no loop interno de `dot_product_16x_f32_dual_accumulate_avx2`:
 
       - **DEVE estar ausente:** `vmovups %ymm\d+, 0x[0-9a-f]+\(%rsp\)` (store de acumulador).
       - **DEVE estar ausente:** cadeias `vmovaps %ymm\d+, %ymm\d+` sem FMA intercalado.
       - **DEVE estar presente:** padrão `vfmadd231ps … ; vfmadd231ps …` ininterrupto.
-- [ ] Registrar a contagem de instruções do loop interno (antes/depois) no corpo da PR.
-- [ ] Confirmar que `WaveNetLayer<1,8,3>` (CH=8) mantém ≤ 0 spills (já saudável — só validar).
+- [x] Registrar a contagem de instruções do loop interno (antes/depois) no corpo da PR.
+- [x] Confirmar que `WaveNetLayer<1,8,3>` (CH=8) mantém ≤ 0 spills (já saudável — só validar).
 
 **Gate T1.3:** PR aprovada com evidência de asm em anexo.
 
