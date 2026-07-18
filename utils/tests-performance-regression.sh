@@ -73,7 +73,7 @@ echo -e "${BLUE}${BOLD}  Estimated time: ± 2.0 minutes${NC}"
 # result under $BASELINE_NAME. Shared by `--save` and the `--check`
 # first-time bootstrap path below.
 save_baseline() {
-    $TASKSET cargo bench --bench regression_gate -- --save-baseline "$BASELINE_NAME"
+    $TASKSET cargo bench --bench regression_gate --features testing -- --save-baseline "$BASELINE_NAME"
 }
 
 case "$MODE" in
@@ -109,7 +109,7 @@ case "$MODE" in
         # Criterion reports regressions via stdout text, not via exit code —
         # grep the log below instead of trusting $? alone.
         set +e
-        $TASKSET cargo bench --bench regression_gate \
+        $TASKSET cargo bench --bench regression_gate --features testing \
             -- --baseline "$BASELINE_NAME" 2>&1 | tee target/logs/regression-check.log
         BENCH_STATUS=$?
         set -e
