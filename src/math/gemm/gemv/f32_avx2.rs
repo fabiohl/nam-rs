@@ -588,3 +588,100 @@ pub unsafe fn gemv_no_bias_f32_avx2(
         }
     }
 }
+
+/// Produto externo escalar x vetor de pesos, sem bias, para `in_len == 1`.
+///
+/// Para cada frame `n`: `out[n*OUT + oc] = in[n] * weights[oc]`.
+///
+/// Const-generic em `OUT` permite endereçamento imediato no loop interno,
+/// eliminando chains de `leaq` e a divisão `in_len = in_frames.len()/num_frames`.
+///
+/// # Safety
+/// `in_frames.len() * OUT == out_frames.len()`
+/// `weights.len() >= OUT`
+/// AVX2+FMA ISA must be available (x86-64-v3).
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn broadcast_scale_f32_avx2<const OUT: usize>(
+    in_frames: &[f32],
+    weights: &[f32],
+    out_frames: &mut [f32],
+) {
+    let num_frames = in_frames.len();
+    debug_assert_eq!(out_frames.len(), num_frames * OUT);
+    debug_assert!(weights.len() >= OUT);
+
+    for n in 0..num_frames {
+        let v_in = _mm256_set1_ps(*in_frames.get_unchecked(n));
+        let mut oc = 0;
+        while oc + 8 <= OUT {
+            let v_w = _mm256_loadu_ps(weights.as_ptr().add(oc));
+            let v_out = _mm256_mul_ps(v_in, v_w);
+            _mm256_storeu_ps(out_frames.as_mut_ptr().add(n * OUT + oc), v_out);
+            oc += 8;
+        }
+        if oc < OUT {
+            let rem = OUT - oc;
+            let mut mask_buf = [0i32; 8];
+            let mut w_buf = [0.0f32; 8];
+            for i in 0..rem {
+                mask_buf[i] = -1;
+                w_buf[i] = *weights.get_unchecked(oc + i);
+            }
+            let mask = _mm256_loadu_si256(mask_buf.as_ptr() as *const __m256i);
+            let v_w = _mm256_loadu_ps(w_buf.as_ptr());
+            let v_out = _mm256_mul_ps(v_in, v_w);
+            _mm256_maskstore_ps(out_frames.as_mut_ptr().add(n * OUT + oc), mask, v_out);
+        }
+    }
+}
+
+/// Produto externo escalar x vetor de pesos, com bias, para `in_len == 1`.
+///
+/// Para cada frame `n`: `out[n*OUT + oc] = bias[oc] + in[n] * weights[oc]`.
+///
+/// # Safety
+/// `in_frames.len() * OUT == out_frames.len()`
+/// `weights.len() >= OUT`, `bias.len() >= OUT`
+/// AVX2+FMA ISA must be available (x86-64-v3).
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn broadcast_scale_with_bias_f32_avx2<const OUT: usize>(
+    in_frames: &[f32],
+    weights: &[f32],
+    bias: &[f32],
+    out_frames: &mut [f32],
+) {
+    let num_frames = in_frames.len();
+    debug_assert_eq!(out_frames.len(), num_frames * OUT);
+    debug_assert!(weights.len() >= OUT);
+    debug_assert!(bias.len() >= OUT);
+
+    for n in 0..num_frames {
+        let v_in = _mm256_set1_ps(*in_frames.get_unchecked(n));
+        let mut oc = 0;
+        while oc + 8 <= OUT {
+            let v_w = _mm256_loadu_ps(weights.as_ptr().add(oc));
+            let v_b = _mm256_loadu_ps(bias.as_ptr().add(oc));
+            let v_out = _mm256_fmadd_ps(v_in, v_w, v_b);
+            _mm256_storeu_ps(out_frames.as_mut_ptr().add(n * OUT + oc), v_out);
+            oc += 8;
+        }
+        if oc < OUT {
+            let rem = OUT - oc;
+            let mut mask_buf = [0i32; 8];
+            let mut w_buf = [0.0f32; 8];
+            let mut b_buf = [0.0f32; 8];
+            for i in 0..rem {
+                mask_buf[i] = -1;
+                w_buf[i] = *weights.get_unchecked(oc + i);
+                b_buf[i] = *bias.get_unchecked(oc + i);
+            }
+            let mask = _mm256_loadu_si256(mask_buf.as_ptr() as *const __m256i);
+            let v_w = _mm256_loadu_ps(w_buf.as_ptr());
+            let v_b = _mm256_loadu_ps(b_buf.as_ptr());
+            let v_out = _mm256_fmadd_ps(v_in, v_w, v_b);
+            _mm256_maskstore_ps(out_frames.as_mut_ptr().add(n * OUT + oc), mask, v_out);
+        }
+    }
+}

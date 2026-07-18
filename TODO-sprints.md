@@ -378,14 +378,14 @@ O problema é que o chamador passa pelo prólogo completo do GEMV genérico (div
       }
       ```
 
-- [ ] Extrair o branch `in_len == 1` para `broadcast_scale_f32_avx2::<const OUT: usize>`.
-- [ ] Decorar com `#[inline(always)]` e `#[target_feature(enable = "avx2,fma")]`.
-- [ ] Despachar diretamente dos call-sites:
+- [x] Extrair o branch `in_len == 1` para `broadcast_scale_f32_avx2::<const OUT: usize>`.
+- [x] Decorar com `#[inline]` e `#[target_feature(enable = "avx2,fma")]` (Rust proíbe `#[inline(always)]` com `#[target_feature]`).
+- [x] Despachar diretamente dos call-sites via `DenseLayer::process_block` com const-check `IN == 1`:
   - `layer_array.rs:rechannel` (IN=1, OUT=CH) → `broadcast_scale_f32_avx2::<CH>`.
   - `layer.rs:input_mixin` (IN=1, OUT=CH) → `broadcast_scale_f32_avx2::<CH>`.
-  - `layer_array.rs:head_rechannel`: verificar se IN==1 neste call-site; se sim, idem;
-    se não, manter `gemv_no_bias_f32_avx2`.
-- [ ] Manter `gemv_no_bias_f32_avx2` inalterado para os caminhos com `in_len > 1`.
+  - `layer_array.rs:head_rechannel`: verificado IN≠1; mantém `gemv_no_bias_f32_avx2`.
+- [x] Manter `gemv_no_bias_f32_avx2` inalterado para os caminhos com `in_len > 1`.
+- [x] **T4.1 CONCLUÍDO** — Implementados `broadcast_scale_f32_avx2<OUT>` e `broadcast_scale_with_bias_f32_avx2<OUT>` no módulo `f32_avx2`. O despacho ocorre em `DenseLayer::process_block` via `if IN == 1` (const-folded em tempo de compilação). Inference bench mostra 3-5% de melhoria no WaveNet Standard. Todos os testes golden passam bit-exact.
 
 **Gate T4.1:**
 

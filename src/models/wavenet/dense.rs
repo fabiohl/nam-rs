@@ -104,6 +104,26 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         num_frames: usize,
     ) {
         unsafe {
+            #[cfg(target_arch = "x86_64")]
+            {
+                if IN == 1 {
+                    if self.do_bias {
+                        crate::math::gemm::gemv::broadcast_scale_with_bias_f32_avx2::<OUT>(
+                            input,
+                            &self.weights,
+                            &self.bias,
+                            output,
+                        );
+                    } else {
+                        crate::math::gemm::gemv::broadcast_scale_f32_avx2::<OUT>(
+                            input,
+                            &self.weights,
+                            output,
+                        );
+                    }
+                    return;
+                }
+            }
             if self.do_bias {
                 M::gemv_with_bias_f32(input, &self.weights, &self.bias, output, num_frames);
             } else {
