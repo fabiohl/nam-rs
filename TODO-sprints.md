@@ -267,7 +267,7 @@ via `WaveNetLayer<COND, CH, K>`, possibilitando o despacho para a versão especi
 >
 > **Estimativa:** 1–2 dias de engenharia.
 
-### T3.1 — Desenrolar o laço de ativação para 2 vetores ymm por iteração
+### T3.1 — Desenrolar o laço de ativação para 2 vetores ymm por iteração [DONE]
 
 **Responsável:** Engenheiro SIMD
 **Arquivo:** [`src/math/wavenet/accumulate/avx2.rs`](./src/math/wavenet/accumulate/avx2.rs)

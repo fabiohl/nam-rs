@@ -42,10 +42,25 @@ fn tanh_and_accumulate_block_avx2_tail(head_input: &mut [f32], block: &mut [f32]
 }
 
 /// Applies tanh in-place on block and accumulates into head_input using AVX2.
+/// Processes 2 ymm vectors per iteration to overlap `vdivps` latencies.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
+    while i + 16 <= len {
+        let vb0 = _mm256_loadu_ps(block.as_ptr().add(i));
+        let vb1 = _mm256_loadu_ps(block.as_ptr().add(i + 8));
+        let vt0 = crate::math::activations::simd_tanh_poly_avx2(vb0);
+        let vt1 = crate::math::activations::simd_tanh_poly_avx2(vb1);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt0);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i + 8), vt1);
+
+        let vh0 = _mm256_loadu_ps(head_input.as_ptr().add(i));
+        let vh1 = _mm256_loadu_ps(head_input.as_ptr().add(i + 8));
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), _mm256_add_ps(vh0, vt0));
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i + 8), _mm256_add_ps(vh1, vt1));
+        i += 16;
+    }
     wavenet_simd_avx2!(i, len, {
         let vb = _mm256_loadu_ps(block.as_ptr().add(i));
         let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
@@ -125,10 +140,22 @@ fn tanh_and_overwrite_block_avx2_tail(head_input: &mut [f32], block: &mut [f32])
 }
 
 /// Applies tanh in-place on block and overwrites head_input using AVX2.
+/// Processes 2 ymm vectors per iteration to overlap `vdivps` latencies.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn tanh_and_overwrite_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
     let mut i = 0;
+    while i + 16 <= len {
+        let vb0 = _mm256_loadu_ps(block.as_ptr().add(i));
+        let vb1 = _mm256_loadu_ps(block.as_ptr().add(i + 8));
+        let vt0 = crate::math::activations::simd_tanh_poly_avx2(vb0);
+        let vt1 = crate::math::activations::simd_tanh_poly_avx2(vb1);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt0);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i + 8), vt1);
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), vt0);
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i + 8), vt1);
+        i += 16;
+    }
     wavenet_simd_avx2!(i, len, {
         let vb = _mm256_loadu_ps(block.as_ptr().add(i));
         let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
@@ -159,6 +186,7 @@ fn tanh_and_accumulate_with_seed_avx2_tail(
 ///
 /// Computes `head_input[i] = seed[i] + tanh(block[i])`.
 /// Eliminates the separate `copy_from_slice(seed)` before `tanh_and_accumulate_block`.
+/// Processes 2 ymm vectors per iteration to overlap `vdivps` latencies.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn tanh_and_accumulate_with_seed_avx2(
     head_input: &mut [f32],
@@ -167,6 +195,20 @@ pub unsafe fn tanh_and_accumulate_with_seed_avx2(
 ) {
     let len = block.len();
     let mut i = 0;
+    while i + 16 <= len {
+        let vb0 = _mm256_loadu_ps(block.as_ptr().add(i));
+        let vb1 = _mm256_loadu_ps(block.as_ptr().add(i + 8));
+        let vt0 = crate::math::activations::simd_tanh_poly_avx2(vb0);
+        let vt1 = crate::math::activations::simd_tanh_poly_avx2(vb1);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt0);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i + 8), vt1);
+
+        let vs0 = _mm256_loadu_ps(seed.as_ptr().add(i));
+        let vs1 = _mm256_loadu_ps(seed.as_ptr().add(i + 8));
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), _mm256_add_ps(vs0, vt0));
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i + 8), _mm256_add_ps(vs1, vt1));
+        i += 16;
+    }
     wavenet_simd_avx2!(i, len, {
         let vb = _mm256_loadu_ps(block.as_ptr().add(i));
         let vt = crate::math::activations::simd_tanh_poly_avx2(vb);
