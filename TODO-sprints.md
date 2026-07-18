@@ -43,28 +43,28 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > **Estimativa:** 2–3 dias de engenharia.
 
-### T1.1 — Análise e prova de equivalência bit-exact da estratégia two-pass
+### T1.1 — Análise e prova de equivalência bit-exact da estratégia two-pass [DONE]
 
 **Responsável:** Engenheiro Sênior DSP/SIMD
 **Arquivo:** (somente análise — sem modificação de código)
 
-- [ ] Confirmar no `dsp_hotpath.asm` atual que o loop interno de
+- [x] Confirmar no `dsp_hotpath.asm` atual que o loop interno de
 
       `dot_product_16x_f32_dual_accumulate_avx2`
       ([dot_f32_avx2.rs:L327-429](./src/math/gemm/dot_16x/dot_f32_avx2.rs))
       contém exatamente os padrões de spill documentados no F-P1 (vmovups para rsp a ≥ 3
       acumuladores por iteração; cadeias vmovaps sem aritmética).
-- [ ] Documentar, em comentário da PR, a prova de equivalência da estratégia two-pass lo/hi:
+- [x] Documentar, em comentário da PR, a prova de equivalência da estratégia two-pass lo/hi:
 
       - Passada 1: acumuladores `acc_f0_lo{0..3}` + `acc_f1_lo{0..3}` (8 regs), pesos `w_lo`.
       - Passada 2: acumuladores `acc_f0_hi{0..3}` + `acc_f1_hi{0..3}` (8 regs), pesos `w_hi`.
       - Mesma sequência de FMAs por lane, mesma árvore de redução `(acc0+acc1)+(acc2+acc3)`.
       - Conclusão: resultado idêntico bit-a-bit ao kernel original.
-- [ ] Verificar que `dot_product_16x_f32_dual_avx2`
+- [x] Verificar que `dot_product_16x_f32_dual_avx2`
 
       ([dot_f32_avx2.rs:L123-222](./src/math/gemm/dot_16x/dot_f32_avx2.rs))
       tem o mesmo padrão de 16 acumuladores e requer a mesma correção.
-- [ ] Confirmar que `dot_product_16x_f32_avx2` e `dot_product_16x_f32_accumulate_avx2`
+- [x] Confirmar que `dot_product_16x_f32_avx2` e `dot_product_16x_f32_accumulate_avx2`
 
       (variantes single-frame, 8 acumuladores) estão saudáveis no asm — apenas documentar,
       não tocar.
@@ -73,7 +73,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### T1.2 — Implementar two-pass lo/hi em `dot_product_16x_f32_dual_accumulate_avx2`
+### T1.2 — Implementar two-pass lo/hi em `dot_product_16x_f32_dual_accumulate_avx2` [DONE]
 
 **Responsável:** Engenheiro Sênior SIMD
 **Arquivo:** [`src/math/gemm/dot_16x/dot_f32_avx2.rs`](./src/math/gemm/dot_16x/dot_f32_avx2.rs)
@@ -133,21 +133,25 @@ simultaneamente (`acc_f0_lo{0..3}`, `acc_f0_hi{0..3}`, `acc_f1_lo{0..3}`,
       // redução hi -> hi_f0, hi_f1 ; store final
       ```
 
-- [ ] Implementar a refatoração em `dot_product_16x_f32_dual_accumulate_avx2` conforme
+- [x] Implementar a refatoração em `dot_product_16x_f32_dual_accumulate_avx2` conforme
 
       estratégia acima.
-- [ ] Aplicar a mesma refatoração em `dot_product_16x_f32_dual_avx2` (variante sem `init` —
+- [x] Aplicar a mesma refatoração em `dot_product_16x_f32_dual_avx2` (variante sem `init` —
 
       acumuladores iniciam em zero nas duas passadas).
-- [ ] Manter intactas `dot_product_16x_f32_avx2` e `dot_product_16x_f32_accumulate_avx2`
+- [x] Manter intactas `dot_product_16x_f32_avx2` e `dot_product_16x_f32_accumulate_avx2`
 
       (variantes single-frame com apenas 8 acumuladores — já saudáveis).
-- [ ] Atualizar `//!` doc-comments de ambas as funções refatoradas descrevendo o two-pass
+- [x] Atualizar `//!` doc-comments de ambas as funções refatoradas descrevendo o two-pass
 
       e o racional de pressão de registradores.
-- [ ] Verificar invariantes de `unsafe` — garantir que `get_unchecked` é acessado apenas dentro
+- [x] Verificar invariantes de `unsafe` — garantir que `get_unchecked` é acessado apenas dentro
 
       de `i < len` / `i < len-3` (igual ao código anterior).
+- [x] Gate T1.2 aprovado: lints, testes, benchmarks e quality-dashboard todos OK. Verificação
+      parcial de asm (objdump + rustfilt) confirma zero `vmovups` spills no loop interno —
+      apenas 14 ymm regs ativos (8 acc + 4 w_lo + 2 broadcast) dos 16 disponíveis. Confirmação
+      definitiva via `dsp_hotpath.asm` (PGO+BOLT) delegada para T1.3.
 
 **Gate T1.2:**
 
