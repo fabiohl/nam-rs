@@ -167,7 +167,7 @@ simultaneamente (`acc_f0_lo{0..3}`, `acc_f0_hi{0..3}`, `acc_f1_lo{0..3}`,
 
 ---
 
-### T1.3 — Verificação de spills no `dsp_hotpath.asm` após T1.2
+### T1.3 — Verificação de spills no `dsp_hotpath.asm` após T1.2 [DONE]
 
 **Responsável:** Engenheiro Sênior DSP (pode ser o mesmo de T1.1)
 **Arquivo:** utilitários de build apenas.
@@ -200,7 +200,7 @@ simultaneamente (`acc_f0_lo{0..3}`, `acc_f0_hi{0..3}`, `acc_f1_lo{0..3}`,
 >
 > **Estimativa:** 2–3 dias de engenharia.
 
-### T2.1 — Implementar variante const-generic `fused_gemm_residual_batch_f32_const`
+### T2.1 — Implementar variante const-generic `fused_gemm_residual_batch_f32_const` [DONE]
 
 **Responsável:** Engenheiro Sênior Rust/SIMD
 **Arquivo:** [`src/math/gemm/gemm_batch/fused_residual_batch.rs`](./src/math/gemm/gemm_batch/fused_residual_batch.rs) + call-site [`src/models/wavenet/dense.rs`](./src/models/wavenet/dense.rs)
@@ -233,6 +233,11 @@ via `WaveNetLayer<COND, CH, K>`, possibilitando o despacho para a versão especi
 - [ ] Aplicar strength-reduction de ponteiro na variante dinâmica existente.
 - [ ] Atualizar o call-site em `DenseLayer::process_residual_batch`.
 - [ ] Atualizar doc-comments das funções.
+- [x] Criar `fused_gemm_residual_batch_f32_const::<IN, OUT>` em `fused_residual_batch.rs` (linha ~400+).
+- [x] Strength-reduction: `wp_base` incremental no loop interno de `fused_gemm_residual_batch_f32_avx2` eliminando `in_c * out_len` (linha ~283-290).
+- [x] Despacho const-generic em `DenseLayer::process_residual_batch` para (4,4), (8,8), (16,16) via `#[cfg(target_arch = "x86_64")]`.
+- [x] Doc-comments atualizados em ambas as funções.
+- [x] Gate T2.1 aprovado: lints, tests-quick, quality-dashboard — todos OK. ESR bit-exact (sem re-baseline).
 
 **Gate T2.1:**
 

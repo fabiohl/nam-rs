@@ -33,6 +33,47 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         num_frames: usize,
     ) {
         unsafe {
+            // Slots for which we have specialised const-generic kernels
+            // (endereçamento imediato — no leaq chains).
+            #[cfg(target_arch = "x86_64")]
+            {
+                if IN == 4 && OUT == 4 {
+                    crate::math::gemm::gemm_batch::fused_gemm_residual_batch_f32_const::<4, 4>(
+                        input,
+                        &self.weights,
+                        &self.bias,
+                        residual,
+                        output,
+                        num_frames,
+                        self.do_bias,
+                    );
+                    return;
+                }
+                if IN == 8 && OUT == 8 {
+                    crate::math::gemm::gemm_batch::fused_gemm_residual_batch_f32_const::<8, 8>(
+                        input,
+                        &self.weights,
+                        &self.bias,
+                        residual,
+                        output,
+                        num_frames,
+                        self.do_bias,
+                    );
+                    return;
+                }
+                if IN == 16 && OUT == 16 {
+                    crate::math::gemm::gemm_batch::fused_gemm_residual_batch_f32_const::<16, 16>(
+                        input,
+                        &self.weights,
+                        &self.bias,
+                        residual,
+                        output,
+                        num_frames,
+                        self.do_bias,
+                    );
+                    return;
+                }
+            }
             M::fused_gemm_residual_batch_f32(
                 input,
                 &self.weights,

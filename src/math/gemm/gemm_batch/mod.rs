@@ -17,4 +17,5 @@ pub use avx512::{
 pub use fused_add_gemm_batch::fused_add_gemm_batch_avx2;
 pub use fused_residual_batch::{
     fused_gemm_residual_batch_avx2, fused_gemm_residual_batch_f32_avx2,
+    fused_gemm_residual_batch_f32_const,
 };
