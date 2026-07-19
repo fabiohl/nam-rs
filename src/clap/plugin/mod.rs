@@ -44,6 +44,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<clack_extensions::preset_discovery::PluginPresetLoad>();
         builder.register::<crate::clap::extensions::render::NamPluginRender>();
         builder.register::<crate::clap::extensions::state_context::NamPluginStateContext>();
+        builder.register::<crate::clap::extensions::tail::NamPluginTail>();
 
         #[cfg(feature = "clap-plugin")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();

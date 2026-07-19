@@ -1591,7 +1591,7 @@ Relação custo-benefício do `pw_filter`:
 
 ---
 
-### T5.S2.3 — Registrar extensão no lifecycle do CLAP
+### T5.S2.3 — Registrar extensão no lifecycle do CLAP [DONE]
 
 **Responsável:** Engenheiro de Sistemas
 **Arquivo:** [`src/clap/plugin/mod.rs`](./src/clap/plugin/mod.rs)
