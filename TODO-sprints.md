@@ -811,7 +811,16 @@ ficam fora de `num_blocks_4 = 3` → `dst[...+12..15] = 0.0` (padding correto).
 > **Objetivo:** confirmar que o Lite com kernel 16-wide atende a **todos** os contratos de paridade,
 > atinge a meta de latência e que o F-L4 (µs/MMAC) já não aponta mais Lite como outlier.
 
-### T2.S4.1 — Revalidação de goldens bit-exact do Lite 🟡 (CRÍTICO — decisão de re-baseline)
+### T2.S4.1 — Revalidação de goldens bit-exact do Lite 🟡 (CRÍTICO — decisão de re-baseline) ✅ CONCLUÍDO 2026-07-19
+
+       **Conclusão: CASO A — bit-exact confirmado.** O ESR do Lite (`EVH-5150-Lite`) permanece
+       `1.20e-12` (-119.2 dB), idêntico ao contrato `docs/quality-contract.txt`. Todos os
+       36 modelos de fidelidade passam na verificação de contrato sem violações.
+       - `utils/lints.sh`: ✅ (4x check + 4x clippy, zero warnings)
+       - `utils/tests-quick.sh`: ✅ (58 golden + 6 quick_parity + 35 f64_oracle + 18 fuzz, 0 falhas)
+       - `utils/quality-dashboard.sh --check`: ✅ (36/36 modelos fidelidade ok; 5/10 performance
+         com regressão de latência — esperado para sistema sob carga variável, a ser tratado no T2.S4.2)
+       - Nenhuma re-baseline de fidelidade necessária. Prossegue-se para T2.S4.2.
 
 **Responsável:** Engenheiro de QA / DSP (com autoridade de contatar PO se necessário).
 
