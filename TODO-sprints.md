@@ -1348,7 +1348,7 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 >
 > **Estimativa:** 2 dias.
 
-### T4.S3.1 — Execução do Workload e Fusão de Perfis com `merge-fdata`
+### T4.S3.1 — Execução do Workload e Fusão de Perfis com `merge-fdata` [DONE]
 
 **Responsável:** Engenheiro de Sistemas / QA
 **Arquivo:** [`utils/build-release.sh`](./utils/build-release.sh)

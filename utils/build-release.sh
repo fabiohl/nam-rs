@@ -284,6 +284,137 @@ if [ -n "$LLVM_BOLT" ]; then
     fi
 fi
 
+# --- BOLT Instrumentation Workload Collection & Profile Merging ---
+if [ -n "$LLVM_BOLT" ]; then
+    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Collecting BOLT instrumentation profiles...${NC}"
+
+    # Check PipeWire availability for audio-based profiling
+    PW_RUNNING=false
+    if command -v pw-cli &>/dev/null && pw-cli info &>/dev/null 2>&1; then
+        PW_RUNNING=true
+    fi
+
+    # Collect unique model files across WaveNet, A2, and LSTM topologies
+    STANDALONE_MODELS=()
+    for candidate in \
+        "tests/fixtures/models/wavenet_a1_standard.nam" \
+        "tests/fixtures/models/a2_example.nam" \
+        "tests/fixtures/models/lstm.nam" \
+        "tests/fixtures/models/BossWN-standard.nam" \
+        "tests/fixtures/models/BossWN-feather.nam" \
+        "tests/fixtures/models/BossLSTM-1x16.nam"; do
+        if [ -f "$candidate" ]; then
+            STANDALONE_MODELS+=("$candidate")
+        fi
+    done
+
+    # Generate test sine wave for PipeWire playback
+    TEST_WAV="$BOLT_DIR/test_signal.wav"
+    if [ ! -f "$TEST_WAV" ]; then
+        python3 -c "
+import wave, struct, math
+rate = 48000
+duration = 3
+n = rate * duration
+with wave.open('$TEST_WAV', 'w') as w:
+    w.setnchannels(1)
+    w.setsampwidth(2)
+    w.setframerate(rate)
+    for i in range(n):
+        val = int(32767 * 0.5 * math.sin(2 * math.pi * 440 * i / rate))
+        w.writeframes(struct.pack('<h', val))
+" &>/dev/null || true
+    fi
+
+    # --- Standalone instrumented workload ---
+    if [ -f "$PGO_BUILD_TARGET_DIR/dist/nam-rs.instrumented" ] && [ ${#STANDALONE_MODELS[@]} -gt 0 ]; then
+        for model in "${STANDALONE_MODELS[@]}"; do
+            echo -e "  Running instrumented standalone with model: $(basename "$model")"
+            NAM_DISABLE_GATE=1 "$PGO_BUILD_TARGET_DIR/dist/nam-rs.instrumented" -m "$model" -b 64 &
+            STANDALONE_PID=$!
+            sleep 1.0
+
+            if kill -0 $STANDALONE_PID 2>/dev/null; then
+                if [ "$PW_RUNNING" = true ] && [ -f "$TEST_WAV" ]; then
+                    pw-play --target="NAM-rs-input" "$TEST_WAV" &
+                    PLAY_PID=$!
+                    sleep 3
+                    kill $PLAY_PID 2>/dev/null || true
+                    wait $PLAY_PID 2>/dev/null || true
+                else
+                    sleep 3
+                fi
+
+                kill -TERM $STANDALONE_PID 2>/dev/null || true
+                wait $STANDALONE_PID 2>/dev/null || true
+                echo -e "  ${GREEN}✓${NC} Standalone profile collected for $(basename "$model")"
+            else
+                echo -e "${YELLOW}  Warning: Instrumented standalone failed to start for $(basename "$model")${NC}"
+            fi
+        done
+    else
+        echo -e "${YELLOW}  Warning: No instrumented standalone or models found. Skipping standalone BOLT profiling.${NC}"
+    fi
+
+    # --- CLAP instrumented workload ---
+    if [ -f "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.instrumented.so" ]; then
+        echo -e "  Running instrumented CLAP via pgo_profiling_workload..."
+
+        # Recompile pgo_profiling_workload without PGO instrumentation for clean BOLT profiling
+        RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS" \
+            cargo build --profile dist --features "clap-plugin,testing" --bin pgo_profiling_workload
+
+        NAM_CLAP_SO_PATH="$PGO_CLAP_TARGET_DIR/dist/libnam_rs.instrumented.so" \
+            "$PGO_BUILD_TARGET_DIR/dist/pgo_profiling_workload" && \
+            echo -e "  ${GREEN}✓${NC} CLAP profile collected" || \
+            echo -e "${YELLOW}  Warning: CLAP profiling workload failed${NC}"
+    else
+        echo -e "${YELLOW}  Warning: No instrumented CLAP .so found. Skipping CLAP BOLT profiling.${NC}"
+    fi
+
+    # --- Profile Merging with merge-fdata ---
+    MERGE_FDATA="$(dirname "$LLVM_BOLT")/merge-fdata"
+    if [ -x "$MERGE_FDATA" ]; then
+        echo -e "  Merging BOLT instrumentation profiles..."
+
+        # Merge standalone fdata profiles
+        STANDALONE_FDATA_FILES=()
+        while IFS= read -r -d '' f; do
+            STANDALONE_FDATA_FILES+=("$f")
+        done < <(find "$PGO_BUILD_TARGET_DIR" -maxdepth 1 -name "nam-rs.fdata.*" -print0 2>/dev/null || true)
+
+        if [ ${#STANDALONE_FDATA_FILES[@]} -gt 0 ]; then
+            "$MERGE_FDATA" "${STANDALONE_FDATA_FILES[@]}" > "$BOLT_DIR/nam-rs.merged.fdata" 2>"$BOLT_DIR/merge-fdata-standalone.log"
+            if [ -s "$BOLT_DIR/nam-rs.merged.fdata" ]; then
+                echo -e "  ${GREEN}✓${NC} Standalone profiles merged (${#STANDALONE_FDATA_FILES[@]} files)"
+            else
+                echo -e "${YELLOW}  Warning: Standalone profile merge produced empty output${NC}"
+            fi
+        else
+            echo -e "${YELLOW}  Warning: No standalone fdata profiles found${NC}"
+        fi
+
+        # Merge CLAP fdata profiles
+        CLAP_FDATA_FILES=()
+        while IFS= read -r -d '' f; do
+            CLAP_FDATA_FILES+=("$f")
+        done < <(find "$PGO_CLAP_TARGET_DIR" -maxdepth 1 -name "libnam_rs.fdata.*" -print0 2>/dev/null || true)
+
+        if [ ${#CLAP_FDATA_FILES[@]} -gt 0 ]; then
+            "$MERGE_FDATA" "${CLAP_FDATA_FILES[@]}" > "$BOLT_DIR/libnam_rs.merged.fdata" 2>"$BOLT_DIR/merge-fdata-clap.log"
+            if [ -s "$BOLT_DIR/libnam_rs.merged.fdata" ]; then
+                echo -e "  ${GREEN}✓${NC} CLAP profiles merged (${#CLAP_FDATA_FILES[@]} files)"
+            else
+                echo -e "${YELLOW}  Warning: CLAP profile merge produced empty output${NC}"
+            fi
+        else
+            echo -e "${YELLOW}  Warning: No CLAP fdata profiles found${NC}"
+        fi
+    else
+        echo -e "${YELLOW}  Warning: merge-fdata not found at $MERGE_FDATA. Skipping profile merge.${NC}"
+    fi
+fi
+
 # --- BOLT Perf-based Optimization (legacy path for standalone, requires perf) ---
 if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
     echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT post-link optimization to standalone binary...${NC}"
