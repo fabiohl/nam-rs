@@ -1359,7 +1359,7 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 - [ ] Localizar e invocar o utilitário `merge-fdata` (procurando no mesmo diretório do `llvm-bolt`).
 - [ ] Consolidar todos os perfis gerados na execução (ex: `target/pgo-build/*.fdata.*` e `target/pgo-clap/*.fdata.*`) em perfis finais únicos para o standalone e o CLAP.
 
-### T4.S3.2 — Otimização BOLT com `-hugify` e Strip Final
+### T4.S3.2 — Otimização BOLT com `-hugify` e Strip Final [DONE]
 
 **Responsável:** Engenheiro de Sistemas
 **Arquivo:** [`utils/build-release.sh`](./utils/build-release.sh)

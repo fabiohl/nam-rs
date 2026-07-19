@@ -415,6 +415,77 @@ with wave.open('$TEST_WAV', 'w') as w:
     fi
 fi
 
+# --- BOLT Optimization using Instrumentation Profiles (standalone + CLAP) ---
+BOLT_INSTR_APPLIED=false
+CLAP_BOLT_APPLIED=false
+if [ -n "$LLVM_BOLT" ]; then
+    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT optimization using instrumentation profiles...${NC}"
+
+    # Optimize standalone
+    if [ -f "$BOLT_DIR/nam-rs.merged.fdata" ] && [ -s "$BOLT_DIR/nam-rs.merged.fdata" ]; then
+        echo -e "  Optimizing standalone binary with llvm-bolt..."
+        if "$LLVM_BOLT" "$PGO_BUILD_TARGET_DIR/dist/nam-rs" \
+            -o "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" \
+            -data "$BOLT_DIR/nam-rs.merged.fdata" \
+            --reorder-blocks=ext-tsp \
+            --reorder-functions=hfsort \
+            --split-functions \
+            --split-all-cold \
+            --relocs \
+            -hugify \
+            --lite > "$BOLT_DIR/llvm-bolt-standalone.log" 2>&1; then
+            BOLT_INSTR_APPLIED=true
+            echo -e "  ${GREEN}✓${NC} BOLT optimization applied to standalone"
+        else
+            echo -e "${YELLOW}  Warning: BOLT optimization failed for standalone${NC}"
+            if [ -f "$BOLT_DIR/llvm-bolt-standalone.log" ]; then
+                cat "$BOLT_DIR/llvm-bolt-standalone.log"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}  Warning: No merged fdata for standalone. Skipping BOLT optimization.${NC}"
+    fi
+
+    # Optimize CLAP
+    if [ -f "$BOLT_DIR/libnam_rs.merged.fdata" ] && [ -s "$BOLT_DIR/libnam_rs.merged.fdata" ]; then
+        echo -e "  Optimizing CLAP plugin with llvm-bolt..."
+        if "$LLVM_BOLT" "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" \
+            -o "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.bolt.so" \
+            -data "$BOLT_DIR/libnam_rs.merged.fdata" \
+            --reorder-blocks=ext-tsp \
+            --reorder-functions=hfsort \
+            --split-functions \
+            --split-all-cold \
+            --relocs \
+            -hugify \
+            --lite > "$BOLT_DIR/llvm-bolt-clap.log" 2>&1; then
+            CLAP_BOLT_APPLIED=true
+            echo -e "  ${GREEN}✓${NC} BOLT optimization applied to CLAP plugin"
+        else
+            echo -e "${YELLOW}  Warning: BOLT optimization failed for CLAP${NC}"
+            if [ -f "$BOLT_DIR/llvm-bolt-clap.log" ]; then
+                cat "$BOLT_DIR/llvm-bolt-clap.log"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}  Warning: No merged fdata for CLAP. Skipping BOLT optimization.${NC}"
+    fi
+
+    # Generate AI-ready assembly hotspot report from BOLT-optimized binary
+    if [ "$BOLT_INSTR_APPLIED" = true ]; then
+        echo -e "  Generating AI-ready assembly hotspot report from BOLT-optimized binary..."
+        mkdir -p target
+        if command -v llvm-objdump &>/dev/null; then
+            llvm-objdump -d --no-show-raw-insn "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" > "target/dsp_hotpath.asm" 2>/dev/null || true
+        elif command -v objdump &>/dev/null; then
+            objdump -d --no-show-raw-insn "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" > "target/dsp_hotpath.asm" 2>/dev/null || true
+        fi
+        if [ -s "target/dsp_hotpath.asm" ]; then
+            echo -e "  ${GREEN}✓${NC} Assembly report generated at target/dsp_hotpath.asm"
+        fi
+    fi
+fi
+
 # --- BOLT Perf-based Optimization (legacy path for standalone, requires perf) ---
 if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
     echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT post-link optimization to standalone binary...${NC}"
@@ -525,8 +596,8 @@ with wave.open('$TEST_WAV', 'w') as w:
                         --reorder-functions=hfsort \
                         --split-functions \
                         --split-all-cold \
+                        -hugify \
                         --relocs \
-                        --no-huge-pages \
                         --lite > "$BOLT_DIR/llvm-bolt.log" 2>&1; then
                         BOLT_APPLIED=true
                         echo -e "  ${GREEN}✓${NC} BOLT applied successfully."
@@ -568,7 +639,7 @@ mkdir -p "$CLAP_INSTALL_DIR"
 
 # Deliver standalone binary
 rm -f "$BIN_TARGET"
-if [ "$BOLT_APPLIED" = true ] && [ -f "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" ]; then
+if [ -f "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" ]; then
     cp "$PGO_BUILD_TARGET_DIR/dist/nam-rs.bolt" "$BIN_TARGET"
     strip --strip-all "$BIN_TARGET"
     echo -e "  Installed executable (PGO + BOLT): $BIN_TARGET"
@@ -581,9 +652,15 @@ chmod +x "$BIN_TARGET"
 
 # Deliver CLAP plugin
 rm -f "$CLAP_TARGET"
-cp "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" "$CLAP_TARGET"
-strip --strip-unneeded "$CLAP_TARGET"
-echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
+if [ "${CLAP_BOLT_APPLIED:-false}" = true ] && [ -f "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.bolt.so" ]; then
+    cp "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.bolt.so" "$CLAP_TARGET"
+    strip --strip-unneeded "$CLAP_TARGET"
+    echo -e "  Installed CLAP plugin (PGO + BOLT): $CLAP_TARGET"
+else
+    cp "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" "$CLAP_TARGET"
+    strip --strip-unneeded "$CLAP_TARGET"
+    echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
+fi
 
 # Gate: validate the SHIPPED CLAP distribution artifact (symbol, SONAME, clap-validator).
 # Validamos "$CLAP_TARGET" — o arquivo já copiado e *após* o strip — em vez da fonte
