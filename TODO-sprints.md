@@ -1124,7 +1124,7 @@ de 12 canais).
 >
 > **Estimativa:** 0.5 dia.
 
-### T3.S1.1 — Dividir chamada madvise e tratar retornos individuais
+### T3.S1.1 — Dividir chamada madvise e tratar retornos individuais [DONE]
 
 **Responsável:** Engenheiro de Sistemas
 **Arquivo:** [`src/standalone/pw_host/bridge.rs`](./src/standalone/pw_host/bridge.rs)
@@ -1154,24 +1154,24 @@ de 12 canais).
 >
 > **Estimativa:** 1 dia.
 
-### T3.S2.1 — Implementar prctl com PR_THP_DISABLE_EXCEPT_ADVISED e Fallback
+### T3.S2.1 — Implementar prctl com PR_THP_DISABLE_EXCEPT_ADVISED e Fallback [DONE]
 
 **Responsável:** Engenheiro de Sistemas / Arquiteto
 **Arquivo:** [`src/standalone/rt_setup/thread.rs`](./src/standalone/rt_setup/thread.rs)
 
-- [ ] Definir a constante `PR_THP_DISABLE_EXCEPT_ADVISED: libc::c_ulong = 2;` caso não esteja disponível no crate `libc` do ambiente.
-- [ ] Modificar `configure_process_wide` para chamar:
+- [x] Definir a constante `PR_THP_DISABLE_EXCEPT_ADVISED: libc::c_ulong = 2;` caso não esteja disponível no crate `libc` do ambiente.
+- [x] Modificar `configure_process_wide` para chamar:
       ```rust
       libc::prctl(libc::PR_SET_THP_DISABLE, 1, PR_THP_DISABLE_EXCEPT_ADVISED, 0, 0)
       ```
 
-- [ ] Verificar se o retorno é `-1` e `errno == libc::EINVAL`. Nesse caso, realizar o fallback automático para a chamada clássica:
+- [x] Verificar se o retorno é `-1` e `errno == libc::EINVAL`. Nesse caso, realizar o fallback automático para a chamada clássica:
       ```rust
       libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0)
       ```
 
   e registrar no log como `info` (downgrade amigável) que o kernel não suporta o modo modernizado de THP except-advised.
-- [ ] Garantir conformidade com as regras de RT-Safety (a chamada prctl ocorre no setup fora da thread RT).
+- [x] Garantir conformidade com as regras de RT-Safety (a chamada prctl ocorre no setup fora da thread RT).
       **Gate T3.S2.1:**
       ```bash
       utils/lints.sh

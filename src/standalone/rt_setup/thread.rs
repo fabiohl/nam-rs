@@ -10,13 +10,19 @@ use crate::common::spsc::RtStatusFlags;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+/// `PR_THP_DISABLE_EXCEPT_ADVISED` (value 2) — introduced in Linux 7.0.
+/// Not yet available in libc 0.2.186; defined locally for forward compatibility.
+const PR_THP_DISABLE_EXCEPT_ADVISED: libc::c_ulong = 2;
+
 /// Configures the process for real-time operation (process-wide).
 ///
 /// Must be called from `main()` **after** all major heap allocations and
 /// **before** starting the PipeWire DSP thread. Runs:
 ///
 /// 1. **THP disable** — Disables Transparent Huge Pages via `prctl`, avoiding
-///    background compaction latencies from khugepaged.
+///    background compaction latencies from khugepaged. Attempts the modern
+///    `PR_THP_DISABLE_EXCEPT_ADVISED` mode (Linux 7.0+) first, falling back to
+///    classic `PR_SET_THP_DISABLE` on older kernels.
 /// 2. **mlockall** — Locks current and future memory in physical RAM, preventing
 ///    page faults in the DSP thread.
 ///
@@ -24,8 +30,25 @@ use std::sync::atomic::Ordering;
 /// but were moved here to reduce jitter at the critical moment of the first
 /// audio delivery.
 pub fn configure_process_wide() {
+    // 1. THP disable — tries the modern `PR_THP_DISABLE_EXCEPT_ADVISED`
+    //    (Linux 7.0+) which allows pages explicitly marked with MADV_HUGEPAGE
+    //    to use THP (e.g., hot-swapped models). Falls back gracefully to the
+    //    classic global `PR_SET_THP_DISABLE` on older kernels.
     unsafe {
-        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+        let ret = libc::prctl(
+            libc::PR_SET_THP_DISABLE,
+            1,
+            PR_THP_DISABLE_EXCEPT_ADVISED,
+            0,
+            0,
+        );
+        if ret == -1 && *libc::__errno_location() == libc::EINVAL {
+            log::info!(
+                "Kernel does not support PR_THP_DISABLE_EXCEPT_ADVISED — \
+                 falling back to classic PR_SET_THP_DISABLE."
+            );
+            libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+        }
     }
 
     let ret_mlock = unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) };
