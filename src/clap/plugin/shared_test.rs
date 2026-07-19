@@ -34,6 +34,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             param_activation: AtomicU32::new(1), // Standard (exact-grade) by default
             gesture_flags: AtomicU32::new(0),
             gui_param_generation: AtomicU32::new(0),
+            host_r_deactivated: AtomicBool::new(false),
         },
         cold: ColdShared {
             param_tx: Mutex::new(Some(param_tx)),

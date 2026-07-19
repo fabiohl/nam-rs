@@ -35,6 +35,7 @@ impl Plugin for NamClapPlugin {
         _shared: Option<&Self::Shared<'_>>,
     ) {
         builder.register::<clack_extensions::audio_ports::PluginAudioPorts>();
+        builder.register::<clack_extensions::audio_ports_activation::PluginAudioPortsActivation>();
         builder.register::<clack_extensions::params::PluginParams>();
         builder.register::<clack_extensions::state::PluginState>();
         builder.register::<crate::clap::extensions::latency::NamPluginLatency>();
@@ -85,6 +86,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 param_activation: AtomicU32::new(1),       // Standard (exact-grade) by default
                 gesture_flags: AtomicU32::new(0),
                 gui_param_generation: AtomicU32::new(0),
+                host_r_deactivated: std::sync::atomic::AtomicBool::new(false),
             },
             cold: ColdShared {
                 param_tx: Mutex::new(Some(param_tx)),

@@ -1615,15 +1615,15 @@ Relação custo-benefício do `pw_filter`:
 >
 > **Estimativa:** 2 dias.
 
-### T5.S3.1 — Registrar e implementar extensão `audio-ports-activation`
+### T5.S3.1 — Registrar e implementar extensão `audio-ports-activation` [DONE]
 
 **Responsável:** Engenheiro de Sistemas / CLAP
-**Arquivos:** [`Cargo.toml`](./Cargo.toml), [`src/clap/extensions/audio_ports_activation.rs`]([NEW] [audio_ports_activation.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports_activation.rs)), [`src/clap/plugin/mod.rs`](./src/clap/plugin/mod.rs), [`src/clap/extensions/mod.rs`](./src/clap/extensions/mod.rs)
+**Arquivos:** [`Cargo.toml`](./Cargo.toml), [`src/clap/extensions/audio_ports_activation.rs`](./src/clap/extensions/audio_ports_activation.rs), [`src/clap/plugin/mod.rs`](./src/clap/plugin/mod.rs), [`src/clap/extensions/mod.rs`](./src/clap/extensions/mod.rs), [`src/clap/plugin/shared.rs`](./src/clap/plugin/shared.rs), [`src/clap/plugin/shared_test.rs`](./src/clap/plugin/shared_test.rs), [`src/clap/processor/dsp/orchestrator.rs`](./src/clap/processor/dsp/orchestrator.rs)
 
-- [ ] Habilitar a feature `"audio-ports-activation"` no `clack-extensions` dentro do `Cargo.toml`.
-- [ ] Criar o arquivo `src/clap/extensions/audio_ports_activation.rs` com SPDX/Copyright.
-- [ ] Implementar a trait correspondente de ativação de portas no thread principal e mapear os canais atômicos compartilhados no `NamClapShared`.
-- [ ] Configurar o processador de áudio (`NamClapProcessor`) para ignorar o processamento do canal R caso este seja desativado pelo host, forçando de forma otimizada o caminho mono.
+- [x] Habilitar a feature `"audio-ports-activation"` no `clack-extensions` dentro do `Cargo.toml`.
+- [x] Criar o arquivo `src/clap/extensions/audio_ports_activation.rs` com SPDX/Copyright.
+- [x] Implementar a trait correspondente de ativação de portas no thread principal e mapear os canais atômicos compartilhados no `NamClapShared`.
+- [x] Configurar o processador de áudio (`NamClapProcessor`) para ignorar o processamento do canal R caso este seja desativado pelo host, forçando de forma otimizada o caminho mono.
 
 **Gate T5.S3.1:**
 

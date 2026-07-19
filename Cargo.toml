@@ -38,7 +38,7 @@ env_logger = { version = "0.11.11", default-features = false }
 # CLAP plugin framework (typed, no runtime overhead over clap-sys). Chosen over nih-plug: no forced VST3/GUI.
 clack-common = { version = "0.1", optional = true }
 clack-plugin = { version = "0.1", optional = true }
-clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "thread-check", "track-info", "remote-controls", "param-indication", "clack-host", "preset-discovery", "render", "state-context", "tail"] }
+clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "audio-ports-activation", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "thread-check", "track-info", "remote-controls", "param-indication", "clack-host", "preset-discovery", "render", "state-context", "tail"] }
 # Immediate-mode GUI (egui) + OpenGL renderer (egui_glow/glow) for the CLAP plugin interface.
 egui      = { version = "0.34.3",  optional = true }
 egui_glow = { version = "0.34.3",  optional = true }

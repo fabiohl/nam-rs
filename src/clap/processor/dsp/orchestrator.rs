@@ -97,6 +97,15 @@ impl<'a> NamClapProcessor<'a> {
                 continue;
             };
 
+            if self
+                .shared
+                .ui_to_rt
+                .host_r_deactivated
+                .load(Ordering::Acquire)
+            {
+                self.process_mono = true;
+            }
+
             if self.gate_dirty {
                 let modulated_gate_db = self.params.gate_threshold_db + self.mod_gate_thresh;
                 let close_db = modulated_gate_db - 6.0;

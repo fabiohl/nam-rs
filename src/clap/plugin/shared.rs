@@ -159,14 +159,12 @@ pub struct UiToRt {
     /// Latest Activation Precision parameter value (0=Fast, 1=Standard).
     pub param_activation: AtomicU32,
     /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
-    /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
-    ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
-    ///   bit (param_index * 3 + 1) = Gesture Begin
-    ///   bit (param_index * 3 + 2) = Gesture End
     pub gesture_flags: AtomicU32,
     /// Monotonic generation counter bumped (Release) by GUI on any param write.
-    /// Read (Acquire) by RT to detect un-echoed GUI changes in a single load.
     pub gui_param_generation: AtomicU32,
+    /// True if the host has deactivated the R channel via audio-ports-activation.
+    /// Written by Main Thread (or Audio Thread when processing), read every block by RT.
+    pub host_r_deactivated: AtomicBool,
 }
 
 /// Fields accessed at low frequency by both threads (init, shutdown, rare events).
