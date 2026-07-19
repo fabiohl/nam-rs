@@ -510,7 +510,7 @@ A investigação de profiling de sub-etapas revelou a barreira física:
 
 O gargalo principal reside no desalinhamento de memória nativo dos 12 canais (passo de 12 floats / striding não-alinhado), que provoca cache-line splits frequentes e impede a CPU de atingir a latência máxima que obtém com o Standard CH16 (37 us para 18 camadas com passo de 16 floats). Para atingir o teto de ≤ 38 µs, a rota definitiva é o **pad-to-16 homogêneo (CH=16 estático)** em todos os tensores internos da WaveNet Lite.
 
-### EPIC-3 — Coerência de memória & kernel moderno 🟠
+### EPIC-3 — Coerência de memória & kernel moderno 🟠 [DOING]
 
 > Findings: **F-L1** (madvise split — quick win, pode ser feito imediatamente) e **F-L2**
 > (PR_THP_DISABLE_EXCEPT_ADVISED + telemetria THP honesta + teste de hot-swap com smaps).

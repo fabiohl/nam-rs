@@ -1089,3 +1089,169 @@ de 12 canais).
 
 *Criado por `planejador-arquiteto` em 2026-07-18. Baseado na auditoria registrada em
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-2, linha 493 e F-P2, linha 117; F-L4, linha 379).*
+
+---
+---
+
+## EPIC-3 — Coerência de memória & kernel moderno 🟠
+
+> **Referência principal:** [`TODO-findings.md`](./TODO-findings.md) — EPIC-3 (linha 513) e
+> findings **F-L1** e **F-L2** (Seção B).
+>
+> **Risco:** 🟢 Baixo. O código modificado está no cold-path de setup do processo/threads e nas rotinas de alocação de memória virtual off-RT. Sem riscos para o hot-path DSP, mas exige compatibilidade com kernels Linux mais antigos (< 7.0) via fallback seguro.
+>
+> **Meta:** Garantir coerência determinística de dTLB entre modelos (boot vs hot-swap) ativando transparent huge pages de forma confiável via prctl moderno, corrigir o bug silencioso de EINVAL em `madvise` do bridge standalone, e prover telemetria 100% honesta para depuração em produção.
+>
+> **Gerado por:** `planejador-arquiteto` em 2026-07-19.
+
+---
+
+## Princípios de Execução do EPIC-3
+
+| #   | Princípio                                                                                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Compatibilidade com Kernel Antigo (Fallback)**: O uso de recursos do kernel 7.0+ (como `PR_THP_DISABLE_EXCEPT_ADVISED`) deve obrigatoriamente cair de volta de forma segura sem crashar. |
+| 2   | **Telemetria Honesta**: O status de huge pages e THP na telemetria só deve indicar sucesso se as chamadas de sistema realmente retornarem zero (sucesso).                                  |
+| 3   | **Validação Estrita**: Testar o fallback de prctl forçando o retorno de EINVAL via simulação/mock se possível, e validar a coerência com smaps em teste dedicado.                          |
+
+---
+
+## Sprint S1 — Correção de Alinhamento e Separação de madvise no Bridge (F-L1) 🟢
+
+> **Finding:** [F-L1](./TODO-findings.md#L264) — `madvise(MADV_DONTFORK | MADV_DONTDUMP)` falha silenciosamente com EINVAL (errno 22) porque advice não é bitmask.
+>
+> **Risco:** 🟢 Muito Baixo.
+>
+> **Estimativa:** 0.5 dia.
+
+### T3.S1.1 — Dividir chamada madvise e tratar retornos individuais
+
+**Responsável:** Engenheiro de Sistemas
+**Arquivo:** [`src/standalone/pw_host/bridge.rs`](./src/standalone/pw_host/bridge.rs)
+
+- [ ] Separar a chamada `libc::madvise` em duas execuções sequenciais distintas:
+  - Primeira com `libc::MADV_DONTFORK`
+  - Segunda com `libc::MADV_DONTDUMP`
+- [ ] Verificar individualmente o retorno de ambas as chamadas.
+- [ ] Atualizar o tratamento de erro e logs de warning para registrar especificamente qual advice falhou.
+- [ ] Validar que nenhum warn de madvise inválido aparece na execução local pós-correção.
+
+**Gate T3.S1.1:**
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      # Rodar o standalone ou testes de integração e confirmar nos logs a ausência do aviso de erro 22 (EINVAL) no madvise
+      ```
+
+---
+
+## Sprint S2 — Suporte Moderno a THP via prctl moderno (F-L2) 🟠
+
+> **Finding:** [F-L2](./TODO-findings.md#L295) — O prctl `PR_SET_THP_DISABLE` desabilita THP globalmente para o processo, impedindo que modelos trocados via hot-swap utilizem Huge Pages (MADV_COLLAPSE falha silenciosamente).
+>
+> **Risco:** 🟢 Baixo. Exige o fallback correto para kernels < 7.0.
+>
+> **Estimativa:** 1 dia.
+
+### T3.S2.1 — Implementar prctl com PR_THP_DISABLE_EXCEPT_ADVISED e Fallback
+
+**Responsável:** Engenheiro de Sistemas / Arquiteto
+**Arquivo:** [`src/standalone/rt_setup/thread.rs`](./src/standalone/rt_setup/thread.rs)
+
+- [ ] Definir a constante `PR_THP_DISABLE_EXCEPT_ADVISED: libc::c_ulong = 2;` caso não esteja disponível no crate `libc` do ambiente.
+- [ ] Modificar `configure_process_wide` para chamar:
+      ```rust
+      libc::prctl(libc::PR_SET_THP_DISABLE, 1, PR_THP_DISABLE_EXCEPT_ADVISED, 0, 0)
+      ```
+
+- [ ] Verificar se o retorno é `-1` e `errno == libc::EINVAL`. Nesse caso, realizar o fallback automático para a chamada clássica:
+      ```rust
+      libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0)
+      ```
+
+  e registrar no log como `info` (downgrade amigável) que o kernel não suporta o modo modernizado de THP except-advised.
+- [ ] Garantir conformidade com as regras de RT-Safety (a chamada prctl ocorre no setup fora da thread RT).
+      **Gate T3.S2.1:**
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      ```
+
+---
+
+## Sprint S3 — Propagação Confiável do Status THP (F-L2) 🟢
+
+> **Finding:** [F-L2](./TODO-findings.md#L295) — Telemetria reporta THP ativo sem confirmar o retorno do kernel de fato.
+>
+> **Risco:** 🟢 Baixo.
+>
+> **Estimativa:** 1 dia.
+
+### T3.S3.1 — Propagar retornos de madvise/MADV_COLLAPSE nas alocações
+
+**Responsável:** Engenheiro de Sistemas
+**Arquivos:**
+
+- [`src/math/common/huge_alloc.rs`](./src/math/common/huge_alloc.rs)
+- [`src/dsp/mirror_buf/alloc.rs`](./src/dsp/mirror_buf/alloc.rs)
+
+- [ ] Em `src/math/common/huge_alloc.rs`:
+  - Mudar `allocate_huge_pages` para verificar os retornos de `madvise(..., MADV_HUGEPAGE)` e `madvise(..., MADV_COLLAPSE)`.
+  - Se `collapse_rc` não retornar `0`, retornar `HugePageStatus::Heap` (ou um status condicionado de falha) na tripla de retorno, pois o collapse síncrono falhou.
+- [ ] Em `src/dsp/mirror_buf/alloc.rs`:
+  - Capturar retornos de `libc::madvise(base_ptr, size_bytes, MADV_HUGEPAGE)` e `libc::madvise(base_ptr, size_bytes, libc::MADV_COLLAPSE)`.
+  - Apenas atualizar `MIRROR_BUF_HUGEPAGE_STATE` para `HUGEPAGE_STATE_THP` se as chamadas (especialmente o collapse) retornarem sucesso (`0`). Caso contrário, manter `HUGEPAGE_STATE_STANDARD`.
+
+      **Gate T3.S3.1:**
+
+            ```bash
+            utils/lints.sh
+            utils/tests-quick.sh
+            ```
+
+---
+
+## Sprint S4 — Teste de Integração de Hot-Swap com Huge Pages (F-L2) 🟠
+
+> **Finding:** [F-L2](./TODO-findings.md#L295) — Necessidade de garantir que os modelos carregados após boot retenham a capacidade de THP.
+>
+> **Risco:** 🟡 Médio. Exige leitura de `/proc/self/smaps` ou `/proc/self/smaps_rollup` de forma robusta e cross-platform portátil (se compilado fora do Linux, deve dar skip amigável).
+>
+> **Estimativa:** 1-2 dias.
+
+### T3.S4.1 — Implementar teste de integração de hot-swap e verificação de smaps
+
+**Responsável:** Engenheiro de QA / Sistemas
+**Arquivo:** [`tests/models/thp_coherence.rs`]([NEW] [thp_coherence.rs](file:///home/fabio/nam-rs/tests/models/thp_coherence.rs))
+
+- [ ] Criar um novo arquivo de teste de integração `tests/models/thp_coherence.rs` (adicionar o SPDX/copyright).
+- [ ] No teste:
+  - Inicializar a configuração do processo com o prctl moderno (ou simular as chamadas).
+  - Alocar um buffer usando `MirroredBuffer` ou carregar um modelo fake que force HugePageVec/THP.
+  - Ler `/proc/self/smaps` ou `/proc/self/smaps_rollup` e verificar se `AnonHugePages` possui valor maior que zero se o sistema reportar `THP_ACTIVE`.
+  - Se o prctl moderno falhar no kernel da máquina rodando o teste, verificar se o fallback clássico foi ativado e testar esse cenário.
+  - Rodar em plataformas não-Linux deve dar skip amigável.
+
+**Gate T3.S4.1:**
+
+      ```bash
+      utils/lints.sh
+      cargo test --test models -- thp_coherence
+      ```
+
+---
+
+## Tabela-resumo de Tarefas EPIC-3
+
+| Sprint | Tarefa                                            | Finding | Arquivo(s)                  | Risco | Bit-exact | Gate                     |
+| ------ | ------------------------------------------------- | ------- | --------------------------- | ----- | --------- | ------------------------ |
+| S1     | T3.S1.1 — Dividir madvise e tratar retornos       | F-L1    | `pw_host/bridge.rs`         | 🟢    | N/A       | lints + standalone log   |
+| S2     | T3.S2.1 — Implementar prctl moderno com fallback  | F-L2    | `rt_setup/thread.rs`        | 🟢    | N/A       | lints + tests-quick      |
+| S3     | T3.S3.1 — Propagar retornos de madvise/collapse   | F-L2    | `huge_alloc.rs`, `alloc.rs` | 🟢    | N/A       | lints + tests-quick      |
+| S4     | T3.S4.1 — Teste de integração de smaps            | F-L2    | `tests/models/` (novo)      | 🟡    | N/A       | cargo test thp_coherence |
+
+---
+
+*Criado por `planejador-arquiteto` em 2026-07-19. Baseado na auditoria registrada em
+[`TODO-findings.md`](./TODO-findings.md) (EPIC-3, linha 513 e findings F-L1, linha 264; F-L2, linha 295).*
