@@ -397,7 +397,7 @@ Descartados conscientemente: io_uring (não há I/O no RT), sched_ext/uclamp (n�
 ganho sobre SCHED_FIFO já configurado), AVX-512/AMX (fora do baseline v3), CRC via PCLMUL no
 loader NAMB (cold path, arquivos de KB.)*
 
-### F-S1 — Avaliar nó único `pw_filter` vs dual-stream + DspBridge (potencial de −1 quantum de latência) 🟡 MÉDIO (investigação)
+### F-S1 — Avaliar nó único `pw_filter` vs dual-stream + DspBridge (potencial de −1 quantum de latência) ✅ ARQUIVADO (WONT-FIX)
 
 **Onde:** `src/standalone/pw_host/` (arquitetura documentada em `mod.rs:11-26`),
 `src/dsp/pipeline/bridge.rs`.
@@ -408,6 +408,14 @@ loader NAMB (cold path, arquivos de KB.)*
 cycle, mas **não garantem a ordem capture→playback dentro do ciclo** — quando a ordem não
 favorece, o playback lê o bloco do ciclo anterior ⇒ +1 quantum de latência (1,33 ms @64) além
 de 2 cópias e sincronização atômica.
+
+**Resolução (2026-07-19):** A ordem capture→playback **é garantida** pelo `node.group`/`node.link-group`
+
+- ordem de registro no driver (capture criado primeiro em `run.rs`) + `PRIORITY_DRIVER=2000` no capture.
+O resultado é **0 quantum de latência extra intra-ciclo**. O protótipo `pw_filter` e Fases 2+ estão
+arquivados como WONT-FIX. Ver relatório completo: [`docs/latency_sprint1_analysis.md`](./docs/latency_sprint1_analysis.md).
+
+**Proposta original (arquivada):**
 
 O PipeWire oferece exatamente a primitiva para esse caso: **`pw_filter`** — um único nó com
 porta de entrada e de saída processadas **no mesmo ciclo do grafo** (`PW_FILTER_FLAG_RT_PROCESS`),
@@ -431,6 +439,7 @@ disponíveis: stream, core, context, ...; sem `filter`). Implementar exigiria FF
 **Ganho potencial:** −1,33 ms de latência ponta-a-ponta @64/48k (enorme para o músico) + menos
 2 cópias/bloco. **Risco:** médio-alto (FFI novo em código RT) — por isso a fase de medição é
 obrigatória antes de qualquer código.
+</details>
 
 ---
 

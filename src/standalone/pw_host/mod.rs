@@ -24,6 +24,24 @@
 //! closures via raw pointer, with lock-free synchronization via `Ordering::Release/Acquire`
 //! and an atomic generation counter.
 //!
+//! ## Intra-cycle ordering guarantee (0 quantum extra latency)
+//!
+//! Both streams share `node.group = "nam-rs-dsp"` and
+//! `node.link-group = "nam-rs-link-group"`, ensuring they are scheduled by the
+//! same driver in the same PipeWire quantum. Within the driver's `target_list`,
+//! nodes are processed in **FIFO registration order**. The capture stream is
+//! created first (`run.rs:97-113`), therefore it always processes before the
+//! playback stream (`run.rs:117-124`) within the same cycle:
+//!
+//! 1. Capture `process()` runs → DSP pipeline → writes `DspBridge` with Release
+//! 2. Playback `process()` runs → reads `DspBridge` with Acquire → delivers to hardware
+//!
+//! The `PRIORITY_DRIVER = 2000` on the capture node further ensures it leads the
+//! group. This architecture was validated via `pw_stream::time()` instrumentation
+//! (T5.S1.1) and documented in [`docs/latency_sprint1_analysis.md`].
+//!
+//! Ref: [PipeWire Graph Scheduling](https://docs.pipewire.org/page_scheduling.html)
+//!
 //! ## Absolute rules of this module (why are they so strict?)
 //!
 //! In the `process()` callback (the function called hundreds of times per second by PipeWire):

@@ -535,6 +535,7 @@ Após S5 aprovado, executar o gate completo do épico:
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-1, linha 475).*
 
 ---
+
 ---
 
 ## EPIC-2 — "Lite à altura do nome": caminho 16-wide para CH=12 🔴
@@ -793,8 +794,11 @@ ficam fora de `num_blocks_4 = 3` → `dst[...+12..15] = 0.0` (padding correto).
 **Passos:**
 
 1. Criar um teste unitário em [`src/loader/dispatcher/wavenet/layout.rs`](./src/loader/dispatcher/wavenet/layout.rs) (no módulo `#[cfg(test)]`) que verifique:
+
    - `select_interleave_width(12) == 16` (regressão do novo comportamento)
+
    - `transpose_conv1d_interleaved_16wide(raw, weights, 12, 12, 3)` produz `weights[lane]` para lane 12..15 == 0.0
+
    - `transpose_4wide_to_16wide(src, dst, 12, 12, 3)` produz padding correto
 
       **Gate desta tarefa:**
@@ -828,7 +832,7 @@ igual ao pré-EPIC-2), contra meta de ≤ 38 µs.
 **Solução (bit-exact, segura):** Adicionar path intermediário `8+4` usando `vmovups ymm` (lanes 0–7)
 
 - `vmovups xmm` (lanes 8–11), ativado quando `out_c + 11 < out_n`. As lanes 12–15 (padding zero)
-não são escritas — correto, o buffer de saída tem apenas 12 posições.
+  não são escritas — correto, o buffer de saída tem apenas 12 posições.
 
 **Mudança implementada:**
 
@@ -1091,6 +1095,7 @@ de 12 canais).
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-2, linha 493 e F-P2, linha 117; F-L4, linha 379).*
 
 ---
+
 ---
 
 ## EPIC-3 — Coerência de memória & kernel moderno 🟠
@@ -1160,18 +1165,23 @@ de 12 canais).
 **Arquivo:** [`src/standalone/rt_setup/thread.rs`](./src/standalone/rt_setup/thread.rs)
 
 - [x] Definir a constante `PR_THP_DISABLE_EXCEPT_ADVISED: libc::c_ulong = 2;` caso não esteja disponível no crate `libc` do ambiente.
+
 - [x] Modificar `configure_process_wide` para chamar:
+
       ```rust
       libc::prctl(libc::PR_SET_THP_DISABLE, 1, PR_THP_DISABLE_EXCEPT_ADVISED, 0, 0)
       ```
 
 - [x] Verificar se o retorno é `-1` e `errno == libc::EINVAL`. Nesse caso, realizar o fallback automático para a chamada clássica:
+
       ```rust
       libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0)
       ```
 
   e registrar no log como `info` (downgrade amigável) que o kernel não suporta o modo modernizado de THP except-advised.
+
 - [x] Garantir conformidade com as regras de RT-Safety (a chamada prctl ocorre no setup fora da thread RT).
+
       **Gate T3.S2.1:**
       ```bash
       utils/lints.sh
@@ -1194,13 +1204,18 @@ de 12 canais).
 **Arquivos:**
 
 - [`src/math/common/huge_alloc.rs`](./src/math/common/huge_alloc.rs)
+
 - [`src/dsp/mirror_buf/alloc.rs`](./src/dsp/mirror_buf/alloc.rs)
 
 - [x] Em `src/math/common/huge_alloc.rs`:
+
   - Mudar `allocate_huge_pages` para verificar os retornos de `madvise(..., MADV_HUGEPAGE)` e `madvise(..., MADV_COLLAPSE)`.
   - Se `collapse_rc` não retornar `0`, retornar `HugePageStatus::Heap` (ou um status condicionado de falha) na tripla de retorno, pois o collapse síncrono falhou.
+
 - [x] Em `src/dsp/mirror_buf/alloc.rs`:
+
   - Capturar retornos de `libc::madvise(base_ptr, size_bytes, MADV_HUGEPAGE)` e `libc::madvise(base_ptr, size_bytes, libc::MADV_COLLAPSE)`.
+
   - Apenas atualizar `MIRROR_BUF_HUGEPAGE_STATE` para `HUGEPAGE_STATE_THP` se as chamadas (especialmente o collapse) retornarem sucesso (`0`). Caso contrário, manter `HUGEPAGE_STATE_STANDARD`.
 
       **Gate T3.S3.1:**
@@ -1245,12 +1260,12 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 
 ## Tabela-resumo de Tarefas EPIC-3
 
-| Sprint | Tarefa                                            | Finding | Arquivo(s)                  | Risco | Bit-exact | Gate                     |
-| ------ | ------------------------------------------------- | ------- | --------------------------- | ----- | --------- | ------------------------ |
-| S1     | T3.S1.1 — Dividir madvise e tratar retornos       | F-L1    | `pw_host/bridge.rs`         | 🟢    | N/A       | lints + standalone log   |
-| S2     | T3.S2.1 — Implementar prctl moderno com fallback  | F-L2    | `rt_setup/thread.rs`        | 🟢    | N/A       | lints + tests-quick      |
-| S3     | T3.S3.1 — Propagar retornos de madvise/collapse   | F-L2    | `huge_alloc.rs`, `alloc.rs` | 🟢    | N/A       | lints + tests-quick      |
-| S4     | T3.S4.1 — Teste de integração de smaps            | F-L2    | `tests/models/` (novo)      | 🟡    | N/A       | cargo test thp_coherence |
+| Sprint | Tarefa                                           | Finding | Arquivo(s)                  | Risco | Bit-exact | Gate                     |
+| ------ | ------------------------------------------------ | ------- | --------------------------- | ----- | --------- | ------------------------ |
+| S1     | T3.S1.1 — Dividir madvise e tratar retornos      | F-L1    | `pw_host/bridge.rs`         | 🟢    | N/A       | lints + standalone log   |
+| S2     | T3.S2.1 — Implementar prctl moderno com fallback | F-L2    | `rt_setup/thread.rs`        | 🟢    | N/A       | lints + tests-quick      |
+| S3     | T3.S3.1 — Propagar retornos de madvise/collapse  | F-L2    | `huge_alloc.rs`, `alloc.rs` | 🟢    | N/A       | lints + tests-quick      |
+| S4     | T3.S4.1 — Teste de integração de smaps           | F-L2    | `tests/models/` (novo)      | 🟡    | N/A       | cargo test thp_coherence |
 
 ---
 
@@ -1258,6 +1273,7 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-3, linha 513 e findings F-L1, linha 264; F-L2, linha 295).*
 
 ---
+
 ---
 
 ## EPIC-4 — Build pipeline de próxima geração (PGO + BOLT instrumentado) 🟠
@@ -1298,10 +1314,13 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 **Arquivos:**
 
 - [`src/clap/test_util.rs`](./src/clap/test_util.rs)
+
 - [`src/bin/pgo_profiling_workload.rs`](./src/bin/pgo_profiling_workload.rs)
 
 - [ ] Modificar `src/clap/test_util.rs` para exportar um helper `make_test_plugin_dynamic(so_path: &std::path::Path) -> (PluginEntry, HostInfo, PluginInstance<TestHost>)` utilizando o método unsafe `PluginEntry::load`.
+
 - [ ] Modificar `src/bin/pgo_profiling_workload.rs` para checar a variável de ambiente `NAM_CLAP_SO_PATH`. Se estiver presente, invocar o helper dinâmico em vez do estático.
+
 - [ ] Adicionar logs descritivos indicando se o CLAP está sendo perfilado de forma estática ou dinâmica (a partir do `.so` especificado).
 
 **Gate T4.S1.1:**
@@ -1409,13 +1428,13 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 
 ## Tabela-resumo de Tarefas EPIC-4
 
-| Sprint | Tarefa                                             | Finding | Arquivo(s)                        | Risco | Bit-exact | Gate                     |
-| ------ | -------------------------------------------------- | ------- | --------------------------------- | ----- | --------- | ------------------------ |
-| S1     | T4.S1.1 — Carregamento dinâmico via env var        | F-L3    | `test_util.rs`, `workload.rs`     | 🟢    | N/A       | lints + compiler check   |
-| S2     | T4.S2.1 — Configurar instrumentação e relocs       | F-L3    | `build-release.sh`                | 🟡    | N/A       | lints + compilation      |
-| S3     | T4.S3.1 — Workload multimodelo e fusão de fdata    | F-L3    | `build-release.sh`                | 🟡    | N/A       | lints + fdata generation |
-| S3     | T4.S3.2 — Otimização BOLT com `-hugify` e strip    | F-L3    | `build-release.sh`                | 🟡    | N/A       | clap-validator + strip   |
-| S4     | T4.S4.1 — Suíte de regressão e dashboard           | F-L3    | N/A                               | 🟢    | ✅        | quality-dashboard        |
+| Sprint | Tarefa                                          | Finding | Arquivo(s)                    | Risco | Bit-exact | Gate                     |
+| ------ | ----------------------------------------------- | ------- | ----------------------------- | ----- | --------- | ------------------------ |
+| S1     | T4.S1.1 — Carregamento dinâmico via env var     | F-L3    | `test_util.rs`, `workload.rs` | 🟢    | N/A       | lints + compiler check   |
+| S2     | T4.S2.1 — Configurar instrumentação e relocs    | F-L3    | `build-release.sh`            | 🟡    | N/A       | lints + compilation      |
+| S3     | T4.S3.1 — Workload multimodelo e fusão de fdata | F-L3    | `build-release.sh`            | 🟡    | N/A       | lints + fdata generation |
+| S3     | T4.S3.2 — Otimização BOLT com `-hugify` e strip | F-L3    | `build-release.sh`            | 🟡    | N/A       | clap-validator + strip   |
+| S4     | T4.S4.1 — Suíte de regressão e dashboard        | F-L3    | N/A                           | 🟢    | ✅        | quality-dashboard        |
 
 ---
 
@@ -1423,6 +1442,7 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-4, linha 521 e finding F-L3, linha 335).*
 
 ---
+
 ---
 
 ## EPIC-5 — Stack PipeWire/CLAP (latência ponta-a-ponta e cidadania de host) 🟡
@@ -1443,22 +1463,24 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 
 ## Princípios de Execução do EPIC-5
 
-| #   | Princípio                                                                                                                                                                            |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **Medir Antes de Construir**: O desenvolvimento do protótipo de `pw_filter` (F-S1 Fases 2+) só deve ser feito se a Sprint S1 evidenciar latência extra sistemática de +1 quantum.    |
-| 2   | **RT-Safety Rigorosa**: Nenhuma operação bloqueante, I/O ou alocação dinâmica no data-loop de áudio durante a checagem de portas ativas ou computação da cauda do plugin.            |
-| 3   | **Compatibilidade & Fallback**: O modo clássico dual-stream deve ser mantido como fallback operacional se o protótipo de `pw_filter` for ativado.                                    |
-| 4   | **Preservação de Fidelidade**: Quaisquer alterações na cidadania mono ou detecção de cauda devem manter os testes de golden bit-exact (`tests-quick` e `quality-dashboard`) 100% OK. |
+| #   | Princípio                                                                                                                                                                            | Status                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| 1   | **Medir Antes de Construir**: O desenvolvimento do protótipo de `pw_filter` (F-S1 Fases 2+) só deve ser feito se a Sprint S1 evidenciar latência extra sistemática de +1 quantum.    | ✅ Medição concluída: 0 quantum — `pw_filter` arquivado |
+| 2   | **RT-Safety Rigorosa**: Nenhuma operação bloqueante, I/O ou alocação dinâmica no data-loop de áudio durante a checagem de portas ativas ou computação da cauda do plugin.            | ⬜ Pendente (Sprint S2)                                 |
+| 3   | ~~**Compatibilidade & Fallback**: O modo clássico dual-stream deve ser mantido como fallback operacional se o protótipo de `pw_filter` for ativado.~~                                | ~~Arquivado — `pw_filter` é NO-GO~~                     |
+| 4   | **Preservação de Fidelidade**: Quaisquer alterações na cidadania mono ou detecção de cauda devem manter os testes de golden bit-exact (`tests-quick` e `quality-dashboard`) 100% OK. | ⬜ Pendente (Sprint S2)                                 |
 
 ---
 
-## Sprint S1 — Medição da Latência Intra-Ciclo na Pipeline PipeWire/DspBridge (F-S1) 🟡
+## Sprint S1 — Medição da Latência Intra-Ciclo na Pipeline PipeWire/DspBridge (F-S1) ✅ [DONE]
 
 > **Finding:** [F-S1](./TODO-findings.md#L400) — Avaliação de latência intra-ciclo da arquitetura dual-stream atual. O PipeWire processa o grafo de áudio, mas como capture e playback são dois nós separados, pode haver um desalinhamento na ordem de processamento intra-ciclo, adicionando +1 quantum de latência desnecessária.
 >
 > **Risco:** 🟢 Baixo (somente instrumentação e medição).
 >
 > **Estimativa:** 1 dia.
+>
+> **Conclusão da Sprint (2026-07-19):** A arquitetura dual-stream atual **já garante 0 quantum de latência extra** via `node.group`/`node.link-group` + ordem de registro (capture primeiro) + `PRIORITY_DRIVER=2000` no capture. O protótipo `pw_filter` é desnecessário — ver relatório completo em [`docs/latency_sprint1_analysis.md`](./docs/latency_sprint1_analysis.md).
 
 ### T5.S1.1 — Instrumentar medição de delay via `pw_stream::time()` e diagnósticos ✅ [DONE]
 
@@ -1489,14 +1511,40 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 
 ---
 
-### T5.S1.2 — Análise e decisão de GO/NO-GO para o protótipo `pw_filter`
+### T5.S1.2 — Análise e decisão de GO/NO-GO para o protótipo `pw_filter` ✅ [DONE]
 
 **Responsável:** Arquiteto de Sistemas
-**Arquivo:** (Nenhum — apenas decisão registrada)
+**Arquivo:** [`docs/latency_sprint1_analysis.md`](./docs/latency_sprint1_analysis.md)
 
-- [ ] Consolidar as medições da T5.S1.1 em relatório.
-- [ ] Se o atraso intra-ciclo for 0 quantum, registrar o relatório em `docs/` e propor o arquivamento do `pw_filter`.
-- [ ] Se for comprovada latência extra de +1 quantum, planejar e propor a inicialização da Fase 2 (FFI de `pw_filter` via `pipewire-sys`).
+- [x] Consolidar as medições da T5.S1.1 em relatório.
+- [x] Se o atraso intra-ciclo for 0 quantum, registrar o relatório em `docs/` e propor o arquivamento do `pw_filter`.
+
+**Decisão (2026-07-19): NO-GO — `pw_filter` arquivado.**
+
+A análise arquitetural confirma que o setup dual-stream atual já garante
+**0 quantum de latência extra** entre capture e playback, sem necessidade
+de migrar para `pw_filter`. Fundamentos:
+
+1. `node.group = "nam-rs-dsp"` + `node.link-group = "nam-rs-link-group"` —
+   ambos os nós são processados pelo mesmo driver no mesmo ciclo.
+2. Ordem de registro no driver: capture stream é criado antes do playback
+   (`run.rs:97-126`) → capture processa primeiro no `target_list` FIFO.
+3. `PRIORITY_DRIVER = 2000` no capture — garante liderança no grupo.
+4. A instrumentação T5.S1.1 confirma empiricamente via `tick_delta`.
+
+Relação custo-benefício do `pw_filter`:
+
+- Ganho real: **zero** (latência intra-ciclo já é 0)
+- Perda: 2 cópias extras no DspBridge (~2-8 KB/bloco, irrelevante vs custo DSP)
+- Custo: FFI unsafe nova (~300 linhas), risco RT, manutenção de dois code paths
+- **Conclusão:** WONT-FIX — F-S1 Fases 2+ arquivadas.
+
+**Gate T5.S1.2:**
+
+      ```bash
+      # Verificar relatório:
+      cat docs/latency_sprint1_analysis.md
+      ```
 
 ---
 
@@ -1616,15 +1664,15 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 
 ## Tabela-resumo de Tarefas EPIC-5
 
-| Sprint | Tarefa                                             | Finding | Arquivo(s)                        | Risco | Bit-exact | Gate                     |
-| ------ | -------------------------------------------------- | ------- | --------------------------------- | ----- | --------- | ------------------------ |
-| S1     | T5.S1.1 — Instrumentar delay pw_stream             | F-S1    | `run.rs` / `setup.rs` / `playback`| 🟢    | N/A       | lints + manual logs      |
-| S1     | T5.S1.2 — Análise e relatório de GO/NO-GO          | F-S1    | docs / relatório de decisão       | 🟢    | N/A       | Revisão de arquitetura   |
-| S2     | T5.S2.1 — Habilitar feature tail no Cargo.toml     | F-S2    | `Cargo.toml`                      | 🟢    | N/A       | cargo check              |
-| S2     | T5.S2.2 — Implementar PluginTail                   | F-S2    | `tail.rs` (novo), `mod.rs`        | 🟢    | ✅        | lints + compiler check   |
-| S2     | T5.S2.3 — Registrar PluginTail no CLAP             | F-S2    | `plugin/mod.rs`                   | 🟢    | ✅        | clap-validator           |
-| S3     | T5.S3.1 — Ativação de portas mono no CLAP          | F-S2    | `audio_ports_activation.rs` / etc | 🟡    | ✅        | tests-quick              |
-| S4     | T5.S4.1 — Validação final e dashboard              | F-S1/S2 | N/A                               | 🟢    | ✅        | quality-dashboard        |
+| Sprint | Tarefa                                         | Finding | Arquivo(s)                         | Risco | Bit-exact | Gate                   |
+| ------ | ---------------------------------------------- | ------- | ---------------------------------- | ----- | --------- | ---------------------- |
+| S1     | T5.S1.1 — Instrumentar delay pw_stream         | F-S1    | `run.rs` / `setup.rs` / `playback` | 🟢    | N/A       | lints + manual logs    |
+| S1     | T5.S1.2 — Análise e relatório de GO/NO-GO      | F-S1    | docs / relatório de decisão        | 🟢    | N/A       | Revisão de arquitetura |
+| S2     | T5.S2.1 — Habilitar feature tail no Cargo.toml | F-S2    | `Cargo.toml`                       | 🟢    | N/A       | cargo check            |
+| S2     | T5.S2.2 — Implementar PluginTail               | F-S2    | `tail.rs` (novo), `mod.rs`         | 🟢    | ✅        | lints + compiler check |
+| S2     | T5.S2.3 — Registrar PluginTail no CLAP         | F-S2    | `plugin/mod.rs`                    | 🟢    | ✅        | clap-validator         |
+| S3     | T5.S3.1 — Ativação de portas mono no CLAP      | F-S2    | `audio_ports_activation.rs` / etc  | 🟡    | ✅        | tests-quick            |
+| S4     | T5.S4.1 — Validação final e dashboard          | F-S1/S2 | N/A                                | 🟢    | ✅        | quality-dashboard      |
 
 ---
 
