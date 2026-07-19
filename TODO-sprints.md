@@ -855,7 +855,7 @@ prewarm de 24k amostras. Após a mudança do loader (T2.S3.1), o resultado numé
 
 ---
 
-### T2.S4.2 — Benchmark dirigido e atualização de baseline de regressão 🟢
+### T2.S4.2 — Benchmark dirigido e atualização de baseline de regressão 🟢 [DONE]
 
 **Responsável:** Engenheiro de performance / tooling.
 
@@ -904,7 +904,7 @@ benchmark/dashboard; o enigma da latência do Lite fica como dívida técnica pa
 
 ---
 
-### T2.S4.3 — Inspeção do `dsp_hotpath.asm` para o Lite 🟢
+### T2.S4.3 — Inspeção do `dsp_hotpath.asm` para o Lite 🟢 [DONE]
 
 **Responsável:** Engenheiro de microarquitetura / Arquiteto de kernels.
 
@@ -923,6 +923,12 @@ saneado no EPIC-1, mas vale confirmar que o path do Lite com `num_blocks=1` segu
    1 bloco de 16 usa a mesma estrutura de registradores do Standard).
 
 **Gate desta tarefa:** confirmação textual no PR ("0 spills no loop interno do Lite CH12").
+
+**Resultado (2026-07-19):** ✅ Confirmado. Os 2 inner loops GEMM (0x1ad900-0x1ad99d, 0x1ada20-0x1adabd)
+em `WaveNetLayer<1,16,3>::process_block_internal::<Avx2Math>` têm 0 spills de registrador
+(`vmovups %ymmN, N(%rsp)`). Os 6 acumuladores são spillados entre os GEMMs (fora do loop interno,
+uma vez por bloco), idêntico ao Standard. O Lite CH12 compartilha a monomorfização 16-wide com o
+Standard — sem código divergente, sem novos spills.
 
 ---
 
