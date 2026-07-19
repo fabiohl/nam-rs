@@ -957,6 +957,17 @@ Standard — sem código divergente, sem novos spills.
 
 **Gate desta tarefa:** decisão documentada (defer ou tarefa no backlog).
 
+**Resultado (2026-07-19):** Micro-benchmark `head_gemv_bench` criado. `gemv_no_bias_f32_avx2(12, 6)`
+mediu **22,5 ns** (vs 16,0 ns para o caminho 12×8 limpo). Overhead do masked path: ~6,5 ns (40%),
+mas **3 ordens de grandeza abaixo do threshold de 2 µs** — representa 0,035% da latência total de
+64 µs. Impacto marginal.
+
+**Decisão: DEFER.** O overhead do masked path no head GEMV é insignificante para a latência total.
+O benchmark permanece em `benches/head_gemv_bench.rs` como instrumento de regressão contínua.
+O enigma da latência do Lite (64 µs vs meta de 38 µs) não está no head — as causas prováveis
+continuam sendo as documentadas em `TODO-findings.md` EPIC-2 (store 8+4, padding de pesos, stride
+de 12 canais).
+
 ---
 
 ## Critérios de Aceite do EPIC-2

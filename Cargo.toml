@@ -113,6 +113,10 @@ harness = false
 name = "clap_bench"
 harness = false
 
+[[bench]]
+name = "head_gemv_bench"
+harness = false
+
 [features]
 default = ["standalone"]
 standalone = ["dep:pipewire", "stereo"]
