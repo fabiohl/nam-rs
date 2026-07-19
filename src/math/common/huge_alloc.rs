@@ -117,14 +117,19 @@ pub fn allocate_huge_pages(
         let _madvise_rc = unsafe { libc::madvise(ptr, thp_size, libc::MADV_HUGEPAGE) };
         // Synchronous collapse (Linux 6.1+). Mandatory: no kernel-version fallback checks.
         // SAFETY: ptr and thp_size are valid from the successful mmap above.
-        let _collapse_rc = unsafe { libc::madvise(ptr, thp_size, libc::MADV_COLLAPSE) };
+        let collapse_rc = unsafe { libc::madvise(ptr, thp_size, libc::MADV_COLLAPSE) };
+        let status = if collapse_rc == 0 {
+            HugePageStatus::Transparent
+        } else {
+            HugePageStatus::Heap
+        };
 
         return Ok((
             ptr as *mut u8,
             AllocInfo::MmapAnon {
                 size_bytes: thp_size,
             },
-            HugePageStatus::Transparent,
+            status,
         ));
     }
 

@@ -1188,7 +1188,7 @@ de 12 canais).
 >
 > **Estimativa:** 1 dia.
 
-### T3.S3.1 — Propagar retornos de madvise/MADV_COLLAPSE nas alocações
+### T3.S3.1 — Propagar retornos de madvise/MADV_COLLAPSE nas alocações [DONE]
 
 **Responsável:** Engenheiro de Sistemas
 **Arquivos:**
@@ -1196,10 +1196,10 @@ de 12 canais).
 - [`src/math/common/huge_alloc.rs`](./src/math/common/huge_alloc.rs)
 - [`src/dsp/mirror_buf/alloc.rs`](./src/dsp/mirror_buf/alloc.rs)
 
-- [ ] Em `src/math/common/huge_alloc.rs`:
+- [x] Em `src/math/common/huge_alloc.rs`:
   - Mudar `allocate_huge_pages` para verificar os retornos de `madvise(..., MADV_HUGEPAGE)` e `madvise(..., MADV_COLLAPSE)`.
   - Se `collapse_rc` não retornar `0`, retornar `HugePageStatus::Heap` (ou um status condicionado de falha) na tripla de retorno, pois o collapse síncrono falhou.
-- [ ] Em `src/dsp/mirror_buf/alloc.rs`:
+- [x] Em `src/dsp/mirror_buf/alloc.rs`:
   - Capturar retornos de `libc::madvise(base_ptr, size_bytes, MADV_HUGEPAGE)` e `libc::madvise(base_ptr, size_bytes, libc::MADV_COLLAPSE)`.
   - Apenas atualizar `MIRROR_BUF_HUGEPAGE_STATE` para `HUGEPAGE_STATE_THP` se as chamadas (especialmente o collapse) retornarem sucesso (`0`). Caso contrário, manter `HUGEPAGE_STATE_STANDARD`.
 
