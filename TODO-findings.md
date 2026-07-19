@@ -472,7 +472,7 @@ CabSim + mono determinístico. **Validação:** `clap-validator` (já integrado 
 
 ## ÉPICOS (agrupamento para execução segura e incremental)
 
-### EPIC-1 — "Zero Spill": microarquitetura dos kernels WaveNet AVX2 🔴 [DOING]
+### EPIC-1 — "Zero Spill": microarquitetura dos kernels WaveNet AVX2 🔴 [DONE]
 
 > Findings: **F-P1, F-P3, F-P5, F-P4, F-P6** (nesta ordem). Ganho combinado estimado no
 > WaveNet Standard: **42,7 µs → ~30 µs**; beneficia Feather/Nano/head paths por arrasto.
