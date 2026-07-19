@@ -16,6 +16,43 @@
 //! horizontal reduction, which may yield slightly different rounding (< 2 ULP)
 //! compared to the strictly‑serial FMA chain of the scalar reference. No
 //! dequantization or precision conversion is involved.
+//!
+//! # Lane‑equivalence with 4x kernel (T2.S1.1)
+//!
+//! **Decision:** the 16x kernel is **bit‑exact per‑lane** to the 4x kernel
+//! for any shared lane index `j ∈ [0..11]` (12‑channel Lite via pad‑to‑16),
+//! assuming the same weight values and padding‑zero invariant on lanes 12‑15.
+//!
+//! ## Proof outline
+//!
+//! Both kernels implement `acc_lane += w_lane * x` with the same:
+//! 1. **FMA instruction** (`_mm256_fmadd_ps` / `_mm_fmadd_ps`) — bit‑exact
+//!    per‑lane semantics.
+//! 2. **Iteration order** `i = 0, 1, 2, …, len‑1` over tap index, same
+//!    weight column `w[i][j]` and same state broadcast `x[i]`.
+//! 3. **4‑way accumulator split by `i % 4`:** iteration `i` goes to
+//!    accumulator `acc_{i mod 4}`.
+//! 4. **Reduction tree:** `(acc0 + acc1) + (acc2 + acc3)`.
+//!
+//! Each SIMD lane evolves **independently** — lane j of a `__m256` only
+//! accumulates `w[i][j] * x[i]`. The presence of 8/16 lanes in the register
+//! does not affect per‑lane arithmetic. Therefore:
+//!
+//! ```text
+//! 4x kernel, block b, lane j'  ≡  16x kernel, lane (4b + j')
+//! ```
+//!
+//! The two‑pass lo/hi structure (T2.E2.1) preserves equivalence: pass 1
+//! covers lanes 0‑7, pass 2 covers lanes 8‑15 — each pass uses the same
+//! 4‑way split and reduction as the 4x kernel.
+//!
+//! ## Padding‑zero invariant
+//!
+//! When weights[i][12..16] = 0 (as required by the pad‑to‑16 strategy for
+//! CH=12 models), the 4 zero‑lanes contribute nothing to their FMA chains.
+//! Lanes 0‑11 are completely independent of lanes 12‑15. The caller must
+//! ensure the weight loader (`transpose_conv1d_interleaved`) pads with zeros
+//! and the `select_interleave_width` dispatcher routes CH=12 to 16‑wide.
 
 use crate::dot4x_simd4;
 use core::arch::x86_64::*;

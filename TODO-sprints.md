@@ -584,7 +584,9 @@ Após S5 aprovado, executar o gate completo do épico:
 >
 > **Referência:** F-P2 (linha 129-139 do `TODO-findings.md`).
 
-### T2.S1.1 — Análise de equivalência das árvores de redução por lane 🟢
+### T2.S1.1 — Análise de equivalência das árvores de redução por lane ✅
+
+**Conclusão (2026-07-18):** BIT-EXACT confirmado. Ambos os kernels implementam a mesma FMA `w_lane * x`, mesma ordem de iteração `i=0..len-1`, mesmo split 4-way por `i%4` e mesma árvore `(acc0+acc1)+(acc2+acc3)`. Cada lane SIMD evolui independentemente — o resultado por lane é idêntico. O comentário de arquitetura foi gravado no topo de `dot_f32_avx2.rs` (16x). Nenhuma linha de produção foi alterada. Gate completo: lints ✓, tests-quick ✓, regression_gate ✓, quality-dashboard ✓.
 
 **Responsável:** Engenheiro sênior de DSP / Arquiteto de kernels AVX2.
 
