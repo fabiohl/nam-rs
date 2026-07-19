@@ -1256,3 +1256,165 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 
 *Criado por `planejador-arquiteto` em 2026-07-19. Baseado na auditoria registrada em
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-3, linha 513 e findings F-L1, linha 264; F-L2, linha 295).*
+
+---
+---
+
+## EPIC-4 — Build pipeline de próxima geração (PGO + BOLT instrumentado) 🟠
+
+> **Referência principal:** [`TODO-findings.md`](./TODO-findings.md) — EPIC-4 (linha 521) e
+> finding **F-L3** (Seção B).
+>
+> **Risco:** 🟡 Médio. Requer uso preciso do `llvm-bolt` em modo de instrumentação (`-instrument`), geração de perfis dinâmicos de shared libraries (.so) e sua respectiva otimização, além da reavaliação de páginas grandes (`-hugify`).
+>
+> **Meta:** Migrar a otimização pós-link BOLT de amostragem por hardware (perf) para instrumentação estática. Isso elimina a dependência de privilégios de kernel (`perf_event_paranoid`) e contadores específicos de PMU (LBR/BRS), permitindo a execução do pipeline de otimização em qualquer ambiente Linux com `llvm-bolt` instalado. Adicionalmente, aplicar o BOLT ao CLAP plugin (`nam-rs.clap`) via carregamento dinâmico no executável de profiling e ativar a otimização `-hugify` no binário final.
+>
+> **Gerado por:** `planejador-arquiteto` em 2026-07-19.
+
+---
+
+## Princípios de Execução do EPIC-4
+
+| #   | Princípio                                                                                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Independência de Privilégios (No-Perf)**: A nova pipeline de build não deve depender do comando `perf` ou de configurações restritas do kernel como `perf_event_paranoid` para BOLT.     |
+| 2   | **Símbolos Preservados até o Strip Final**: Símbolos e relocações (`-Clink-arg=-Wl,-q`) devem ser preservados em ambos standalone e CLAP durante a otimização e stripados apenas no final. |
+| 3   | **Representatividade Multimodelo**: A coleta de profiles do BOLT deve cobrir os principais modelos da família (Standard, Lite, A2, LSTM), similar ao PGO.                                  |
+| 4   | **Coerência com Huge Pages**: Alinhar o uso de `-hugify` do BOLT com as permissões de THP moderno (prctl Moderno) configuradas no EPIC-3.                                                  |
+
+---
+
+## Sprint S1 — Infraestrutura de Profiling Dinâmico do CLAP (F-L3) 🟢
+
+> **Objetivo:** Adicionar suporte a carregamento dinâmico da shared library do CLAP no runner de profiling para que ele possa carregar e exercitar o plugin instrumentado pelo BOLT.
+>
+> **Risco:** 🟢 Baixo.
+>
+> **Estimativa:** 1 dia.
+
+### T4.S1.1 — Suporte a carregamento dinâmico via `NAM_CLAP_SO_PATH`
+
+**Responsável:** Engenheiro de Sistemas
+**Arquivos:**
+
+- [`src/clap/test_util.rs`](./src/clap/test_util.rs)
+- [`src/bin/pgo_profiling_workload.rs`](./src/bin/pgo_profiling_workload.rs)
+
+- [ ] Modificar `src/clap/test_util.rs` para exportar um helper `make_test_plugin_dynamic(so_path: &std::path::Path) -> (PluginEntry, HostInfo, PluginInstance<TestHost>)` utilizando o método unsafe `PluginEntry::load`.
+- [ ] Modificar `src/bin/pgo_profiling_workload.rs` para checar a variável de ambiente `NAM_CLAP_SO_PATH`. Se estiver presente, invocar o helper dinâmico em vez do estático.
+- [ ] Adicionar logs descritivos indicando se o CLAP está sendo perfilado de forma estática ou dinâmica (a partir do `.so` especificado).
+
+**Gate T4.S1.1:**
+
+      ```bash
+      utils/lints.sh
+      cargo check --bin pgo_profiling_workload --features "clap-plugin,testing"
+      ```
+
+---
+
+## Sprint S2 — Pipeline de Instrumentação BOLT no Release Script (F-L3) 🟠
+
+> **Objetivo:** Migrar o script `utils/build-release.sh` para usar `llvm-bolt -instrument` no standalone e no CLAP plugin.
+>
+> **Risco:** 🟡 Médio. Exige validação de caminhos temporários e tratamento correto de erros de instrumentação.
+>
+> **Estimativa:** 2 dias.
+
+### T4.S2.1 — Configurar Relocalizações e Instrumentação no Build Script
+
+**Responsável:** Engenheiro de Tooling / DevOps
+**Arquivo:** [`utils/build-release.sh`](./utils/build-release.sh)
+
+- [ ] Garantir que o CLAP plugin também seja compilado com informações de relocalização (`-Clink-arg=-Wl,-q`) em Phase 3.
+- [ ] Em Phase 4, se `llvm-bolt` estiver presente:
+  - Instrumentar o standalone: `llvm-bolt target/pgo-build/dist/nam-rs -instrument -o target/pgo-build/dist/nam-rs.instrumented --instrumentation-file=target/pgo-build/nam-rs.fdata --instrumentation-file-append-pid`.
+  - Instrumentar o CLAP: `llvm-bolt target/pgo-clap/dist/libnam_rs.so -instrument -o target/pgo-clap/dist/libnam_rs.instrumented.so --instrumentation-file=target/pgo-clap/libnam_rs.fdata --instrumentation-file-append-pid`.
+- [ ] Tratar erros de instrumentação graciosamente, reportando avisos e caindo de volta para a build PGO caso falhe.
+
+**Gate T4.S2.1:**
+
+      ```bash
+      utils/lints.sh
+      ```
+
+---
+
+## Sprint S3 — Coleta de Perfis Multimodelo e Otimização BOLT (F-L3) 🟠
+
+> **Objetivo:** Executar os workloads instrumentados, mesclar os perfis resultantes com `merge-fdata`, e rodar a otimização final com `-hugify`.
+>
+> **Risco:** 🟡 Médio. Exige que os binários instrumentados rodem e gravem os perfis sem travar ou corromper memória.
+>
+> **Estimativa:** 2 dias.
+
+### T4.S3.1 — Execução do Workload e Fusão de Perfis com `merge-fdata`
+
+**Responsável:** Engenheiro de Sistemas / QA
+**Arquivo:** [`utils/build-release.sh`](./utils/build-release.sh)
+
+- [ ] Modificar a execução da coleta de perfis em `utils/build-release.sh`:
+  - Executar o standalone instrumentado (`nam-rs.instrumented`) em background com os 4 principais modelos (Standard, Lite, A2, LSTM), enviando sinais de áudio via PipeWire (se ativo) ou executando o workload em blocos curtos, e encerrar com `SIGTERM` para garantir a escrita do profile.
+  - Executar `pgo_profiling_workload` definindo `NAM_CLAP_SO_PATH` para o CLAP instrumentado (`libnam_rs.instrumented.so`), exercitando todos os testes e caminhos representativos do plugin.
+- [ ] Localizar e invocar o utilitário `merge-fdata` (procurando no mesmo diretório do `llvm-bolt`).
+- [ ] Consolidar todos os perfis gerados na execução (ex: `target/pgo-build/*.fdata.*` e `target/pgo-clap/*.fdata.*`) em perfis finais únicos para o standalone e o CLAP.
+
+### T4.S3.2 — Otimização BOLT com `-hugify` e Strip Final
+
+**Responsável:** Engenheiro de Sistemas
+**Arquivo:** [`utils/build-release.sh`](./utils/build-release.sh)
+
+- [ ] Executar a otimização final do `llvm-bolt` para ambos os binários (`nam-rs` e `libnam_rs.so`) utilizando seus respectivos perfis fundidos.
+- [ ] Substituir o flag de otimização `--no-huge-pages` por `-hugify` em ambos standalone e CLAP.
+- [ ] Garantir que o processo final de strip preserve o funcionamento (usar `strip --strip-all` no standalone e `strip --strip-unneeded` no CLAP plugin).
+- [ ] Validar a integridade do plugin CLAP gerado via `clap-validator` e `nm` (presença de `clap_entry` e `SONAME`).
+- [ ] Atualizar o passo que gera `target/dsp_hotpath.asm` para que use a nova instrumentação/otimização BOLT.
+
+**Gate T4.S3.1 e T4.S3.2:**
+
+      ```bash
+      utils/lints.sh
+      ```
+
+---
+
+## Sprint S4 — Validação de Performance e Dashboard (F-L3) 🟢
+
+> **Objetivo:** Assegurar que as otimizações integradas do BOLT (standalone + CLAP) trazem ganhos ou neutralidade de latência frente ao pipeline anterior, sem qualquer regressão.
+>
+> **Risco:** 🟢 Baixo.
+>
+> **Estimativa:** 1 dia.
+
+### T4.S4.1 — Executar Suíte de Testes de Regressão e Dashboard
+
+**Responsável:** Engenheiro de QA / Performance
+**Arquivos:** N/A (Scripts de validação)
+
+- [ ] Executar `utils/tests-performance-regression.sh` e comparar os números antes/depois da migração da pipeline.
+- [ ] Executar `utils/quality-dashboard.sh --check docs/quality-contract.txt` para validar que o contrato de qualidade permanece verde (fidelidade inalterada e latência dentro das tolerâncias do contrato).
+- [ ] Comparar a saída de `target/dsp_hotpath.asm` para confirmar que o perfil de loops quentes gerados condiz com a nova otimização de branches.
+
+**Gate T4.S4.1:**
+
+      ```bash
+      utils/tests-performance-regression.sh
+      utils/quality-dashboard.sh --check docs/quality-contract.txt
+      ```
+
+---
+
+## Tabela-resumo de Tarefas EPIC-4
+
+| Sprint | Tarefa                                             | Finding | Arquivo(s)                        | Risco | Bit-exact | Gate                     |
+| ------ | -------------------------------------------------- | ------- | --------------------------------- | ----- | --------- | ------------------------ |
+| S1     | T4.S1.1 — Carregamento dinâmico via env var        | F-L3    | `test_util.rs`, `workload.rs`     | 🟢    | N/A       | lints + compiler check   |
+| S2     | T4.S2.1 — Configurar instrumentação e relocs       | F-L3    | `build-release.sh`                | 🟡    | N/A       | lints + compilation      |
+| S3     | T4.S3.1 — Workload multimodelo e fusão de fdata    | F-L3    | `build-release.sh`                | 🟡    | N/A       | lints + fdata generation |
+| S3     | T4.S3.2 — Otimização BOLT com `-hugify` e strip    | F-L3    | `build-release.sh`                | 🟡    | N/A       | clap-validator + strip   |
+| S4     | T4.S4.1 — Suíte de regressão e dashboard           | F-L3    | N/A                               | 🟢    | ✅        | quality-dashboard        |
+
+---
+
+*Criado por `planejador-arquiteto` em 2026-07-19. Baseado na auditoria registrada em
+[`TODO-findings.md`](./TODO-findings.md) (EPIC-4, linha 521 e finding F-L3, linha 335).*
