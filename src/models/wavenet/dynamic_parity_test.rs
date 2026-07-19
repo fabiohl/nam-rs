@@ -14,6 +14,9 @@
 //! 4. Feeds identical random input through both
 //! 5. Asserts bit-exact output match
 
+use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
+use crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_8wide;
+use crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide;
 use crate::math::common::AlignedVec;
 use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use crate::models::wavenet::conv1d::Conv1d;
@@ -36,17 +39,28 @@ const TEST_DILATIONS: [usize; 3] = [1, 2, 4];
 /// Helper: interleave f32 weights into the `[OUT/4][K][IN][4]` layout used by Conv1d.
 fn make_conv1d_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32> {
     let raw_weights = vec![SYNTHETIC_WEIGHT; out_ch * k * in_ch];
-    let num_blocks = out_ch.div_ceil(4);
-    let interleaved_len = num_blocks * k * in_ch * 4;
+    let interleave_width = select_interleave_width(out_ch);
+    let num_blocks = out_ch.div_ceil(interleave_width);
+    let interleaved_len = num_blocks * k * in_ch * interleave_width;
     let mut weights = AlignedVec::new(interleaved_len, 0.0f32)
         .expect("allocation should succeed for test-sized buffers");
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-        &raw_weights,
-        &mut weights,
-        in_ch,
-        out_ch,
-        k,
-    );
+    match interleave_width {
+        16 => {
+            transpose_conv1d_interleaved_16wide(&raw_weights, &mut weights, in_ch, out_ch, k);
+        }
+        8 => {
+            transpose_conv1d_interleaved_8wide(&raw_weights, &mut weights, in_ch, out_ch, k);
+        }
+        _ => {
+            crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+                &raw_weights,
+                &mut weights,
+                in_ch,
+                out_ch,
+                k,
+            );
+        }
+    }
     weights
 }
 
@@ -198,6 +212,7 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
     let rf = TEST_DILATIONS.iter().max().unwrap_or(&1) * (k - 1);
 
     let make_conv1d_dyn = |in_ch: usize, out_ch: usize, dilation: usize| -> Conv1dDyn {
+        let interleave_width = select_interleave_width(out_ch);
         Conv1dDyn {
             weights: make_conv1d_weights(in_ch, out_ch, k),
             bias: make_bias(out_ch),
@@ -205,8 +220,8 @@ fn build_dynamic_model(ch: usize, k: usize, head: usize) -> WaveNetModelDyn {
             dilation,
             in_ch,
             out_ch,
-            num_blocks: out_ch.div_ceil(4),
-            interleave_width: 4,
+            num_blocks: out_ch.div_ceil(interleave_width),
+            interleave_width,
             kernel: k,
         }
     };

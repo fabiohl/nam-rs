@@ -697,7 +697,20 @@ não-bit-exact (nesse caso: parar S2 e levar ao PO).
 >
 > **Referência:** F-P2 (linha 119-149 do `TODO-findings.md`).
 
-### T2.S3.1 — `select_interleave_width`: retornar 16 para out_ch == 12 🟡 (CRÍTICO)
+### T2.S3.1 — `select_interleave_width`: retornar 16 para out_ch == 12 🟡 (CRÍTICO) ✅ CONCLUÍDO 2026-07-18
+
+      **Conclusão:** `select_interleave_width(12)` agora retorna 16, roteando CH=12 para o
+      kernel 16-wide do EPIC-1 com 4 lanes zeradas. Ajustes cascata:
+      - `layout.rs:346`: `|| out_ch == 12` adicionado à condição do branch 16-wide.
+      - `select_interleave_width` promovido de `pub(crate)` → `pub` + re-export via `wavenet/mod.rs`.
+      - `transpose_conv1d_interleaved_8wide`/`16wide` re-exportados para uso em testes de integração.
+      - `wavenet_ch12_diagnostic_test.rs`: referência escalar e layout de pesos atualizados.
+      - `dynamic_parity_test.rs`: `make_conv1d_weights` e `make_conv1d_dyn` usam `select_interleave_width`.
+      - `wavenet_lite_block_invariance.rs` (integr): helper `make_conv_weights` usa dispatch por largura.
+      - `store_16_accums` (conv_input.rs:64-78): já lidava corretamente com `out_n < 16` via branch else.
+      - Todos os 1322 testes passam (1126 lib + 196 integração).
+      - Benchmark `RT_WaveNet_Lite_CH12` executa via caminho 16-wide (baseline antiga 4-wide mostra
+        regressão esperada; re-baseline necessário).
 
       **Responsável:** Engenheiro sênior de Rust / DSP.
 

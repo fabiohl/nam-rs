@@ -71,16 +71,32 @@ fn test_conv1d_ch12_scalar_vs_simd() {
         *item = (i as f32 - (CH * K * CH / 2) as f32) * 0.01;
     }
 
-    // Transpose to interleaved-4-wide (f32)
-    let mut weights_f32 = AlignedVec::new(CH * K * CH, 0.0f32)
+    use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
+    use crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_8wide;
+    use crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide;
+
+    let interleave_width = select_interleave_width(CH);
+    let num_blocks = CH.div_ceil(interleave_width);
+    let padded_len = num_blocks * K * CH * interleave_width;
+    let mut weights_f32 = AlignedVec::new(padded_len, 0.0f32)
         .expect("allocation should succeed for test-sized buffers");
-    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-        &raw,
-        &mut weights_f32,
-        CH,
-        CH,
-        K,
-    );
+    match interleave_width {
+        16 => {
+            transpose_conv1d_interleaved_16wide(&raw, &mut weights_f32, CH, CH, K);
+        }
+        8 => {
+            transpose_conv1d_interleaved_8wide(&raw, &mut weights_f32, CH, CH, K);
+        }
+        _ => {
+            crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+                &raw,
+                &mut weights_f32,
+                CH,
+                CH,
+                K,
+            );
+        }
+    }
 
     let bias = AlignedVec::from_vec(vec![0.01f32; CH])
         .expect("allocation should succeed for test-sized buffers");
@@ -118,9 +134,12 @@ fn test_conv1d_ch12_scalar_vs_simd() {
             let offset = (dil as isize) * ((k as isize) + 1 - (K as isize));
             let in_idx = ((frame_idx as isize) + offset) as usize * CH;
             for ic in 0..CH {
-                let b = oc / 4;
-                let lane = oc % 4;
-                let w_idx = b * (K * CH * 4) + k * (CH * 4) + ic * 4 + lane;
+                let b = oc / interleave_width;
+                let lane = oc % interleave_width;
+                let w_idx = b * (K * CH * interleave_width)
+                    + k * (CH * interleave_width)
+                    + ic * interleave_width
+                    + lane;
                 let w = conv.weights[w_idx];
                 sum += state[in_idx + ic] * w;
             }

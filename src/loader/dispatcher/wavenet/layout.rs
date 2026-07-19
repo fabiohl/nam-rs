@@ -343,8 +343,8 @@ pub(crate) fn transpose_4wide_to_16wide(
 /// Must be used consistently by both the weight loader (to store weights
 /// in the correct layout) and the convolution processors (to read them back).
 #[inline]
-pub(crate) fn select_interleave_width(out_ch: usize) -> usize {
-    if out_ch.is_multiple_of(16) {
+pub fn select_interleave_width(out_ch: usize) -> usize {
+    if out_ch.is_multiple_of(16) || out_ch == 12 {
         16
     } else if out_ch.is_multiple_of(8) {
         8

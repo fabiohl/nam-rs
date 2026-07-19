@@ -4,7 +4,10 @@
 use super::common;
 use common::{compute_mse, generate_sine_440hz};
 
+use nam_rs::loader::dispatcher::wavenet::select_interleave_width;
 use nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide;
+use nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_8wide;
+use nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_16wide;
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::wavenet::{
     Conv1d, DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
@@ -16,16 +19,32 @@ fn test_dense_f32(in_ch: usize, out_ch: usize) -> AlignedVec<f32> {
         .expect("allocation should succeed for test-sized buffers")
 }
 
+fn make_conv_weights(in_ch: usize, out_ch: usize, k: usize) -> AlignedVec<f32> {
+    let raw_weights = vec![0.01f32; out_ch * k * in_ch];
+    let interleave_width = select_interleave_width(out_ch);
+    let num_blocks = out_ch.div_ceil(interleave_width);
+    let padded_total = num_blocks * interleave_width * in_ch * k;
+    let mut weights = AlignedVec::new(padded_total, 0.0)
+        .expect("allocation should succeed for test-sized buffers");
+    match interleave_width {
+        16 => {
+            transpose_conv1d_interleaved_16wide(&raw_weights, &mut weights, in_ch, out_ch, k);
+        }
+        8 => {
+            transpose_conv1d_interleaved_8wide(&raw_weights, &mut weights, in_ch, out_ch, k);
+        }
+        _ => {
+            transpose_conv1d_interleaved_4wide(&raw_weights, &mut weights, in_ch, out_ch, k);
+        }
+    }
+    weights
+}
+
 fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 12, 3> {
-        let raw_weights = vec![0.01f32; 12 * 3 * 12];
-        let padded_total = 12usize.div_ceil(4) * 4 * 12 * 3;
-        let mut weights = AlignedVec::new(padded_total, 0.0f32)
-            .expect("allocation should succeed for test-sized buffers");
-        transpose_conv1d_interleaved_4wide(&raw_weights, &mut weights, 12, 12, 3);
         WaveNetLayer {
             conv1d: Conv1d {
-                weights,
+                weights: make_conv_weights(12, 12, 3),
                 bias: AlignedVec::from_vec(vec![0.0; 12])
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
@@ -51,14 +70,9 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
     };
 
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 6, 3> {
-        let raw_weights = vec![0.01f32; 6 * 3 * 6];
-        let padded_total = 6usize.div_ceil(4) * 4 * 6 * 3;
-        let mut weights = AlignedVec::new(padded_total, 0.0f32)
-            .expect("allocation should succeed for test-sized buffers");
-        transpose_conv1d_interleaved_4wide(&raw_weights, &mut weights, 6, 6, 3);
         WaveNetLayer {
             conv1d: Conv1d {
-                weights,
+                weights: make_conv_weights(6, 6, 3),
                 bias: AlignedVec::from_vec(vec![0.0; 6])
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,

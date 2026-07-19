@@ -21,7 +21,10 @@ pub(crate) mod nano;
 pub(crate) mod standard;
 pub(crate) mod traits;
 
+pub use layout::select_interleave_width;
 pub use layout::transpose_conv1d_interleaved_4wide;
+pub use layout::transpose_conv1d_interleaved_8wide;
+pub use layout::transpose_conv1d_interleaved_16wide;
 
 // =============================================================================
 // Validation
