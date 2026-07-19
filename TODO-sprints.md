@@ -1556,7 +1556,7 @@ Relação custo-benefício do `pw_filter`:
 >
 > **Estimativa:** 2 dias.
 
-### T5.S2.1 — Habilitar feature `tail` em `clack-extensions`
+### T5.S2.1 — Habilitar feature `tail` em `clack-extensions` [DONE]
 
 **Responsável:** Engenheiro Rust
 **Arquivo:** [`Cargo.toml`](./Cargo.toml)
