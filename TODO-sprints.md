@@ -1220,10 +1220,11 @@ de 12 canais).
 >
 > **Estimativa:** 1-2 dias.
 
-### T3.S4.1 — Implementar teste de integração de hot-swap e verificação de smaps
+### T3.S4.1 — Implementar teste de integração de hot-swap e verificação de smaps [DONE]
 
 **Responsável:** Engenheiro de QA / Sistemas
 **Arquivo:** [`tests/models/thp_coherence.rs`]([NEW] [thp_coherence.rs](file:///home/fabio/nam-rs/tests/models/thp_coherence.rs))
+T3.S4.1 — Implementar teste de integração de hot-swap e verificação de smaps
 
 - [ ] Criar um novo arquivo de teste de integração `tests/models/thp_coherence.rs` (adicionar o SPDX/copyright).
 - [ ] No teste:

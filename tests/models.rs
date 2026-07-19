@@ -64,6 +64,8 @@ mod proptest_parsers;
 mod self_consistency;
 #[path = "models/spectral_fidelity.rs"]
 mod spectral_fidelity;
+#[path = "models/thp_coherence.rs"]
+mod thp_coherence;
 #[path = "models/threshold_calibration.rs"]
 mod threshold_calibration;
 #[path = "models/wavenet_lite_block_invariance.rs"]
