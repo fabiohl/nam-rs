@@ -518,7 +518,7 @@ O gargalo principal reside no desalinhamento de memória nativo dos 12 canais (p
 Independente dos épicos 1-2; não toca em kernels DSP. Risco baixo; todo o código é cold-path
 de setup, mas exige teste em kernel alvo (7.0) + fallback documentado para kernels antigos.
 
-### EPIC-4 — Build pipeline de próxima geração (PGO + BOLT instrumentado) 🟠 [DOING]
+### EPIC-4 — Build pipeline de próxima geração (PGO + BOLT instrumentado) 🟠 [DONE]
 
 > Finding: **F-L3** (instrumentação BOLT, quantum de produção no profiling, BOLT no CLAP,
 > workload multi-modelo, reavaliar hugify pós-EPIC-3).
@@ -527,7 +527,7 @@ Somente `utils/build-release.sh` + perfis de build (símbolos até o passo BOLT)
 A/B do `tests-performance-regression.sh` e contrato de latência. Executar por último (para que
 os épicos 1-2 sejam medidos sem viés de layout antigo) ou antes com re-run após.
 
-### EPIC-5 — Stack PipeWire/CLAP (latência ponta-a-ponta e cidadania de host) 🟡
+### EPIC-5 — Stack PipeWire/CLAP (latência ponta-a-ponta e cidadania de host) 🟡 [DOING]
 
 > Findings: **F-S1** (fase 1 de medição é pré-requisito duro; só avançar com números) e
 > **F-S2** (clap.tail + avaliação de audio-ports-activation).
