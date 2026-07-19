@@ -6,6 +6,23 @@ use super::conv1d::Conv1d;
 use super::dense::DenseLayer;
 use crate::math::common::{AlignedVec, SimdMath};
 
+#[cfg(test)]
+pub(crate) use telemetry_vars::*;
+
+#[cfg(test)]
+mod telemetry_vars {
+    use std::cell::RefCell;
+    use std::time::Duration;
+
+    thread_local! {
+        pub static ACC_MIXIN: RefCell<Duration> = const { RefCell::new(Duration::ZERO) };
+        pub static ACC_CONV: RefCell<Duration> = const { RefCell::new(Duration::ZERO) };
+        pub static ACC_TANH: RefCell<Duration> = const { RefCell::new(Duration::ZERO) };
+        pub static ACC_ONE_BY_ONE: RefCell<Duration> = const { RefCell::new(Duration::ZERO) };
+        pub static TELEMETRY_ACTIVE: RefCell<bool> = const { RefCell::new(false) };
+    }
+}
+
 /// Complete Convolutional Cell (WaveNet Layer).
 #[derive(Clone)]
 pub struct WaveNetLayer<const COND: usize, const CH: usize, const K: usize> {
@@ -27,6 +44,14 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     /// Processes a full WaveNet layer, iterating `FastMath` in AVX2.
     ///
     /// Conv1D uses full-precision f32 weights; DenseLayer uses standard quantized paths.
+    ///
+    /// # Performance Warning (CH=12 Memory Stride Barrier)
+    /// For models with `CH=12` (WaveNet Lite), the 12-float channel stride (48 bytes) does not
+    /// align with the CPU's 64-byte cache line boundary. This mismatch induces frequent
+    /// cache-line splits and stalls the FMA pipelines. Although specialized SIMD kernels have been
+    /// written (e.g., SIMD 8+4 store path and 12x12 GEMM), the physical stride remains a bottleneck
+    /// preventing the engine from reaching ≤ 38 µs. The ultimate fix is a homogeneous pad-to-16
+    /// layout (CH=16 static).
     ///
     /// # Safety
     /// Math dispatch via pointer to inlined intrinsic functions.
@@ -64,9 +89,26 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 self.scratch_conv.len(),
             );
 
+            #[cfg(test)]
+            let t_start = if crate::models::wavenet::layer::TELEMETRY_ACTIVE.with(|a| *a.borrow()) {
+                Some(std::time::Instant::now())
+            } else {
+                None
+            };
+
             let mixin_out = self.scratch_mixin.get_unchecked_mut(..num_frames * CH);
             self.input_mixin
                 .process_block::<M>(condition, mixin_out, num_frames);
+
+            #[cfg(test)]
+            let t_mixin = if let Some(ts) = t_start {
+                let now = std::time::Instant::now();
+                crate::models::wavenet::layer::ACC_MIXIN
+                    .with(|a| *a.borrow_mut() += now.duration_since(ts));
+                Some(now)
+            } else {
+                None
+            };
 
             let conv_slice = self.scratch_conv.get_unchecked_mut(..num_frames * CH);
 
@@ -105,6 +147,16 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 );
             }
 
+            #[cfg(test)]
+            let t_conv = if let Some(ts) = t_mixin {
+                let now = std::time::Instant::now();
+                crate::models::wavenet::layer::ACC_CONV
+                    .with(|a| *a.borrow_mut() += now.duration_since(ts));
+                Some(now)
+            } else {
+                None
+            };
+
             if let Some(s) = seed {
                 M::tanh_and_accumulate_with_seed(head_input, conv_slice, s);
             } else if is_first_layer {
@@ -112,6 +164,16 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             } else {
                 M::tanh_and_accumulate_block(head_input, conv_slice);
             }
+
+            #[cfg(test)]
+            let t_tanh = if let Some(ts) = t_conv {
+                let now = std::time::Instant::now();
+                crate::models::wavenet::layer::ACC_TANH
+                    .with(|a| *a.borrow_mut() += now.duration_since(ts));
+                Some(now)
+            } else {
+                None
+            };
 
             let lb_offset = buffer_start * CH;
             let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH);
@@ -122,6 +184,13 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 output,
                 num_frames,
             );
+
+            #[cfg(test)]
+            if let Some(ts) = t_tanh {
+                let now = std::time::Instant::now();
+                crate::models::wavenet::layer::ACC_ONE_BY_ONE
+                    .with(|a| *a.borrow_mut() += now.duration_since(ts));
+            }
         }
     }
 }

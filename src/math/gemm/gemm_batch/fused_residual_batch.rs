@@ -622,3 +622,155 @@ pub unsafe fn fused_gemm_residual_batch_f32_const<const IN: usize, const OUT: us
         }
     );
 }
+
+/// Dedicated 12x12 SIMD (YMM + XMM) batch residual GEMM kernel.
+///
+/// Eliminates the scalar tail loop completely for WaveNet Lite CH=12 by
+/// processing the first 8 channels via 256-bit AVX2 (YMM) and the remaining 4
+/// channels via 128-bit SSE (XMM) in parallel.
+///
+/// # Performance Note (Memory Stride Bottleneck)
+/// While this kernel fully vectorizes the computation and eliminates scalar fallback,
+/// operating with 12 channels (48 bytes) introduces cache-line splits (due to non-multiple
+/// of CPU 64-byte cache lines) when accessing memory in strides of 12. To fully bypass this,
+/// a pad-to-16 homogeneous layout (CH=16 static) is required.
+///
+/// # Safety
+/// Preconditions are the same as [`fused_gemm_residual_batch_f32_avx2`].
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn fused_gemm_residual_batch_f32_12x12(
+    in_frames: &[f32],
+    weights: &[f32],
+    bias: &[f32],
+    residual: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    debug_assert_eq!(in_frames.len(), num_frames * 12);
+    debug_assert_eq!(out_frames.len(), num_frames * 12);
+    debug_assert_eq!(residual.len(), num_frames * 12);
+    debug_assert!(weights.len() >= 144);
+    if do_bias {
+        debug_assert!(bias.len() >= 12);
+    }
+    assert!(in_frames.len() == num_frames * 12);
+    assert!(out_frames.len() == num_frames * 12);
+    assert!(residual.len() == num_frames * 12);
+    assert!(weights.len() >= 144);
+    if do_bias {
+        assert!(bias.len() >= 12);
+    }
+
+    use core::arch::x86_64::{
+        _mm_add_ps, _mm_fmadd_ps, _mm_loadu_ps, _mm_set1_ps, _mm_setzero_ps, _mm_storeu_ps,
+        _mm256_add_ps, _mm256_fmadd_ps, _mm256_loadu_ps, _mm256_set1_ps, _mm256_setzero_ps,
+        _mm256_storeu_ps,
+    };
+
+    let mut f = 0;
+    while f + 4 <= num_frames {
+        // --- Lanes 0..7 (SIMD 8-wide using YMM) ---
+        let res0_lo = _mm256_loadu_ps(residual.as_ptr().add(f * 12));
+        let res1_lo = _mm256_loadu_ps(residual.as_ptr().add((f + 1) * 12));
+        let res2_lo = _mm256_loadu_ps(residual.as_ptr().add((f + 2) * 12));
+        let res3_lo = _mm256_loadu_ps(residual.as_ptr().add((f + 3) * 12));
+
+        let b_lo = if do_bias {
+            _mm256_loadu_ps(bias.as_ptr())
+        } else {
+            _mm256_setzero_ps()
+        };
+
+        let mut acc0_lo = _mm256_add_ps(res0_lo, b_lo);
+        let mut acc1_lo = _mm256_add_ps(res1_lo, b_lo);
+        let mut acc2_lo = _mm256_add_ps(res2_lo, b_lo);
+        let mut acc3_lo = _mm256_add_ps(res3_lo, b_lo);
+
+        // --- Lanes 8..11 (SIMD 4-wide using XMM) ---
+        let res0_hi = _mm_loadu_ps(residual.as_ptr().add(f * 12 + 8));
+        let res1_hi = _mm_loadu_ps(residual.as_ptr().add((f + 1) * 12 + 8));
+        let res2_hi = _mm_loadu_ps(residual.as_ptr().add((f + 2) * 12 + 8));
+        let res3_hi = _mm_loadu_ps(residual.as_ptr().add((f + 3) * 12 + 8));
+
+        let b_hi = if do_bias {
+            _mm_loadu_ps(bias.as_ptr().add(8))
+        } else {
+            _mm_setzero_ps()
+        };
+
+        let mut acc0_hi = _mm_add_ps(res0_hi, b_hi);
+        let mut acc1_hi = _mm_add_ps(res1_hi, b_hi);
+        let mut acc2_hi = _mm_add_ps(res2_hi, b_hi);
+        let mut acc3_hi = _mm_add_ps(res3_hi, b_hi);
+
+        for in_c in 0..12 {
+            let wp_lo = weights.as_ptr().add(in_c * 12);
+            let vw_lo = _mm256_loadu_ps(wp_lo);
+            let vw_hi = _mm_loadu_ps(wp_lo.add(8));
+
+            let vs0 = *in_frames.get_unchecked(f * 12 + in_c);
+            let vs1 = *in_frames.get_unchecked((f + 1) * 12 + in_c);
+            let vs2 = *in_frames.get_unchecked((f + 2) * 12 + in_c);
+            let vs3 = *in_frames.get_unchecked((f + 3) * 12 + in_c);
+
+            acc0_lo = _mm256_fmadd_ps(_mm256_set1_ps(vs0), vw_lo, acc0_lo);
+            acc1_lo = _mm256_fmadd_ps(_mm256_set1_ps(vs1), vw_lo, acc1_lo);
+            acc2_lo = _mm256_fmadd_ps(_mm256_set1_ps(vs2), vw_lo, acc2_lo);
+            acc3_lo = _mm256_fmadd_ps(_mm256_set1_ps(vs3), vw_lo, acc3_lo);
+
+            acc0_hi = _mm_fmadd_ps(_mm_set1_ps(vs0), vw_hi, acc0_hi);
+            acc1_hi = _mm_fmadd_ps(_mm_set1_ps(vs1), vw_hi, acc1_hi);
+            acc2_hi = _mm_fmadd_ps(_mm_set1_ps(vs2), vw_hi, acc2_hi);
+            acc3_hi = _mm_fmadd_ps(_mm_set1_ps(vs3), vw_hi, acc3_hi);
+        }
+
+        _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * 12), acc0_lo);
+        _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * 12), acc1_lo);
+        _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * 12), acc2_lo);
+        _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 3) * 12), acc3_lo);
+
+        _mm_storeu_ps(out_frames.as_mut_ptr().add(f * 12 + 8), acc0_hi);
+        _mm_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * 12 + 8), acc1_hi);
+        _mm_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * 12 + 8), acc2_hi);
+        _mm_storeu_ps(out_frames.as_mut_ptr().add((f + 3) * 12 + 8), acc3_hi);
+
+        f += 4;
+    }
+
+    while f < num_frames {
+        let res_lo = _mm256_loadu_ps(residual.as_ptr().add(f * 12));
+        let b_lo = if do_bias {
+            _mm256_loadu_ps(bias.as_ptr())
+        } else {
+            _mm256_setzero_ps()
+        };
+        let mut acc_lo = _mm256_add_ps(res_lo, b_lo);
+
+        let res_hi = _mm_loadu_ps(residual.as_ptr().add(f * 12 + 8));
+        let b_hi = if do_bias {
+            _mm_loadu_ps(bias.as_ptr().add(8))
+        } else {
+            _mm_setzero_ps()
+        };
+        let mut acc_hi = _mm_add_ps(res_hi, b_hi);
+
+        for in_c in 0..12 {
+            let wp_lo = weights.as_ptr().add(in_c * 12);
+            let vw_lo = _mm256_loadu_ps(wp_lo);
+            let vw_hi = _mm_loadu_ps(wp_lo.add(8));
+
+            let vs = *in_frames.get_unchecked(f * 12 + in_c);
+            acc_lo = _mm256_fmadd_ps(_mm256_set1_ps(vs), vw_lo, acc_lo);
+            acc_hi = _mm_fmadd_ps(_mm_set1_ps(vs), vw_hi, acc_hi);
+        }
+
+        _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * 12), acc_lo);
+        _mm_storeu_ps(out_frames.as_mut_ptr().add(f * 12 + 8), acc_hi);
+
+        f += 1;
+    }
+}

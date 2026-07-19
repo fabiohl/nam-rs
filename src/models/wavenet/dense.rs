@@ -61,6 +61,18 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
                     );
                     return;
                 }
+                if IN == 12 && OUT == 12 {
+                    crate::math::gemm::gemm_batch::fused_gemm_residual_batch_f32_12x12(
+                        input,
+                        &self.weights,
+                        &self.bias,
+                        residual,
+                        output,
+                        num_frames,
+                        self.do_bias,
+                    );
+                    return;
+                }
                 if IN == 16 && OUT == 16 {
                     crate::math::gemm::gemm_batch::fused_gemm_residual_batch_f32_const::<16, 16>(
                         input,

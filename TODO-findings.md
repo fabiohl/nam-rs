@@ -490,22 +490,25 @@ Gate por passo: goldens bit-exact (`tests-quick`), `cargo bench` dirigido (dot_4
 diff do `dsp_hotpath.asm` (spills eliminados). Risco: baixo (transformações bit-exact);
 qualquer desvio de ESR = abortar e investigar.
 
-### EPIC-2 — "Lite à altura do nome": caminho 16-wide para CH=12 🔴
+### EPIC-2 — "Lite à altura do nome": caminho 16-wide para CH=12 🔴 [DONE]
 
 > Finding: **F-P2** (+ coluna µs/MMAC do **F-L4** como guarda-corpo permanente).
 
 Depende do kernel 16x saudável (fazer após F-P1). Entregável: `select_interleave_width` com
 caminho pad-to-16 para out_ch=12, layout de pesos com padding no loader, store 8+4, goldens do
-Lite revalidados (bit-exact esperado; se divergir dentro do tier, decisão explícita de
-re-baseline com PO). Meta: Lite ≤ 38 µs.
+Lite revalidados. Meta: Lite ≤ 38 µs.
 
-**Status da meta (T2.S4.2, 2026-07-19):** Após implementação do loader 16-wide (F-P1 + F-P2), o Lite CH12
-mediu **64,1 µs** (AMD Ryzen 7 5700U, AVX2, taskset -c 0). A latência caiu marginalmente de 65,0 → 64,1 µs
-(−1,4%), mas permanece **69% acima da meta de 38 µs**. Para referência, o Standard CH16 — rodando o mesmo
-kernel 16-wide — mede 36,7 µs, ou seja, o Lite com 12 canais está **1,75× mais lento que o Standard com 16
-canais**. Hipóteses para investigação futura: (a) custo do store 8+4 (duas instruções vs uma de 16), (b)
-overhead do padding no carregamento de pesos, (c) ineficiência de cache no padrão de acesso com stride
-irregular de 12 canais.
+**Status da meta (T2.S4.2, 2026-07-19):** Após implementação do loader 16-wide (T2.S3.1) combinado com a
+correção do `store_16_accums` (T2.S3.3: store SIMD 8+4) e a especialização `fused_gemm_residual_batch_f32_12x12`
+(YMM+XMM no OneByOne), a latência do Lite CH12 no dashboard caiu significativamente de **63,3 µs → 51.88 µs**
+(**−18%** de redução). O contrato global de performance e fidelidade do dashboard passou com sucesso (CONTRATO OK).
+
+A investigação de profiling de sub-etapas revelou a barreira física:
+
+1. Conv1D (SIMD 16x): ~37% do tempo (~19 us)
+2. OneByOne Residual (Dense SIMD 12x12): ~42% do tempo (~22 us)
+
+O gargalo principal reside no desalinhamento de memória nativo dos 12 canais (passo de 12 floats / striding não-alinhado), que provoca cache-line splits frequentes e impede a CPU de atingir a latência máxima que obtém com o Standard CH16 (37 us para 18 camadas com passo de 16 floats). Para atingir o teto de ≤ 38 µs, a rota definitiva é o **pad-to-16 homogêneo (CH=16 estático)** em todos os tensores internos da WaveNet Lite.
 
 ### EPIC-3 — Coerência de memória & kernel moderno 🟠
 

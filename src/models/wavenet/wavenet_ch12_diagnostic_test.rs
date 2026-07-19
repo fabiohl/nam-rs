@@ -160,3 +160,86 @@ fn test_conv1d_ch12_scalar_vs_simd() {
         max_diff
     );
 }
+
+#[test]
+#[ignore]
+fn profile_wavenet_lite_kernels() {
+    use crate::loader::dispatcher::build_model;
+    use crate::loader::nam_json::parse_nam_json;
+    use crate::models::NamModel;
+    use crate::models::wavenet::layer::{
+        ACC_CONV, ACC_MIXIN, ACC_ONE_BY_ONE, ACC_TANH, TELEMETRY_ACTIVE,
+    };
+    use std::time::{Duration, Instant};
+
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-lite.nam");
+
+    assert!(path.exists(), "BossWN-lite.nam test fixture not found!");
+
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read model");
+    let model_data = parse_nam_json(&json_data).expect("Failed to parse JSON");
+    let mut model = build_model(&model_data).expect("Failed to build model");
+
+    model.prewarm(2048);
+
+    let input = vec![0.1f32; 64];
+    let mut output = vec![0.0f32; 64];
+
+    // Warmup the execution to trigger JIT / cache loads
+    for _ in 0..1000 {
+        model.process(&input, &mut output);
+    }
+
+    // Reset telemetry variables
+    ACC_MIXIN.with(|v| *v.borrow_mut() = Duration::ZERO);
+    ACC_CONV.with(|v| *v.borrow_mut() = Duration::ZERO);
+    ACC_TANH.with(|v| *v.borrow_mut() = Duration::ZERO);
+    ACC_ONE_BY_ONE.with(|v| *v.borrow_mut() = Duration::ZERO);
+
+    TELEMETRY_ACTIVE.with(|v| *v.borrow_mut() = true);
+
+    let total_start = Instant::now();
+    let iterations = 30000;
+    for _ in 0..iterations {
+        model.process(&input, &mut output);
+    }
+    let total_duration = total_start.elapsed();
+
+    TELEMETRY_ACTIVE.with(|v| *v.borrow_mut() = false);
+
+    let mixin_dur = ACC_MIXIN.with(|v| *v.borrow());
+    let conv_dur = ACC_CONV.with(|v| *v.borrow());
+    let tanh_dur = ACC_TANH.with(|v| *v.borrow());
+    let one_by_one_dur = ACC_ONE_BY_ONE.with(|v| *v.borrow());
+
+    let sum_measured = mixin_dur + conv_dur + tanh_dur + one_by_one_dur;
+
+    println!("\n========================================================");
+    println!(" WaveNet Lite CH12 Internal Kernel Telemetry (30k iterations)");
+    println!("========================================================");
+    println!("Total execution time: {:?}", total_duration);
+    println!("Sum of measured layer blocks: {:?}", sum_measured);
+    println!("--------------------------------------------------------");
+    println!(
+        "1. Input Mixin (DenseLayer):   {:?} ({:.2}%)",
+        mixin_dur,
+        (mixin_dur.as_nanos() as f64 / sum_measured.as_nanos() as f64) * 100.0
+    );
+    println!(
+        "2. Dilated Conv1D (SIMD 16x):  {:?} ({:.2}%)",
+        conv_dur,
+        (conv_dur.as_nanos() as f64 / sum_measured.as_nanos() as f64) * 100.0
+    );
+    println!(
+        "3. Tanh Activation + Accum:   {:?} ({:.2}%)",
+        tanh_dur,
+        (tanh_dur.as_nanos() as f64 / sum_measured.as_nanos() as f64) * 100.0
+    );
+    println!(
+        "4. OneByOne Residual (Dense):  {:?} ({:.2}%)",
+        one_by_one_dur,
+        (one_by_one_dur.as_nanos() as f64 / sum_measured.as_nanos() as f64) * 100.0
+    );
+    println!("========================================================\n");
+}
