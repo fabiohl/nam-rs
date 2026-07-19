@@ -218,6 +218,7 @@ declare -A ISA_RESULTS
 declare -A ACTIVATION_SNR
 declare -A F64_DECOMPOSITION
 declare -A MODEL_ESR_F64_TABLE
+declare -A MODEL_MACS
 
 declare -a MODEL_ORDER
 declare -a ALL_BENCH_NAMES
@@ -763,6 +764,17 @@ parse_benchmarks() {
     BENCH_MODEL_MAP["RT_Linear"]="Linear RF=2048"
     BENCH_MODEL_MAP["RT_ConvNet"]="ConvNet"
 
+# ── MACs constants (confirmed via topology review 2026-07-18) ────────────────
+# Formula: total_layers × CH² × K
+# Standard: 20 layers, CH=16, K=3 → 20 × 256 × 3 = 15360
+# Lite:     20 layers, CH=12, K=3 → 20 × 144 × 3 = 8640
+# Feather:  20 layers, CH=8,  K=3 → 20 × 64  × 3 = 3840
+# Nano:     20 layers, CH=4,  K=3 → 20 × 16  × 3 = 960
+MODEL_MACS["WaveNet Standard CH16"]="15360"
+MODEL_MACS["WaveNet Feather CH8"]="3840"
+MODEL_MACS["WaveNet Lite CH12"]="8640"
+MODEL_MACS["WaveNet Nano CH4"]="960"
+
     local parsed="$PARSEDIR/benchmarks.parsed"
     LC_ALL=C awk '
     BEGIN { bench = "" }
@@ -1074,7 +1086,9 @@ render_fidelity_details() {
     echo "═════════════════════════════════════════"
     echo ""
 
-    if [ ${#MODEL_ORDER[@]} -eq 0 ]; then
+    local order_count
+    set +u; order_count="${#MODEL_ORDER[@]}"; set -u
+    if [ -z "$order_count" ] || [ "$order_count" -eq 0 ]; then
         echo -e "  ${YELLOW}(i) Nenhum dado de fidelidade disponivel.${NC}"
         echo ""
         return
@@ -1218,10 +1232,32 @@ render_fidelity_details() {
 
 # ── Render: performance ─────────────────────────────────────────────────────
 
+# Compute median from space-separated values (supports scientific notation).
+# Returns "N/A" if no values provided.
+_median() {
+    local sorted first second count remainder
+    count=$#
+    if [ "$count" -eq 0 ]; then
+        echo "N/A"
+        return
+    fi
+    IFS=$'\n' sorted=($(for v in "$@"; do LC_ALL=C awk -v x="$v" 'BEGIN { printf "%.12f\n", x }'; done | LC_ALL=C sort -n))
+    remainder=$((count % 2))
+    local mid=$((count / 2))
+    if [ "$remainder" -eq 1 ]; then
+        echo "${sorted[$mid]}"
+    else
+        first="${sorted[$((mid - 1))]}"
+        second="${sorted[$mid]}"
+        LC_ALL=C awk -v a="$first" -v b="$second" 'BEGIN { printf "%.6f", (a + b) / 2.0 }'
+    fi
+}
+
 render_performance() {
     echo "⚡ PERFORMANCE — Latencia por Bloco (64 amostras @ 48kHz)"
     echo "══════════════════════════════════════════════════════════"
     echo "  Deadline RT: 1333 µs (1.33 ms)"
+    echo "  Eficiencia: µs por MMAC (mega-MACs) — menor e melhor"
     echo ""
 
     local bench_count
@@ -1234,29 +1270,52 @@ render_performance() {
         return
     fi
 
-    printf "  %-28s │ %-16s │ %-12s │ %s\n" \
-        "Modelo" "Latencia Mediana" "% do Budget" "Folga"
-    printf "  %s │ %s │ %s │ %s\n" \
+    printf "  %-28s │ %-16s │ %-10s │ %-14s │ %s\n" \
+        "Modelo" "Latencia Mediana" "% Budget" "µs/MMAC" "Folga"
+    printf "  %s │ %s │ %s │ %s │ %s\n" \
         "$(printf '─%.0s' {1..28})" "$(printf '─%.0s' {1..16})" \
-        "$(printf '─%.0s' {1..12})" "$(printf '─%.0s' {1..20})"
+        "$(printf '─%.0s' {1..10})" "$(printf '─%.0s' {1..14})" \
+        "$(printf '─%.0s' {1..18})"
+
+    # Collect WaveNet efficiency values for gate suave
+    local -a wavenet_eff=()
+    local -A efficiency_map
 
     for bn in "${ALL_BENCH_NAMES[@]}"; do
-        local label="${BENCH_MODEL_MAP[$bn]:-$bn}"
-        local latency="${LATENCY_US[$bn]:-N/A}"
-        local pct="N/A"
-        local folga="N/A"
-        local folga_colored="N/A"
+        local label latency pct folga folga_colored latency_display macs eff_display eff_val
+        set +u
+        label="${BENCH_MODEL_MAP[$bn]:-$bn}"
+        latency="${LATENCY_US[$bn]:-N/A}"
+        set -u
+        pct="N/A"
+        folga="N/A"
+        folga_colored="N/A"
         if [ "$latency" != "N/A" ]; then
             pct=$(budget_pct "$latency")
             folga=$(budget_folga "$pct")
             folga_colored=$(folga_color "$folga")
         fi
-        local latency_display="$latency"
+        latency_display="$latency"
         if [ "$latency" != "N/A" ]; then
             latency_display=$(_nfmt "%.1f us" "$latency")
         fi
-        printf "  %-28s │ %-16s │ %-12s │ %b\n" \
-            "$label" "$latency_display" "${pct}%" "$folga_colored"
+
+        # Calculate µs/MMAC
+        set +u
+        macs="${MODEL_MACS[$label]:-}"
+        set -u
+        eff_display="N/A"
+        if [ -n "$macs" ] && [ "$latency" != "N/A" ]; then
+            eff_val=$(LC_ALL=C awk -v lat="$latency" -v macs="$macs" 'BEGIN { printf "%.2f", lat / (macs / 1000000.0) }')
+            eff_display=$(_nfmt "%.2f us/MMAC" "$eff_val")
+            efficiency_map["$bn"]="$eff_val"
+            if [[ "$label" == WaveNet* ]]; then
+                wavenet_eff+=("$eff_val")
+            fi
+        fi
+
+        printf "  %-28s │ %-16s │ %-10s │ %-14s │ %b\n" \
+            "$label" "$latency_display" "${pct}%" "$eff_display" "$folga_colored"
     done
 
     echo ""
@@ -1264,6 +1323,31 @@ render_performance() {
     echo "  (i) Folga > 75%:  Pode usar oversampling 4x sem xruns"
     echo "  (i) Folga < 25%:  ⚠ Risco de xruns com buffer de 64 amostras"
     echo ""
+
+    # ── Gate suave de eficiência WaveNet ──────────────────────────────────
+    local wavenet_count
+    set +u; wavenet_count="${#wavenet_eff[@]}"; set -u
+    if [ -n "$wavenet_count" ] && [ "$wavenet_count" -ge 2 ]; then
+        local median_eff median_rounded
+        median_eff=$(_median "${wavenet_eff[@]}")
+        median_rounded=$(LC_ALL=C awk -v m="$median_eff" 'BEGIN { printf "%.2f", m }')
+        for bn in "${ALL_BENCH_NAMES[@]}"; do
+            local label eff is_outlier
+            set +u
+            label="${BENCH_MODEL_MAP[$bn]:-$bn}"
+            set -u
+            [[ "$label" == WaveNet* ]] || continue
+            set +u
+            eff="${efficiency_map[$bn]:-}"
+            set -u
+            [ -z "$eff" ] && continue
+            is_outlier=$(LC_ALL=C awk -v e="$eff" -v m="$median_eff" 'BEGIN { if (m > 0 && e > m * 2.0) print "1"; else print "0" }')
+            if [ "$is_outlier" = "1" ]; then
+                echo -e "  ${YELLOW}⚠ WARN:${NC} $label eficiencia $(LC_ALL=C printf "%.2f" "$eff") µs/MMAC — outlier >2× mediana ($median_rounded µs/MMAC)"
+            fi
+        done
+        echo ""
+    fi
 }
 
 # ── Render: ISA parity ──────────────────────────────────────────────────────
@@ -1666,7 +1750,9 @@ verify_contract() {
     echo "═══════════════════════════════════════════════════════════════"
     echo ""
 
-    if [ ${#CONTRACT_ESR[@]} -eq 0 ] && [ ${#CONTRACT_LATENCY[@]} -eq 0 ]; then
+    local esr_contract_count lat_contract_count
+    set +u; esr_contract_count="${#CONTRACT_ESR[@]}"; lat_contract_count="${#CONTRACT_LATENCY[@]}"; set -u
+    if [ -z "$esr_contract_count" ] && [ -z "$lat_contract_count" ]; then
         echo -e "  ${YELLOW}(i) Arquivo de contrato vazio ou sem metricas reconhecidas.${NC}"
         echo ""
         return 0
