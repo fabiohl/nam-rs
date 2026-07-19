@@ -1321,7 +1321,7 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 >
 > **Estimativa:** 2 dias.
 
-### T4.S2.1 — Configurar Relocalizações e Instrumentação no Build Script
+### T4.S2.1 — Configurar Relocalizações e Instrumentação no Build Script [DONE]
 
 **Responsável:** Engenheiro de Tooling / DevOps
 **Arquivo:** [`utils/build-release.sh`](./utils/build-release.sh)

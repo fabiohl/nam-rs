@@ -227,7 +227,7 @@ fi
     RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q" cargo build --profile dist --features "standalone,pgo,testing" --bin nam-rs
 
     echo -e "  Building CLAP plugin..."
-    CLAP_RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-soname,nam-rs.clap"
+    CLAP_RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q -Clink-arg=-Wl,-soname,nam-rs.clap"
     echo -e "  Using RUSTFLAGS (CLAP): ${BOLD}$CLAP_RUSTFLAGS${NC}"
     RUSTFLAGS="$CLAP_RUSTFLAGS" cargo build --profile dist --target-dir "$PGO_CLAP_TARGET_DIR" --no-default-features --features "clap-plugin,pgo" --lib
 
@@ -243,9 +243,48 @@ fi
     echo -e "  ${GREEN}✓${NC} PGO compilation completed successfully."
 
 # -----------------------------------------------------------------------------
-# PHASE 4: Binary Optimization and Layout Tool (BOLT) Post-Link
+# PHASE 4: BOLT Instrumentation & Post-Link Optimization
 # -----------------------------------------------------------------------------
 BOLT_APPLIED=false
+
+# --- BOLT Instrumentation (creates instrumented binaries for workload-based profiling) ---
+if [ -n "$LLVM_BOLT" ]; then
+    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Creating BOLT-instrumented binaries...${NC}"
+
+    # Instrument standalone
+    echo -e "  Instrumenting standalone binary with llvm-bolt..."
+    if "$LLVM_BOLT" \
+        "$PGO_BUILD_TARGET_DIR/dist/nam-rs" \
+        -instrument \
+        -o "$PGO_BUILD_TARGET_DIR/dist/nam-rs.instrumented" \
+        --instrumentation-file="$PGO_BUILD_TARGET_DIR/nam-rs.fdata" \
+        --instrumentation-file-append-pid > "$BOLT_DIR/bolt-instrument-standalone.log" 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Standalone instrumented: $PGO_BUILD_TARGET_DIR/dist/nam-rs.instrumented"
+    else
+        echo -e "${YELLOW}  Warning: Standalone instrumentation failed. Falling back to PGO-only build.${NC}"
+        if [ -f "$BOLT_DIR/bolt-instrument-standalone.log" ]; then
+            cat "$BOLT_DIR/bolt-instrument-standalone.log"
+        fi
+    fi
+
+    # Instrument CLAP
+    echo -e "  Instrumenting CLAP plugin with llvm-bolt..."
+    if "$LLVM_BOLT" \
+        "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.so" \
+        -instrument \
+        -o "$PGO_CLAP_TARGET_DIR/dist/libnam_rs.instrumented.so" \
+        --instrumentation-file="$PGO_CLAP_TARGET_DIR/libnam_rs.fdata" \
+        --instrumentation-file-append-pid > "$BOLT_DIR/bolt-instrument-clap.log" 2>&1; then
+        echo -e "  ${GREEN}✓${NC} CLAP instrumented: $PGO_CLAP_TARGET_DIR/dist/libnam_rs.instrumented.so"
+    else
+        echo -e "${YELLOW}  Warning: CLAP instrumentation failed. Falling back to PGO-only build.${NC}"
+        if [ -f "$BOLT_DIR/bolt-instrument-clap.log" ]; then
+            cat "$BOLT_DIR/bolt-instrument-clap.log"
+        fi
+    fi
+fi
+
+# --- BOLT Perf-based Optimization (legacy path for standalone, requires perf) ---
 if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
     echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT post-link optimization to standalone binary...${NC}"
 
