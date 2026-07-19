@@ -773,7 +773,7 @@ O `store_16_accums(out_frame, 0, r, 12)` usa o caminho de `else` (scalar por lan
 
 ---
 
-### T2.S3.2 — Verificação de consistência: loader NAMB (interleaved4) para CH=12 🟢
+### T2.S3.2 — Verificação de consistência: loader NAMB (interleaved4) para CH=12 🟢 [DONE]
 
 **Responsável:** Engenheiro de Rust (pode ser mesmo da T2.S3.1).
 
