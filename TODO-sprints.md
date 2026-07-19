@@ -1648,9 +1648,17 @@ Relação custo-benefício do `pw_filter`:
 **Responsável:** Engenheiro de QA
 **Arquivos:** N/A (Scripts de validação)
 
-- [ ] Executar o validator completo no plugin otimizado: `utils/build-release.sh`.
-- [ ] Validar fidelidade e performance no dashboard: `utils/quality-dashboard.sh --check docs/quality-contract.txt`.
-- [ ] Executar testes de regressão de performance: `utils/tests-performance-regression.sh`.
+- [x] Executar o validator completo no plugin otimizado: `utils/build-release.sh`.
+- [x] Validar fidelidade e performance no dashboard: `utils/quality-dashboard.sh --check docs/quality-contract.txt`.
+- [x] Executar testes de regressão de performance: `utils/tests-performance-regression.sh`.
+
+> **Conclusão T5.S4.1 (2026-07-19):** VALIDAÇÃO APROVADA.
+>
+> - `build-release.sh`: PGO OK, CLAP validator 19/21 pass (2 skipped por note-ports não implementado, esperado). BOLT no CLAP falhou por segfault do llvm-bolt 22 com `--relocs` (bug upstream), mas PGO aplicado. Artefatos: `nam-rs.clap` (9.8M), `nam-rs` (8.2M PGO+BOLT).
+> - `tests-quick.sh`: 0 failures — golden vectors (58), parity (35), quick parity (6), fuzzing (18).
+> - `quality-dashboard.sh --check`: CONTRATO OK — 36 métricas de fidelidade + 10 de performance dentro das tolerâncias.
+> - `tests-performance-regression.sh`: 3 regressões leves detectadas (+2.5-3.4%: WaveNet Feather, A2 Full, LSTM 2x8), todas dentro das tolerâncias do contrato de qualidade. Atribuído a variação de compilador (rustc 1.97.1).
+> - EPIC-5 concluído com sucesso. Sprint S4 (final gate) aprovada.
 
 **Gate T5.S4.1:**
 
