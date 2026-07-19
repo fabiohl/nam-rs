@@ -412,8 +412,8 @@ de 2 cópias e sincronização atômica.
 **Resolução (2026-07-19):** A ordem capture→playback **é garantida** pelo `node.group`/`node.link-group`
 
 - ordem de registro no driver (capture criado primeiro em `run.rs`) + `PRIORITY_DRIVER=2000` no capture.
-O resultado é **0 quantum de latência extra intra-ciclo**. O protótipo `pw_filter` e Fases 2+ estão
-arquivados como WONT-FIX. Ver relatório completo: [`docs/latency_sprint1_analysis.md`](./docs/latency_sprint1_analysis.md).
+  O resultado é **0 quantum de latência extra intra-ciclo**. O protótipo `pw_filter` e Fases 2+ estão
+  arquivados como WONT-FIX. Ver relatório completo: [`docs/latency_sprint1_analysis.md`](./docs/latency_sprint1_analysis.md).
 
 **Proposta original (arquivada):**
 
@@ -439,6 +439,7 @@ disponíveis: stream, core, context, ...; sem `filter`). Implementar exigiria FF
 **Ganho potencial:** −1,33 ms de latência ponta-a-ponta @64/48k (enorme para o músico) + menos
 2 cópias/bloco. **Risco:** médio-alto (FFI novo em código RT) — por isso a fase de medição é
 obrigatória antes de qualquer código.
+
 </details>
 
 ---
@@ -536,7 +537,7 @@ Somente `utils/build-release.sh` + perfis de build (símbolos até o passo BOLT)
 A/B do `tests-performance-regression.sh` e contrato de latência. Executar por último (para que
 os épicos 1-2 sejam medidos sem viés de layout antigo) ou antes com re-run após.
 
-### EPIC-5 — Stack PipeWire/CLAP (latência ponta-a-ponta e cidadania de host) 🟡 [DOING]
+### EPIC-5 — Stack PipeWire/CLAP (latência ponta-a-ponta e cidadania de host) 🟡 [DONE COM RESSALVA]
 
 > Findings: **F-S1** (fase 1 de medição é pré-requisito duro; só avançar com números) e
 > **F-S2** (clap.tail + avaliação de audio-ports-activation).
@@ -544,8 +545,222 @@ os épicos 1-2 sejam medidos sem viés de layout antigo) ou antes com re-run ap�
 F-S2 é independente e pequeno (pode entrar em qualquer sprint). F-S1 fase 2+ só com aprovação
 após a medição comprovar o +1 quantum.
 
+**Status (2026-07-19):** F-S1 concluído com decisão NO-GO bem fundamentada (ver
+`docs/latency_sprint1_analysis.md`) — arquivado corretamente sem código FFI arriscado. F-S2
+entregou `clap.tail` + bônus `audio-ports-activation`, mas a auditoria de reverificação
+(seção abaixo) encontrou um **defeito de semântica** no valor reportado por `clap.tail` — ver
+**F-A1**. EPIC-5 permanece "done" para fins de escopo original, mas com dívida técnica nova
+registrada.
+
 ---
 
-*Gerado pela auditoria `revisor-auditor`/`pesquisador-inovador` de 2026-07-17. Nenhuma linha de
-código de produção foi alterada nesta auditoria. `TODO-sprints.md` será criado somente quando
+## AUDITORIA DE REVERIFICAÇÃO (2026-07-19) — "Concluído" revisitado
+
+Segunda passada da `revisor-auditor`, agora em modo *verificação de implementação*: toda a
+árvore de commits do EPIC-1 ao EPIC-5 foi lida linha a linha, cruzada com testes/benchmarks
+existentes e, para os kernels AVX2, **revalidada de forma independente regenerando e
+reinspecionando `target/dsp_hotpath.asm`** — não apenas confiando nas mensagens de commit.
+
+### Veredito por épico
+
+| Épico                     | Veredito                                                                             | Evidência                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EPIC-1 (F-P1,P3,P4,P5,P6) | ✅ **Implementado corretamente, bit-exact confirmado**                               | asm regenerado: 0 spills de acumulador em `WaveNetLayer<1,16,3>` (era 25-30% dos ciclos); `vminps` do tanh agora aparece em pares intercalados (era 1 instrução a 10-13%, hoje maior valor isolado é 3,6-5,2%); kernels const-generic `fused_gemm_residual_batch_f32_const::<16,16>`/`<8,8>` aparecem no perfil real (não é código morto); sem cadeias `leaq` nos hot-spots do GEMM residual                                        |
+| EPIC-2 (F-P2)             | 🟡 **Implementado parcialmente — meta original não atingida, gap bem diagnosticado** | Lite CH12: 65,0 µs → **52,2 µs** (dashboard atual, −19,7%), mas meta era ≤ 38 µs. µs/MMAC = 6043,98 vs 2407,55 do Standard (2,5× menos eficiente por MAC). Causa-raiz corretamente identificada pela própria equipe (cache-line splits por stride de 12 floats) com solução seguinte já apontada (pad-to-16 em todos os tensores) mas **não implementada** — ver **F-A2**                                                           |
+| EPIC-3 (F-L1,L2)          | ✅ **Implementado corretamente**                                                     | `madvise` dividido em 2 chamadas independentes; `PR_THP_DISABLE_EXCEPT_ADVISED` com fallback automático por `errno==EINVAL`; `HugePageStatus::Transparent` agora condicionado ao `collapse_rc==0` real. Ressalva menor de higiene de teste — ver **F-A3**                                                                                                                                                                           |
+| EPIC-4 (F-L3)             | ✅ **Implementado corretamente, além do escopo mínimo pedido**                       | Migrou para instrumentação BOLT (mais precisa, sem depender de LBR/perf_event_paranoid); aplica BOLT a standalone **e** ao `.so` do CLAP; `CARGO_PROFILE_DIST_STRIP=false` + `strip` manual pós-BOLT (resolve a contradição com `strip=true` do profile `dist` que eu mesmo não havia detalhado explicitamente); `-hugify` habilitado coerentemente após o fix de THP do EPIC-3; quantum de profiling casado com produção (`-b 64`) |
+| EPIC-5 (F-S1,S2)          | 🟡 **F-S1 correto; F-S2 com bug de semântica**                                       | F-S1: decisão NO-GO bem fundamentada e documentada, com instrumentação real (`pw_stream::time()`) para verificação empírica contínua — abordagem exemplar de "medir antes de construir". F-S2: `clap.tail` **implementado com o valor errado** — ver **F-A1** (crítico para a intenção original do finding)                                                                                                                         |
+
+### Ganhos medidos vs. estimados (honestidade de calibração)
+
+| SKU                   | Baseline (findings original) | Medido agora (`docs/quality-contract.txt`) | Estimativa original                                                       | Realidade                                                                                                                                                                                                                                 |
+| --------------------- | ---------------------------- | ------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WaveNet Standard CH16 | 42,7 µs                      | **37,0 µs (−13,3%)**                       | −20…30% (→ ~30-32 µs)                                                     | Ganho real, abaixo da estimativa otimista, mas F-P1 sozinho já eliminou 100% dos spills medidos — o restante do gap para 30 µs provavelmente está nos custos de tap-gathering escalar (`vmovss`) não cobertos por nenhum finding original |
+| WaveNet Feather CH8   | 26,7 µs                      | 19,4 µs (−27,3%)                           | Ganho por arrasto (F-P5 aplicado; F-P1 não se aplica, kernel já saudável) | Superou a expectativa qualitativa — bom                                                                                                                                                                                                   |
+| WaveNet Lite CH12     | 65,0 µs                      | **52,2 µs (−19,7%)**                       | −40…50% (→ ≤ 38 µs)                                                       | Abaixo da meta — ver F-A2                                                                                                                                                                                                                 |
+| WaveNet Nano CH4      | 21,7 µs                      | 17,2 µs (−20,7%)                           | Ganho por arrasto                                                         | Bom                                                                                                                                                                                                                                       |
+
+---
+
+## NOVOS FINDINGS (da reverificação de 2026-07-19)
+
+### F-A1 — BUG: `clap.tail` reporta o valor errado — usa `current_latency` (delay fixo) em vez da duração real da cauda do CabSim 🔴 CRÍTICO
+
+**Onde:** `src/clap/extensions/tail.rs:15-22`.
+
+```rust
+fn get(&self) -> TailLength {
+    TailLength::Finite(self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed))
+}
+```
+
+**O problema:** `current_latency` (calculado em `src/clap/processor/events.rs:83-88`) é:
+
+```rust
+let mut effective_latency = self.resampler.latency_samples(host_rate);
+effective_latency += self.os_l.latency_samples() as u32;
+// + conv.latency_samples()  (== partition_size da UPOLS, tipicamente 64-512 amostras)
+```
+
+Isso é o **delay fixo de processamento** (o mesmo valor já reportado por `clap.latency`,
+`src/clap/extensions/latency.rs:18`) — **não** é a duração de "ring-out" após o input silenciar.
+Para CabSim com IR de cabine real (centenas de ms a poucos segundos), a cauda verdadeira é
+aproximadamente `ConvEngine::num_partitions() × partition_size` (o comprimento total do IR
+particionado, já exposto publicamente via `num_partitions()` em `src/dsp/cabsim/conv.rs:199-201`),
+que pode ser **50-100× maior** que o `partition_size` isolado.
+
+**Consequência prática:** exatamente o problema que o finding original (F-S2) queria resolver
+permanece sem solução — um host conservador que confia em `clap.tail` para decidir quando
+parar de processar/cortar o áudio no bounce vai **cortar a cauda da reverberação do cabinet**
+porque o valor reportado é ordens de magnitude menor que o real. Pior: como o valor é idêntico
+ao de `clap.latency`, um host que já lida bem com latência ganha zero informação adicional —
+a extensão está, na prática, um no-op mais custoso.
+
+**Proposta de solução:**
+
+```rust
+fn get(&self) -> TailLength {
+    let base = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
+    let cabsim_tail = self
+        .cabsim_engine_ref() // acessor existente ou novo, leitura Relaxed de um AtomicU32
+        .map(|conv| (conv.num_partitions() * conv.partition_size()) as u32)
+        .unwrap_or(0);
+    TailLength::Finite(base + cabsim_tail)
+}
+```
+
+Publicar `cabsim_tail_samples` como um `AtomicU32` no mesmo local de `current_latency`
+(`src/clap/plugin/shared.rs:137`), atualizado no mesmo ponto onde o CabSim é hot-swapped
+(`src/standalone/pw_host/rt_callback/cabsim_swap.rs` e equivalente CLAP) — **não** ler o
+`ConvEngine` diretamente na main-thread para evitar data race com a troca RT do IR.
+
+**Teste que falta (nenhum existe hoje):** teste de integração que carrega um IR longo (ex.:
+`tests/fixtures/*.wav` de vários segundos), consulta `PluginTailImpl::get()` via
+`clack-host`/harness de teste do CLAP, e afirma que o valor retornado é
+`>= ir_samples * 0.9` (tolerância de arredondamento de partição) — não apenas `> 0`.
+
+**Validação:** novo teste de integração (acima) + `clap-validator` (não cobre semântica de
+valor, apenas presença da extensão) + inspeção manual em uma DAW real (Reaper/Bitwig) com
+bounce de um sinal com silêncio final e CabSim ativo, confirmando que a cauda não é cortada.
+
+---
+
+### F-A2 — WaveNet Lite: meta de eficiência (≤ 38 µs / paridade de µs-por-MMAC com o Standard) não atingida — causa-raiz mapeada, solução pad-to-16 completo pendente 🟠 ALTO
+
+**Onde:** `src/models/wavenet/conv_input.rs`, `src/models/wavenet/layer.rs`,
+`src/models/wavenet/conv1d_dual.rs` (buffers internos ainda dimensionados para CH=12 nativo,
+não CH=16 com padding).
+
+**Estado atual (medido, `docs/quality-contract.txt:87-90`):** Lite CH12 = **52,2 µs**
+(6043,98 µs/MMAC) vs Standard CH16 = **37,0 µs** (2407,55 µs/MMAC) — **2,51× menos eficiente
+por MAC**, apesar do EPIC-2 já ter entregue uma melhoria real de −19,7% (65,0→52,2 µs) via
+padding dos **pesos** da convolução para o layout 16-wide (T2.S3.1) e um kernel dedicado
+`fused_gemm_residual_batch_f32_12x12` para a projeção 1×1.
+
+**Causa-raiz (já diagnosticada e documentada pela própria equipe em EPIC-2/T2.S4.2, linha 520
+deste documento):** os **demais tensores internos** (buffers de estado da camada, scratch de
+mixin/conv, ring buffers de dilatação) continuam dimensionados nativamente para 12 canais —
+um stride não-potência-de-2 que gera cache-line splits frequentes toda vez que a CPU acessa
+essas estruturas, mesmo com os pesos já no layout 16-wide. Ou seja: **o kernel de compute foi
+corrigido (F-P1/F-P2 nos pesos), mas o layout de memória ao redor dele não** — o gargalo
+migrou de "register spill" (resolvido) para "cache-line split por desalinhamento estrutural"
+(não resolvido).
+
+**Proposta de solução — pad-to-16 estrutural completo:**
+
+1. Redimensionar `WaveNetLayer<COND, 12, K>`'s buffers internos (`scratch_mixin`,
+   `scratch_conv`, estado de dilatação em `conv1d_dual.rs`) para `16` de facto, com as 4
+   lanes extras permanentemente zeradas e **nunca lidas para produzir a saída** (a saída
+   continua sendo as primeiras 12 lanes — já é o padrão usado pelo store 8+4 do T2.S3.3).
+2. Isso alinha *todos* os acessos de memória do Lite ao mesmo stride de 16 floats (64 bytes
+   = 1 cache-line) do Standard, eliminando os cache-line splits identificados.
+3. Custo de memória: +33% nos buffers de estado do Lite (kilobytes, não relevante para
+   L1/L2/L3 em nenhum SKU do catálogo).
+4. **Risco de paridade:** as 4 lanes de padding devem ser garantidamente zero em todo o
+   ciclo de vida (inicialização, reset, hot-swap) — um teste de fuzzing/proptest dedicado
+   (similar ao já existente para `T2.S3.2`, `layout.rs`) deve cobrir "lane de padding nunca
+   vira NaN/Inf/subnormal ao longo de N blocos consecutivos" para blindar contra UB sutil.
+
+**Meta realista revisada:** com pad-to-16 completo, a expectativa é aproximar (não
+necessariamente igualar) a eficiência do Standard, já que o Lite ainda paga overhead de
+loop/setup proporcionalmente maior (menos trabalho por chamada). Meta sugerida: **≤ 42 µs**
+(µs/MMAC ≤ 3000, redução do gap de 2,51× para ≤ 1,25×) — mais realista que o ≤ 38 µs original,
+que implicitamente assumia paridade perfeita de eficiência com o Standard.
+
+**Validação:** golden EVH-5150-Lite (ESR deve permanecer em 1e-12, já confirmado bit-exato
+até aqui em T2.S4.1), `inference_bench`, `regression_gate`, novo teste de padding-zero acima,
+`utils/quality-dashboard.sh` com a coluna µs/MMAC (F-L4) como critério de aceite explícito.
+
+---
+
+### F-A3 — Teste `test_prctl_thp_except_advised_no_crash` modifica estado global do processo sem isolamento 🟢 BAIXO (higiene de teste)
+
+**Onde:** `tests/models/thp_coherence.rs:86-117`.
+
+**Problema:** o teste chama `prctl(PR_SET_THP_DISABLE, 1, PR_THP_DISABLE_EXCEPT_ADVISED, 0, 0)`
+e, ao final, **incondicionalmente** chama `prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0)` (linha 116) —
+desabilitando THP **completamente para todo o processo de teste**, não apenas revertendo ao
+estado anterior. `libtest` executa testes como threads dentro do mesmo processo por padrão;
+qualquer teste que rode concorrentemente ou depois deste no mesmo binário (incluindo
+`test_thp_coherence_smaps_consistency`, que **depende** de THP estar potencialmente ativo)
+pode observar um estado de THP diferente do que teria sem este teste ter rodado antes/junto.
+
+**Proposta de solução:** ler o estado original via `PR_GET_THP_DISABLE` antes de qualquer
+`PR_SET_THP_DISABLE`, e restaurar exatamente esse valor no `Drop`/final do teste (ou usar
+`#[serial]` do crate `serial_test`, já que ambos os testes deste arquivo tocam estado
+process-wide, combinado com a leitura/restauração do valor original).
+
+**Validação:** `cargo test --test thp_coherence -- --test-threads=1` deve produzir o mesmo
+resultado que a suíte completa em paralelo (hoje pode não produzir, por ordem de execução).
+
+---
+
+### F-A4 — WaveNet Feather CH8: eficiência por MAC pior que o Standard, dashboard já sinaliza (guarda-corpo funcionando) — investigar oportunamente 🟢 BAIXO
+
+**Onde:** `src/models/wavenet/conv1d_dual.rs` (branch 8-wide), evidenciado pela própria
+métrica nova do **F-L4**: `docs/quality-contract.txt:88` mostra Feather CH8 em
+**5046,88 µs/MMAC** vs 2407,55 do Standard (2,1× pior).
+
+**Análise:** a reinspeção do `dsp_hotpath.asm` para `WaveNetLayer<1,8,3>` confirma que **não
+há spills de acumulador** (diferente do que motivou F-P1/F-P2) — o custo aqui é dominado por
+`vmovss` escalares (tap-gathering elemento-a-elemento para os buffers `flat_taps`) e overhead
+fixo de loop/setup (`xorl`, `jbe`), proporcionalmente maior porque o Feather processa menos
+trabalho por chamada. Isto é estruturalmente similar ao caso do Nano (CH4, 17947,92 µs/MMAC),
+onde o overhead fixo é aceitável porque a latência absoluta já é pequena (19,4 µs / 17,2 µs).
+
+**Recomendação:** **não atacar agora** — nenhum SKU do catálogo com Feather/Nano está perto do
+budget RT (Folga > 96% em todos), e o ganho absoluto de otimizar o tap-gathering escalar seria
+de poucos µs. Registrado aqui apenas para constar que o guarda-corpo `µs/MMAC` do F-L4 está
+funcionando exatamente como projetado — cumpriu seu propósito de auditoria contínua nesta
+própria reverificação. Revisitar somente se, no futuro, o `partition_size`/bloco RT diminuir
+(ex.: buffers de 32 amostras) e o overhead fixo passar a pesar proporcionalmente mais.
+
+---
+
+## EPIC-6 — Fechamento da reverificação: correção de semântica e continuidade dos gaps abertos 🔴
+
+> Findings desta segunda auditoria: **F-A1** (crítico, bug real de comportamento no host),
+> **F-A2** (continuação do EPIC-2, meta revisada), **F-A3** (higiene de teste), **F-A4**
+> (nenhuma ação — apenas registro).
+
+Ordem recomendada:
+
+1. **F-A1 primeiro e isolado** — é uma correção de bug com risco de regressão comportamental
+   em produção (hosts que já confiam no valor atual de `clap.tail`, mesmo que errado, podem
+   reagir à mudança de valor — testar em pelo menos 2 hosts CLAP reais antes de mesclar).
+   Gate: novo teste de integração com IR longo (proposto em F-A1) + `clap-validator` +
+   verificação manual em DAW.
+2. **F-A3** (trivial, pode entrar na mesma PR de qualquer outra tarefa de teste).
+3. **F-A2** — maior escopo, mexe em layout de memória interno do Lite. Seguir o mesmo rigor de
+   gate do EPIC-2 original (goldens bit-exact, dashboard completo, teste de padding-zero
+   dedicado). Não é urgente (Lite já está dentro do budget RT com folga de 96,1%) — é uma
+   questão de qualidade de engenharia/consistência, não de correção funcional.
+4. **F-A4** — sem ação; apenas manter no radar via o próprio dashboard (F-L4).
+
+---
+
+*Gerado pela auditoria `revisor-auditor`/`pesquisador-inovador` de 2026-07-17, reverificado em
+2026-07-19. Nenhuma linha de código de produção foi alterada nesta reverificação (apenas
+leitura, regeneração de `dsp_hotpath.asm` para inspeção, e este documento). `TODO-sprints.md`
+será atualizado com o EPIC-6 quando solicitado.
 solicitado.*

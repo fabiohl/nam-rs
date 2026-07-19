@@ -1686,3 +1686,593 @@ Relação custo-benefício do `pw_filter`:
 
 *Criado por `planejador-arquiteto` em 2026-07-19. Baseado na auditoria registrada em
 [`TODO-findings.md`](./TODO-findings.md) (EPIC-5, linha 530 e findings F-S1, linha 400; F-S2, linha 437).*
+
+---
+---
+
+## EPIC-6 — Fechamento da reverificação: correção de semântica e continuidade dos gaps abertos 🔴
+
+> **Referência principal:** [`TODO-findings.md`](./TODO-findings.md) — EPIC-6 (linha 740) e
+> findings **F-A1** (bug crítico de semântica em `clap.tail`), **F-A2** (meta de eficiência do
+> Lite não atingida — pad-to-16 estrutural completo), **F-A3** (higiene de teste do THP),
+> **F-A4** (sem ação — monitorado pelo dashboard).
+>
+> **Contexto:** Auditoria de reverificação de 2026-07-19 — toda a árvore de commits
+> EPIC-1..EPIC-5 foi relida linha a linha. EPIC-1, EPIC-3, EPIC-4 confirmados ✅. EPIC-2 e
+> EPIC-5 com ressalvas documentadas (F-A2 e F-A1, respectivamente). Este épico fecha as dívidas
+> técnicas abertas.
+>
+> **Gerado por:** `planejador-arquiteto` em 2026-07-19.
+
+---
+
+## Princípios de Execução do EPIC-6
+
+| #   | Princípio                                                                                                                                                                                             |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Sequência isolada para F-A1:** Sprint S1 (bug crítico) deve entrar em PR separada e ser aprovada antes de qualquer outra tarefa do épico.                                                           |
+| 2   | **Gate mínimo por tarefa:** `utils/lints.sh` → `utils/tests-quick.sh` → gate específico da tarefa (ver cada tarefa).                                                                                  |
+| 3   | **Invariante de fidelidade:** qualquer desvio de ESR/SNR no `quality-dashboard` = parar e investigar. Golden bit-exact obrigatório para F-A2.                                                         |
+| 4   | **RT-Safety para F-A1:** o novo `cabsim_tail_samples: AtomicU32` é escrito **apenas** pela thread de áudio (via `process_block` em `events.rs`) e lido pela main-thread — seguindo o padrão `RtToUi`. |
+| 5   | **Dashboard permanente:** a coluna µs/MMAC (F-L4) deve permanecer no contrato para todos os épicos futuros. F-A2 usa essa coluna como critério de aceite explícito.                                   |
+| 6   | **F-A4 monitorado, não atacado:** o dashboard já sinaliza o outlier de Feather/Nano — nenhum código de produção deve ser alterado para F-A4 neste épico.                                              |
+
+---
+
+## Sprint S1 — Bug: `clap.tail` reporta valor errado (F-A1) 🔴 CRÍTICO
+
+> **Finding:** [F-A1](./TODO-findings.md#L587) — `PluginTailImpl::get()` retorna
+> `current_latency` (= `partition_size`, latência fixa do UPOLS) em vez de
+> `num_partitions × partition_size` (duração real da cauda do IR). Para IRs de 1–3 s, o erro
+> é de 50–100×, tornando a extensão um no-op em relação ao propósito original.
+>
+> **Risco:** 🔴 Alto — é uma correção de comportamento visível para DAWs (valor de `clap.tail`
+> muda). Hosts que confiam no valor atual (errado, mas presente) podem reagir à mudança de valor.
+> Testar manualmente em pelo menos 2 hosts CLAP reais antes de mesclar.
+>
+> **Estimativa:** 1–2 dias de engenharia.
+
+### T6.S1.1 — Adicionar `cabsim_tail_samples: AtomicU32` em `RtToUi`
+
+**Responsável:** Engenheiro Sênior Rust / CLAP
+**Arquivo:** [`src/clap/plugin/shared.rs`](./src/clap/plugin/shared.rs)
+
+**Contexto técnico:**
+
+O padrão RT-safe estabelecido pelo projeto para comunicação Audio→Main é via atômicos no
+`RtToUi` (`#[repr(align(128))]`). O valor `num_partitions * partition_size` é conhecido na
+thread de áudio imediatamente após o `cold_load_cabsim` em `events.rs:184`, e deve ser
+publicado como `AtomicU32` para leitura lock-free na main-thread (em `tail.rs`). **Nunca** ler
+`conv_engine` diretamente da main-thread — data race com a troca RT do IR.
+
+**Implementação:**
+
+      ```rust
+      // Em RtToUi (src/clap/plugin/shared.rs, campo novo após `current_latency`):
+      /// CabSim tail length in samples (= num_partitions × partition_size).
+      /// Written by the audio thread after each IR swap; read by the main thread
+      /// via `clap.tail`. Zero when no IR is loaded (passthrough mode).
+      pub cabsim_tail_samples: AtomicU32,
+      ```
+
+- [ ] Adicionar campo `cabsim_tail_samples: AtomicU32` em `RtToUi` logo após `current_latency`
+      ([`shared.rs:137`](./src/clap/plugin/shared.rs)).
+- [ ] Inicializar para `AtomicU32::new(0)` nos dois locais de construção do `RtToUi`:
+  - [`src/clap/plugin/mod.rs:75`](./src/clap/plugin/mod.rs) (inicialização normal do plugin)
+  - [`src/clap/plugin/shared_test.rs:23`](./src/clap/plugin/shared_test.rs) (harness de testes)
+- [ ] Atualizar o doc-comment do struct `RtToUi` documentando o invariante de escrita
+      exclusivamente pela thread de áudio.
+
+**Gate T6.S1.1:**
+
+      ```bash
+      cargo check --features clap-plugin
+      utils/lints.sh
+      ```
+
+---
+
+### T6.S1.2 — Atualizar `cabsim_tail_samples` no ponto de troca do CabSim
+
+**Responsável:** Engenheiro Sênior Rust / CLAP
+**Arquivo:** [`src/clap/processor/events.rs`](./src/clap/processor/events.rs)
+
+**Contexto técnico:**
+
+O único ponto onde o `conv_engine` da thread RT é substituído é `cold_load_cabsim`
+([`events.rs:184-188`](./src/clap/processor/events.rs)). Imediatamente após o `mem::replace`,
+a thread de áudio já possui a nova `ConvEngine` e pode calcular o tail sem nenhum risco de
+data race.
+
+**Implementação:**
+
+      ```rust
+      #[cold]
+      #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+      fn cold_load_cabsim(&mut self, engine: Option<Box<ConvEngine>>) {
+      if let Some(old_engine) = std::mem::replace(&mut self.conv_engine, engine) {
+            self.push_to_gc(GcItem::CabConvEngine(old_engine));
+      }
+      // Publish the new tail length so the main-thread's tail extension reads correctly.
+      // num_partitions() × partition_size() = total IR duration in samples (ring-out).
+      // Zero when passthrough (no IR loaded).
+      let cabsim_tail = self
+            .conv_engine
+            .as_deref()
+            .map(|conv| (conv.num_partitions() * conv.latency_samples()) as u32)
+            .unwrap_or(0);
+      self.shared
+            .rt_to_ui
+            .cabsim_tail_samples
+            .store(cabsim_tail, Ordering::Relaxed);
+      }
+      ```
+
+- [ ] Modificar `cold_load_cabsim` em [`events.rs:184-188`](./src/clap/processor/events.rs)
+      para calcular e publicar `cabsim_tail_samples` conforme o pseudocódigo acima.
+- [ ] Verificar que `conv.latency_samples()` retorna `partition_size` (já confirmado em
+      [`conv.rs:203-207`](./src/dsp/cabsim/conv.rs)) — usar este método em vez de acessar
+      `partition_size` diretamente para preservar o encapsulamento.
+- [ ] Manter a invariante: `cabsim_tail = 0` quando `conv_engine.is_none()` (IR não carregado).
+- [ ] **Não remover** o campo `conv.latency_samples()` do cálculo de `effective_latency` em
+      `process_block` [`events.rs:87-89`](./src/clap/processor/events.rs) — esse valor
+      (latência fixa de processamento, = `partition_size`) continua correto para `clap.latency`.
+
+**Gate T6.S1.2:**
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      cargo check --features clap-plugin
+      ```
+
+---
+
+### T6.S1.3 — Corrigir `tail.rs`: ler `cabsim_tail_samples` em vez de `current_latency`
+
+**Responsável:** Engenheiro Rust / CLAP
+**Arquivo:** [`src/clap/extensions/tail.rs`](./src/clap/extensions/tail.rs)
+
+**Contexto técnico:**
+
+O `PluginTailImpl::get()` atual ([`tail.rs:19-21`](./src/clap/extensions/tail.rs)) retorna
+`TailLength::Finite(current_latency)` — idêntico ao que `clap.latency` reporta. O fix é
+somar `current_latency` (latência de processamento fixa — resampler + UPOLS) ao
+`cabsim_tail_samples` (duração real do ring-out do IR).
+
+**Implementação:**
+
+      ```rust
+      fn get(&self) -> TailLength {
+      let base = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
+      let cabsim_tail = self
+            .shared
+            .rt_to_ui
+            .cabsim_tail_samples
+            .load(Ordering::Relaxed);
+      TailLength::Finite(base + cabsim_tail)
+      }
+      ```
+
+> **Nota de semântica CLAP:** a especificação de `clap.tail` define a duração como o tempo
+> *adicional* que o host deve processar após o input silenciar para capturar o ring-out
+> completo — inclui, portanto, tanto a latência fixa quanto a cauda do IR. `base + cabsim_tail`
+> é a soma correta.
+
+- [ ] Substituir o corpo de `get()` pelo código acima.
+- [ ] Atualizar o doc-comment da função — remover a afirmação incorreta de que `current_latency`
+      inclui as contribuições de CabSim.
+- [ ] Verificar que `NamPluginTail` (alias de tipo em linha 25) permanece inalterado.
+
+**Gate T6.S1.3:**
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      cargo check --features clap-plugin
+      utils/build-release.sh  # confirmar que clap-validator passa com o novo valor
+      ```
+
+---
+
+### T6.S1.4 — Notificação `tail.changed()` na housekeeping quando `cabsim_tail_samples` muda
+
+**Responsável:** Engenheiro Rust / CLAP
+**Arquivo:** [`src/clap/plugin/main_thread/housekeeping.rs`](./src/clap/plugin/main_thread/housekeeping.rs)
+
+**Contexto técnico:**
+
+O loop de housekeeping já monitora `current_latency` e chama `latency_ext.changed()`
+([`housekeeping.rs:341-351`](./src/clap/plugin/main_thread/housekeeping.rs)). O mesmo padrão
+deve ser adotado para `cabsim_tail_samples`: poll do atômico → se mudou → `tail_ext.changed()`.
+
+      ```rust
+      // Ao final de `on_main_thread`, após o bloco de latência (linha ~351):
+
+      // Tail Monitoring: notify the host when the CabSim tail length changes.
+      let cabsim_tail = self
+      .shared
+      .rt_to_ui
+      .cabsim_tail_samples
+      .load(Ordering::Relaxed);
+      if cabsim_tail != self.last_reported_cabsim_tail {
+      self.last_reported_cabsim_tail = cabsim_tail;
+      if let Some(tail_ext) = self
+            .host
+            .get_extension::<clack_extensions::tail::HostTail>()
+      {
+            tail_ext.changed(&mut self.host);
+      }
+      }
+      ```
+
+- [ ] Adicionar campo `last_reported_cabsim_tail: u32` na struct `NamClapMainThread`
+      (`src/clap/plugin/main_thread/mod.rs` — verificar onde está a struct).
+- [ ] Inicializar `last_reported_cabsim_tail: 0` no construtor (junto de `last_reported_latency`).
+- [ ] Adicionar o bloco de tail-monitoring em `on_main_thread` conforme o pseudocódigo acima,
+      imediatamente após o bloco de latência existente.
+- [ ] Verificar que o `use` para `HostTail` já está importado ou adicioná-lo.
+- [ ] **Remover** o código existente em `events.rs:96-98` que chama `tail_ext.changed()` da
+      thread de áudio — a notificação passa a ser responsabilidade exclusiva da main-thread via
+      housekeeping (seguindo o padrão de `latency_ext.changed()`).
+
+**Gate T6.S1.4:**
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      cargo check --features clap-plugin
+      ```
+
+---
+
+### T6.S1.5 — Teste de integração: `clap.tail` ≥ 90% do comprimento real do IR
+
+**Responsável:** Engenheiro de QA / Rust
+**Arquivo:** `tests/clap/tail_semantics.rs` [NOVO]
+
+**Contexto técnico:**
+
+Nenhum teste existente verifica o *valor* retornado por `PluginTailImpl::get()` em relação ao
+comprimento real do IR carregado — apenas a presença da extensão é coberta pelo `clap-validator`.
+Este teste fecha o gap.
+
+**Implementação:**
+
+      ```rust
+      // tests/clap/tail_semantics.rs
+      // Carrega um IR longo (ex: tests/fixtures/ — verificar fixtures disponíveis ou usar
+      // um IR sintético gerado no próprio teste via Vec<f32> de impulse breve + longa cauda).
+      // Verifica:
+      //   1. Sem IR: tail_ext.get() == Finite(base_latency) onde base_latency > 0
+      //   2. Com IR de N amostras: tail_ext.get() >= Finite(ir_samples * 0.9)
+      //      (tolerância de arredondamento de partição — `num_partitions` pode arredondar para cima)
+      //   3. Após remover IR (cabsim bypass): tail_ext.get() == Finite(base_latency)
+      ```
+
+- [ ] Criar `tests/clap/tail_semantics.rs` com SPDX/copyright.
+- [ ] Usar o harness de testes CLAP existente (`src/clap/test_util.rs`) para instanciar o plugin.
+- [ ] Gerar um IR sintético no teste (ex.: vetor de `ir_len = 48000` amostras — 1s @48kHz —
+      com impulso na posição 0 e zeros no restante), para independência de arquivos externos.
+- [ ] Carregar o IR, aguardar o `cold_load_cabsim` ser executado pela thread de áudio
+      (via `process_block` com evento `CLAP_EVENT_PARAM_VALUE` ou equivalente no harness).
+- [ ] Afirmar que `PluginTailImpl::get()` retorna `TailLength::Finite(v)` com
+      `v >= ir_len * 9 / 10` (tolerância 10%, arredondamento de partição).
+- [ ] Adicionar ao módulo `tests/clap/mod.rs` (ou criar se inexistente).
+
+**Gate T6.S1.5:**
+
+      ```bash
+      utils/lints.sh
+      cargo test --test clap -- tail_semantics
+      utils/tests-quick.sh
+      ```
+
+---
+
+### T6.S1.6 — Gate final do Sprint S1: validação em hosts reais
+
+**Responsável:** Engenheiro de QA / músico de referência
+**Arquivos:** N/A (validação manual)
+
+- [ ] Compilar `utils/build-release.sh` para gerar `nam-rs.clap` com as correções.
+- [ ] Validar com `clap-validator`: confirmar presença e valor coerente da extensão `tail`.
+- [ ] Carregar `nam-rs.clap` em **Reaper**: configurar uma faixa com CabSim ativo (IR de ~1s),
+      realizar um bounce offline, confirmar que a cauda do CabSim não é cortada no arquivo final.
+- [ ] Repetir em **Bitwig** (ou outro host CLAP disponível).
+- [ ] Registrar os resultados na PR como evidência de aceite.
+
+**Gate T6.S1.6:**
+
+      ```bash
+      utils/build-release.sh
+      # Inspeção manual em Reaper e/ou Bitwig conforme descrito
+      utils/quality-dashboard.sh --check docs/quality-contract.txt
+      ```
+
+---
+
+## Sprint S2 — Higiene de teste: isolamento de estado global em `thp_coherence` (F-A3) 🟢
+
+> **Finding:** [F-A3](./TODO-findings.md#L696) — `test_prctl_thp_except_advised_no_crash`
+> desabilita THP globalmente (`PR_SET_THP_DISABLE, 1, 0`) no teardown sem restaurar o estado
+> anterior, afetando testes concorrentes que dependem de THP ativo.
+>
+> **Risco:** 🟢 Muito baixo — trivial, não afeta código de produção.
+>
+> **Estimativa:** 0,5 dia de engenharia.
+>
+> **Pode entrar em qualquer PR** — recomenda-se anexar à PR de S1 para minimizar overhead de review.
+
+### T6.S2.1 — Restaurar estado original do THP no teardown do teste
+
+**Responsável:** Engenheiro Rust (qualquer)
+**Arquivo:** [`tests/models/thp_coherence.rs`](./tests/models/thp_coherence.rs)
+
+**Contexto técnico:**
+
+O teste atual ([`thp_coherence.rs:86-117`](./tests/models/thp_coherence.rs)) faz:
+
+1. `prctl(PR_SET_THP_DISABLE, 1, PR_THP_DISABLE_EXCEPT_ADVISED, 0, 0)` — habilita modo moderno.
+2. No cleanup (linha 116): `prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0)` — desabilita THP *completamente*,
+   independente do estado que estava antes.
+
+O problema: outros testes que rodam após este no mesmo processo binário de teste (em paralelo ou
+sequencialmente) herdam o THP globalmente desabilitado — alterando o ambiente de execução de
+`test_thp_coherence_smaps_consistency`.
+
+**Implementação:**
+
+      ```rust
+      // No início do teste, antes de qualquer prctl:
+      let original_thp_state = unsafe { libc::prctl(libc::PR_GET_THP_DISABLE, 0, 0, 0, 0) };
+      // ... corpo do teste ...
+      // No teardown (defer/on drop):
+      unsafe {
+      // Restaura exatamente o valor lido antes — 0 = THP habilitado, 1 = desabilitado.
+      libc::prctl(libc::PR_SET_THP_DISABLE, original_thp_state as libc::c_ulong, 0, 0, 0);
+      }
+      ```
+
+Adicionalmente: decorar ambos os testes deste arquivo com `#[serial]` do crate `serial_test`
+(já verificar se é dependência de dev existente — se não, adicionar ao `[dev-dependencies]` em
+`Cargo.toml`) para garantir que nunca rodem simultaneamente, independente do scheduler do libtest.
+
+- [ ] Ler o estado original via `PR_GET_THP_DISABLE` no início de `test_prctl_thp_except_advised_no_crash`.
+- [ ] Restaurar o estado original no final do teste (usar um guard RAII ou simplesmente ao final
+      do corpo, antes do `return` — sem panic path aqui pois o teste é `#[should_panic]`-free).
+- [ ] Verificar se o crate `serial_test` já está em `[dev-dependencies]`. Se não, adicioná-lo.
+- [ ] Decorar `test_prctl_thp_except_advised_no_crash` e `test_thp_coherence_smaps_consistency`
+      com `#[serial]`.
+
+**Gate T6.S2.1:**
+
+      ```bash
+      utils/lints.sh
+      # Verificar que a ordem de execução não afeta os resultados:
+      cargo test --test models -- thp_coherence --test-threads=4
+      cargo test --test models -- thp_coherence --test-threads=1
+      # Ambos os comandos devem produzir o mesmo resultado (0 failures).
+      utils/tests-quick.sh
+      ```
+
+---
+
+## Sprint S3 — WaveNet Lite: pad-to-16 estrutural completo (F-A2) 🟠 ALTO
+
+> **Finding:** [F-A2](./TODO-findings.md#L648) — WaveNet Lite CH12 está em 52,2 µs
+> (6043,98 µs/MMAC) vs meta de ≤ 38 µs (≤ 3000 µs/MMAC). Causa-raiz: buffers internos de
+> estado da camada (scratch, ring buffers de dilatação) ainda dimensionados com stride de 12
+> floats — cache-line splits frequentes mesmo com pesos já no layout 16-wide.
+>
+> **Pré-requisito:** Sprint S1 e S2 concluídas. F-A2 tem escopo maior, mexe em layout de
+> memória interno — seguir rigor de gate do EPIC-2 original.
+>
+> **Risco:** 🟡 Médio — impacta layout de memória interno; bit-exact obrigatório.
+> Meta revisada: ≤ 42 µs (µs/MMAC ≤ 3000), mais realista que ≤ 38 µs original.
+>
+> **Estimativa:** 3–5 dias de engenharia.
+
+### T6.S3.1 — Análise e inventário: todos os buffers internos dimensionados para CH=12
+
+**Responsável:** Engenheiro Sênior DSP/Rust
+**Arquivos de leitura (sem modificação de produção nesta tarefa):**
+
+- [`src/models/wavenet/conv1d_dual.rs`](./src/models/wavenet/conv1d_dual.rs)
+- [`src/models/wavenet/layer.rs`](./src/models/wavenet/layer.rs)
+- [`src/models/wavenet/conv_input.rs`](./src/models/wavenet/conv_input.rs)
+
+**Objetivo:**
+
+Mapear exaustivamente *todos* os campos/buffers/vetores internos de `WaveNetLayer<COND, 12, K>`
+que ainda usam stride nativo de 12 floats, em contraposição aos que já foram promovidos a 16
+(pesos, via EPIC-2). Documentar cada um com: nome do campo, dimensões atuais vs. dimensões
+alvo (16-wide), impacto de memória e risco de paridade.
+
+**Checklist de inventário esperado (a confirmar/expandir pela análise):**
+
+- [ ] `scratch_mixin`: dimensão atual × stride atual → dimensão alvo.
+- [ ] `scratch_conv` (se existir campo separado): idem.
+- [ ] Ring buffers de dilatação em `conv1d_dual.rs` (estado de dilated convolution para CH=12).
+- [ ] Buffers de saída intermediários em `conv_input.rs` (se houver stride de 12 não corrigido).
+- [ ] Quaisquer outros buffers com `ch=12` como constante literal em vez de `CH_PADDED=16`.
+
+**Artefato de saída:** comentário de análise na PR documentando o inventário completo, o plano
+de dimensionamento, e a prova de que as 4 lanes de padding (índices 12..15) são inicializadas
+em zero e nunca lidas para produzir a saída (análogo à invariante `T2.S1.1` do EPIC-2).
+
+**Gate T6.S3.1:**
+
+      ```bash
+      cargo check  # sem modificação de produção — apenas garantir que o código compila
+      ```
+
+---
+
+### T6.S3.2 — Redimensionar buffers internos para CH=16 com padding permanente
+
+**Responsável:** Engenheiro Sênior DSP/Rust
+**Arquivos:**
+
+- [`src/models/wavenet/conv1d_dual.rs`](./src/models/wavenet/conv1d_dual.rs)
+- [`src/models/wavenet/layer.rs`](./src/models/wavenet/layer.rs) (se aplicável)
+- [`src/models/wavenet/conv_input.rs`](./src/models/wavenet/conv_input.rs) (se aplicável)
+
+**Contexto técnico:**
+
+Seguindo o inventário de T6.S3.1, redimensionar cada buffer identificado de `CH=12` para
+`CH_PADDED=16`:
+
+- As 4 lanes extras (índices 12..15) devem ser **garantidamente zero** em toda a vida útil do
+  buffer: inicialização (`Default::default()` ou `AlignedVec::new(n * 16)` zerada), reset de
+  estado (hot-swap, `reset_state()`), e preservadas por todos os caminhos de escrita.
+- A **saída** continua sendo apenas as primeiras 12 lanes — nenhum consumidor externo das 12
+  saídas reais é alterado (o `store_16_accums` com `out_n=12` já lidava corretamente com isso,
+  confirmado em EPIC-2/T2.S3.1).
+
+**Invariante de paridade:**
+
+- O resultado numérico das 12 lanes reais deve ser **bit-exact** — as lanes de padding nunca
+  participam de FMAs que afetam as lanes reais.
+- A abordagem é estritamente análoga ao `select_interleave_width(12)→16` do EPIC-2: o stride
+  externo passa a ser 16 floats em vez de 12, com zeros nas posições 12..15.
+
+- [ ] Redimensionar cada buffer identificado em T6.S3.1 de `[f32; 12]` / `Vec<f32>(n*12)` para
+      `[f32; 16]` / `Vec<f32>(n*16)` (ou `AlignedVec<f32>` de tamanho 16-múltiplo).
+- [ ] Garantir que todos os paths de inicialização e reset zerificam os índices 12..15.
+- [ ] Atualizar loops de leitura para usar stride 16 onde aplicável (alinhando com o stride dos
+      pesos já promovidos em EPIC-2).
+- [ ] Não alterar nenhuma saída — o número de canais reais permanece 12.
+
+**Gate T6.S3.2:**
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh  # goldens EVH-5150-Lite devem passar bit-exact (ESR ≤ 1e-12)
+      cargo bench --bench inference_bench -- wavenet_lite
+      cargo bench --bench regression_gate -- RT_WaveNet_Lite_CH12
+      ```
+
+---
+
+### T6.S3.3 — Teste de proptest/fuzzing: lanes de padding nunca viram NaN/Inf/subnormal
+
+**Responsável:** Engenheiro de QA / Rust
+**Arquivo:** Adicionar ao módulo de testes existente do WaveNet Lite (integração ou inline)
+
+**Contexto técnico:**
+
+Análogo ao `T2.S3.2` do EPIC-2 (teste de padding-zero do layout de pesos), este teste cobre
+o estado interno: após N blocos consecutivos de inferência com entradas aleatórias, as lanes
+de padding dos buffers internos devem permanecer em `0.0` — sem NaN, Inf ou subnormal que
+pudesse vazar para a saída em um bug futuro.
+
+      ```rust
+      // Proptest: para N em 1..=1024 blocos, input aleatório em [-1.0, 1.0]:
+      // Afirmar que, para cada buffer interno redimensionado, buf[12], buf[13], buf[14], buf[15]
+      // == 0.0 (exato, sem tolerância) após cada bloco.
+      ```
+
+- [ ] Identificar quais buffers são acessíveis para inspeção no pós-bloco (talvez exija
+      expor um accessor `#[cfg(test)]` nos buffers internos de `WaveNetLayer`).
+- [ ] Implementar proptest ou teste determinístico (N=100 blocos, seed fixo) verificando
+      a invariante de zero nas lanes de padding.
+- [ ] Marcar o teste como `#[ignore]` se for lento (>1s) — executado via `tests-long.sh`.
+
+**Gate T6.S3.3:**
+
+      ```bash
+      utils/lints.sh
+      cargo test -- wavenet_lite_padding_lanes  # teste inline ou de integração
+      utils/tests-quick.sh
+      ```
+
+---
+
+### T6.S3.4 — Validação de performance e aceite da meta revisada
+
+**Responsável:** Engenheiro de QA / Performance
+**Arquivos:** N/A (scripts de validação)
+
+**Meta revisada (F-A2):** WaveNet Lite CH12 **≤ 42 µs** (µs/MMAC ≤ 3000), com ESR ≤ 1e-12
+(bit-exact sem re-baseline). A coluna `µs/MMAC` do dashboard (F-L4) é o critério de aceite
+explícito — deve sair de 6043,98 para ≤ 3000.
+
+- [ ] Executar `utils/quality-dashboard.sh --check docs/quality-contract.txt` e confirmar que
+      o Lite CH12 sai do estado de outlier >2× mediana.
+- [ ] Executar `utils/tests-performance-regression.sh` — comparar antes/depois.
+- [ ] Registrar os valores medidos de µs e µs/MMAC no corpo da PR como evidência.
+- [ ] Se o resultado estiver entre 42–52 µs (sem atingir a meta), investigar antes de fechar —
+      verificar com `perf stat` se ainda há cache-line splits residuais.
+- [ ] Atualizar `docs/quality-contract.txt` com `--save` se a latência do Lite melhorar
+      (re-baseline planejado — ESR bit-exact não muda).
+
+**Gate T6.S3.4:**
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      utils/quality-dashboard.sh --check docs/quality-contract.txt
+      utils/tests-performance-regression.sh
+      # Critério de aceite: Lite CH12 ≤ 42 µs, µs/MMAC ≤ 3000, ESR ≤ 1e-12
+      ```
+
+---
+
+## Gate Final do EPIC-6
+
+Após S3 aprovado, executar o gate completo do épico:
+
+      ```bash
+      # 1. Linting e verificações estáticas
+      utils/lints.sh
+
+      # 2. Testes rápidos (goldens bit-exact obrigatórios)
+      utils/tests-quick.sh
+
+      # 3. Benchmarks dirigidos
+      cargo bench --bench inference_bench -- wavenet_lite wavenet_standard
+      cargo bench --bench regression_gate
+
+      # 4. Contrato de qualidade integral
+      utils/quality-dashboard.sh --check docs/quality-contract.txt
+      # Esperado: Lite CH12 ≤ 42 µs (era 52,2 µs), µs/MMAC ≤ 3000 (era 6043,98), ESR inalterado
+
+      # 5. Regressão de performance
+      utils/tests-performance-regression.sh
+
+      # 6. Validação do plugin CLAP (incluindo semântica de tail)
+      utils/build-release.sh
+      cargo test --test clap -- tail_semantics
+      ```
+
+**Critérios de aceite do EPIC-6:**
+
+- `clap.tail` reporta `base_latency + num_partitions × partition_size` — confirmado por teste de integração e inspeção manual em 2 hosts DAW.
+- `test_prctl_thp_except_advised_no_crash` não altera estado global de testes irmãos.
+- WaveNet Lite CH12 ≤ 42 µs, µs/MMAC ≤ 3000, ESR ≤ 1e-12 (sem re-baseline de fidelidade).
+- Todos os contratos de qualidade existentes mantidos — **sem regressão** nos EPICs anteriores.
+
+---
+
+## Tabela-resumo de Tarefas EPIC-6
+
+| Sprint | Tarefa                                                 | Finding | Arquivo(s)                                    | Risco | Bit-exact | Gate                         |
+| ------ | ------------------------------------------------------ | ------- | --------------------------------------------- | ----- | --------- | ---------------------------- |
+| S1     | T6.S1.1 — Adicionar `cabsim_tail_samples` em `RtToUi`  | F-A1    | `shared.rs`                                   | 🟢    | N/A       | cargo check + lints          |
+| S1     | T6.S1.2 — Publicar tail em `cold_load_cabsim`          | F-A1    | `events.rs`                                   | 🟡    | N/A       | lints + tests-quick          |
+| S1     | T6.S1.3 — Corrigir `tail.rs` para ler atômico correto  | F-A1    | `tail.rs`                                     | 🟡    | N/A       | lints + build-release        |
+| S1     | T6.S1.4 — `tail.changed()` na housekeeping             | F-A1    | `housekeeping.rs`                             | 🟢    | N/A       | lints + tests-quick          |
+| S1     | T6.S1.5 — Teste de integração do valor de `clap.tail`  | F-A1    | `tests/clap/tail_semantics.rs` [NOVO]         | 🟢    | N/A       | cargo test + tests-quick     |
+| S1     | T6.S1.6 — Validação manual em hosts reais              | F-A1    | N/A                                           | 🟡    | N/A       | Reaper + Bitwig + build      |
+| S2     | T6.S2.1 — Restaurar estado THP no teardown             | F-A3    | `tests/models/thp_coherence.rs`               | 🟢    | N/A       | cargo test + tests-quick     |
+| S3     | T6.S3.1 — Inventário de buffers internos CH=12         | F-A2    | `conv1d_dual.rs`, `layer.rs`, `conv_input.rs` | 🟢    | ✅        | cargo check (só análise)     |
+| S3     | T6.S3.2 — Redimensionar buffers para CH=16 com padding | F-A2    | `conv1d_dual.rs`, `layer.rs`, `conv_input.rs` | 🟡    | ✅        | goldens + bench + quality    |
+| S3     | T6.S3.3 — Proptest: padding lanes = 0 após N blocos    | F-A2    | inline ou `tests/` (WaveNet Lite)             | 🟢    | N/A       | cargo test (ignore se lento) |
+| S3     | T6.S3.4 — Validação de performance e aceite da meta    | F-A2    | N/A (scripts)                                 | 🟢    | ✅        | quality-dashboard + regr.    |
+
+---
+
+*Criado por `planejador-arquiteto` em 2026-07-19. Baseado na auditoria de reverificação
+registrada em [`TODO-findings.md`](./TODO-findings.md) (EPIC-6, linha 740 e findings F-A1,
+linha 587; F-A2, linha 648; F-A3, linha 696; F-A4, linha 718 — sem ação).*
