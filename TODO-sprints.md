@@ -1292,7 +1292,7 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 >
 > **Estimativa:** 1 dia.
 
-### T4.S1.1 — Suporte a carregamento dinâmico via `NAM_CLAP_SO_PATH`
+### T4.S1.1 — Suporte a carregamento dinâmico via `NAM_CLAP_SO_PATH` [DONE]
 
 **Responsável:** Engenheiro de Sistemas
 **Arquivos:**

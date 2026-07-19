@@ -57,6 +57,30 @@ pub fn make_test_plugin() -> (PluginEntry, HostInfo, PluginInstance<TestHost>) {
     (entry, host_info, instance)
 }
 
+/// Creates a fully initialized CLAP plugin entry, host info, and instance
+/// by loading the plugin dynamically from a shared library (`.so`) at `so_path`.
+///
+/// Uses [`PluginEntry::load`] under the hood, which is inherently unsafe
+/// because it executes code from an external dynamic library.
+pub fn make_test_plugin_dynamic(
+    so_path: &std::path::Path,
+) -> (PluginEntry, HostInfo, PluginInstance<TestHost>) {
+    let entry = unsafe { PluginEntry::load(so_path) }.expect("Failed to load PluginEntry from .so");
+
+    let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+    let instance = PluginInstance::<TestHost>::new(
+        |_| TestHostShared,
+        |_| (),
+        &entry,
+        c"br.eti.fabiolima.nam-rs",
+        &host_info,
+    )
+    .expect("Failed to instantiate plugin");
+
+    (entry, host_info, instance)
+}
+
 // ── Default NamPluginParams ──
 
 /// Creates `NamPluginParams` with test-friendly defaults (all zeros/off)

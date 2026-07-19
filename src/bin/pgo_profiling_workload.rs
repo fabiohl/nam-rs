@@ -89,7 +89,17 @@ fn profile_clap_model(
     sample_rate: f64,
     model_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
+    let so_path = std::env::var("NAM_CLAP_SO_PATH").ok();
+    let (_entry, _host_info, mut plugin_instance) = match so_path {
+        Some(ref path) => {
+            log::info!("🔌 Profiling CLAP dynamically from .so: {}", path);
+            test_util::make_test_plugin_dynamic(Path::new(path))
+        }
+        None => {
+            log::info!("🔌 Profiling CLAP statically (compiled-in plugin)");
+            test_util::make_test_plugin()
+        }
+    };
 
     // Serialize model path into the plugin's state and restore it
     let params = test_util::make_default_params(Some(model_path.to_path_buf()));
