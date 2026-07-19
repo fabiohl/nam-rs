@@ -12,6 +12,7 @@ pub mod remote_controls;
 pub mod render;
 pub mod state;
 pub mod state_context;
+pub mod tail;
 pub mod track_info;
 
 #[cfg(feature = "clap-plugin")]

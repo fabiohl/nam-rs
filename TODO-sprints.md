@@ -1572,7 +1572,7 @@ Relação custo-benefício do `pw_filter`:
 
 ---
 
-### T5.S2.2 — Implementar `PluginTail` para `NamClapMainThread`
+### T5.S2.2 — Implementar `PluginTail` para `NamClapMainThread` [DONE]
 
 **Responsável:** Engenheiro de Sistemas / CLAP
 **Arquivos:** [`src/clap/extensions/tail.rs`]([NEW] [tail.rs](file:///home/fabio/nam-rs/src/clap/extensions/tail.rs)), [`src/clap/extensions/mod.rs`](./src/clap/extensions/mod.rs)
