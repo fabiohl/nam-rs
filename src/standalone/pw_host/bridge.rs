@@ -16,8 +16,8 @@ use crate::dsp::pipeline::{BridgeBuffer, BridgeRef, DspBridge, MAX_BRIDGE_BUF};
 /// The buffer is aligned to 128 bytes (`repr(align(128))`) to avoid false-sharing
 /// between the two RT callbacks.
 ///
-/// Applies `madvise(MADV_DONTFORK | MADV_DONTDUMP)` to avoid Copy-on-Write
-/// overhead on forks and to exclude the buffers from core dumps.
+/// Applies `madvise(MADV_DONTFORK)` and `madvise(MADV_DONTDUMP)` separately to
+/// avoid Copy-on-Write overhead on forks and to exclude the buffers from core dumps.
 pub fn allocate_dsp_bridge() -> BridgeRef {
     let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
         buffers: [
@@ -41,21 +41,25 @@ pub fn allocate_dsp_bridge() -> BridgeRef {
 
     // SAFETY: `bridge` points to a valid `DspBridge` allocation produced
     // by `Box::leak` immediately above — the pointer and size are correct.
-    // `MADV_DONTFORK | MADV_DONTDUMP` are advisory hints; they cannot
-    // corrupt memory, crash, or invalidate the allocation. The kernel may
-    // ignore the hint on older versions (pre-4.4 for DONTFORK, pre-3.4 for
-    // DONTDUMP), which is benign.
-    let ret = unsafe {
-        libc::madvise(
-            bridge as *const DspBridge as *mut libc::c_void,
-            std::mem::size_of::<DspBridge>(),
-            libc::MADV_DONTFORK | libc::MADV_DONTDUMP,
-        )
-    };
+    // `madvise` advice are NOT bitmask-combinable; each call is independent.
+    let bridge_void = bridge as *const DspBridge as *mut libc::c_void;
+    let bridge_size = std::mem::size_of::<DspBridge>();
+
+    let ret = unsafe { libc::madvise(bridge_void, bridge_size, libc::MADV_DONTFORK) };
     if ret != 0 {
         log::warn!(
-            "madvise(MADV_DONTFORK|MADV_DONTDUMP) returned {} (errno: {}). \
-             Buffers may be included in forks/core-dumps.",
+            "madvise(MADV_DONTFORK) returned {} (errno: {}). \
+             Buffer may be included in forks.",
+            ret,
+            std::io::Error::last_os_error()
+        );
+    }
+
+    let ret = unsafe { libc::madvise(bridge_void, bridge_size, libc::MADV_DONTDUMP) };
+    if ret != 0 {
+        log::warn!(
+            "madvise(MADV_DONTDUMP) returned {} (errno: {}). \
+             Buffer may be included in core-dumps.",
             ret,
             std::io::Error::last_os_error()
         );

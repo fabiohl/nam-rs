@@ -1129,12 +1129,12 @@ de 12 canais).
 **Responsável:** Engenheiro de Sistemas
 **Arquivo:** [`src/standalone/pw_host/bridge.rs`](./src/standalone/pw_host/bridge.rs)
 
-- [ ] Separar a chamada `libc::madvise` em duas execuções sequenciais distintas:
+- [x] Separar a chamada `libc::madvise` em duas execuções sequenciais distintas:
   - Primeira com `libc::MADV_DONTFORK`
   - Segunda com `libc::MADV_DONTDUMP`
-- [ ] Verificar individualmente o retorno de ambas as chamadas.
-- [ ] Atualizar o tratamento de erro e logs de warning para registrar especificamente qual advice falhou.
-- [ ] Validar que nenhum warn de madvise inválido aparece na execução local pós-correção.
+- [x] Verificar individualmente o retorno de ambas as chamadas.
+- [x] Atualizar o tratamento de erro e logs de warning para registrar especificamente qual advice falhou.
+- [x] Validar que nenhum warn de madvise inválido aparece na execução local pós-correção.
 
 **Gate T3.S1.1:**
 
