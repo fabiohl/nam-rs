@@ -232,6 +232,20 @@ pub fn setup_capture_stream<'c>(
                 &rt_status_for_process,
             );
 
+            if (state.frame_count.wrapping_sub(1) & 0x3F) == 0
+                && let Ok(pw_time) = stream.time()
+            {
+                rt_status_for_process
+                    .capture_pw_now
+                    .store(pw_time.now(), Ordering::Relaxed);
+                rt_status_for_process
+                    .capture_pw_ticks
+                    .store(pw_time.ticks(), Ordering::Relaxed);
+                rt_status_for_process
+                    .capture_pw_delay
+                    .store(pw_time.delay(), Ordering::Relaxed);
+            }
+
             if (state.frame_count.wrapping_sub(1) & 0xF) == 0 {
                 let elapsed_nanos = rt_status_for_process.dsp_cycle_time.load(Ordering::Relaxed);
                 if elapsed_nanos > 0 {

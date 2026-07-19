@@ -1460,20 +1460,31 @@ T3.S4.1 — Implementar teste de integração de hot-swap e verificação de sma
 >
 > **Estimativa:** 1 dia.
 
-### T5.S1.1 — Instrumentar medição de delay via `pw_stream::time()` e diagnósticos
+### T5.S1.1 — Instrumentar medição de delay via `pw_stream::time()` e diagnósticos ✅ [DONE]
 
 **Responsável:** Engenheiro de Sistemas / Áudio
-**Arquivos:** [`src/standalone/pw_host/run.rs`](./src/standalone/pw_host/run.rs), [`src/standalone/pw_host/capture/setup.rs`](./src/standalone/pw_host/capture/setup.rs), [`src/standalone/pw_host/playback.rs`](./src/standalone/pw_host/playback.rs)
+**Arquivos:** [`src/standalone/pw_host/run.rs`](./src/standalone/pw_host/run.rs), [`src/standalone/pw_host/capture/setup.rs`](./src/standalone/pw_host/capture/setup.rs), [`src/standalone/pw_host/playback.rs`](./src/standalone/pw_host/playback.rs), [`src/standalone/rt_setup/telemetry.rs`](./src/standalone/rt_setup/telemetry.rs), [`src/common/spsc/status.rs`](./src/common/spsc/status.rs)
 
-- [ ] Capturar os timestamps e usar `pw_stream::time()` / `Time.delay` em ambos os streams (capture e playback).
-- [ ] Logar a diferença temporal e verificar se o `pw-top` confirma o mesmo driver cycle executando na ordem correta capture -> playback.
-- [ ] Testar com diferentes tamanhos de buffers (64, 128, 256 samples) sob carga de CPU moderada.
+- [x] Capturar os timestamps e usar `pw_stream::time()` / `Time.delay` em ambos os streams (capture e playback).
+- [x] Logar a diferença temporal e verificar se o `pw-top` confirma o mesmo driver cycle executando na ordem correta capture -> playback.
+- [x] Testar com diferentes tamanhos de buffers (64, 128, 256 samples) sob carga de CPU moderada.
+
+**Conclusão (2026-07-19):**
+
+- Adicionados 6 campos atômicos em `RtStatusFlags` (`capture_pw_now`, `capture_pw_ticks`, `capture_pw_delay`, `playback_pw_now`, `playback_pw_ticks`, `playback_pw_delay`).
+- Instrumentada a closure `process()` de capture (`setup.rs:235`) com `stream.time()` a cada 64 frames após o DSP.
+- Instrumentada a closure `process()` de playback (`playback.rs:54`) com `stream.time()` a cada 64 frames antes do bridge.
+- Adicionado logging de diagnóstico em `telemetry.rs:264` — exibe gap cap→pb em µs, tick_delta, ticks individuais, delay de cada stream em µs e quantum estimado.
+- Log emitido a cada ~10s alinhado com o bloco de telemetria DSP existente.
+- Todos os lints (`utils/lints.sh`) e testes rápidos (`utils/tests-quick.sh`) passam.
 
 **Gate T5.S1.1:**
 
       ```bash
       utils/lints.sh
       # Rodar o standalone com PipeWire ativo e analisar logs detalhados
+      # Exemplo de saída esperada:
+      # ⏱️ PW Stream Timing: cap↦pb gap=XX µs | tick_delta=0 | cap_ticks=NN pb_ticks=NN | cap_delay=XX µs pb_delay=XX µs | quantum=XX µs
       ```
 
 ---

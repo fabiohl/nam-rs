@@ -270,6 +270,53 @@ pub fn poll_rt_status(
                 total_calls
             );
             rt_status.latency_hist.reset();
+
+            let cap_ticks = rt_status.capture_pw_ticks.load(Ordering::Relaxed);
+            let pb_ticks = rt_status.playback_pw_ticks.load(Ordering::Relaxed);
+            let cap_now = rt_status.capture_pw_now.load(Ordering::Relaxed);
+            let pb_now = rt_status.playback_pw_now.load(Ordering::Relaxed);
+            let cap_delay = rt_status.capture_pw_delay.load(Ordering::Relaxed);
+            let pb_delay = rt_status.playback_pw_delay.load(Ordering::Relaxed);
+
+            if cap_ticks > 0 && pb_ticks > 0 {
+                let tick_delta = pb_ticks.wrapping_sub(cap_ticks);
+                let time_delta_us = if pb_now > 0 && cap_now > 0 && pb_now > cap_now {
+                    ((pb_now - cap_now) / 1000) as u64
+                } else {
+                    0
+                };
+
+                let rate = rt_status.active_rate.load(Ordering::Relaxed);
+                let samples = rt_status.last_n_samples.load(Ordering::Relaxed);
+                let quantum_us = if rate > 0 && samples > 0 {
+                    (samples as u64 * 1_000_000) / rate as u64
+                } else {
+                    0
+                };
+
+                let cap_delay_us = if rate > 0 {
+                    (cap_delay.max(0) as u64 * 1_000_000) / rate as u64
+                } else {
+                    0
+                };
+                let pb_delay_us = if rate > 0 {
+                    (pb_delay.max(0) as u64 * 1_000_000) / rate as u64
+                } else {
+                    0
+                };
+
+                log::info!(
+                    "{} PW Stream Timing: cap↦pb gap={} µs | tick_delta={} | cap_ticks={} pb_ticks={} | cap_delay={} µs pb_delay={} µs | quantum={} µs",
+                    "⏱️".bright_blue(),
+                    time_delta_us,
+                    tick_delta,
+                    cap_ticks,
+                    pb_ticks,
+                    cap_delay_us,
+                    pb_delay_us,
+                    quantum_us,
+                );
+            }
         }
 
         // 8. DEADLINE CHECK:

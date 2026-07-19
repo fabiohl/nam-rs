@@ -11,6 +11,7 @@ use crate::standalone::colors::Colorize;
 use pipewire as pw;
 use pw::properties::properties;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 /// Configures the playback stream and its RT listener.
 ///
@@ -45,10 +46,26 @@ pub fn setup_playback_stream<'c>(
     let playback_stream = pw::stream::StreamBox::new(core, "NAM-rs-Output", playback_props)?;
 
     let mut last_bridge_gen: u64 = 0;
+    let mut pb_frame_count: u32 = 0;
 
     let playback_listener = playback_stream
         .add_local_listener::<()>()
         .process(move |stream: &pw::stream::Stream, _info| {
+            if (pb_frame_count & 0x3F) == 0
+                && let Ok(pw_time) = stream.time()
+            {
+                rt_status_playback
+                    .playback_pw_now
+                    .store(pw_time.now(), Ordering::Relaxed);
+                rt_status_playback
+                    .playback_pw_ticks
+                    .store(pw_time.ticks(), Ordering::Relaxed);
+                rt_status_playback
+                    .playback_pw_delay
+                    .store(pw_time.delay(), Ordering::Relaxed);
+            }
+            pb_frame_count = pb_frame_count.wrapping_add(1);
+
             playback_dsp_cycle(
                 stream,
                 bridge_ptr_playback,

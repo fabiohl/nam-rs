@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
 /// Global flag for coordinated graceful shutdown across all threads.
 /// Set to `true` by the CTRL+C handler.
@@ -171,6 +171,19 @@ pub struct RtStatusFlags {
     /// returns `None` — PipeWire buffer miss on the output side.
     pub playback_miss: AtomicU32,
 
+    /// PipeWire `pw_time.now` from the last capture stream time() call (nanoseconds).
+    pub capture_pw_now: AtomicI64,
+    /// PipeWire `pw_time.ticks` from the last capture stream time() call.
+    pub capture_pw_ticks: AtomicU64,
+    /// PipeWire `pw_time.delay` from the last capture stream time() call (ticks).
+    pub capture_pw_delay: AtomicI64,
+    /// PipeWire `pw_time.now` from the last playback stream time() call (nanoseconds).
+    pub playback_pw_now: AtomicI64,
+    /// PipeWire `pw_time.ticks` from the last playback stream time() call.
+    pub playback_pw_ticks: AtomicU64,
+    /// PipeWire `pw_time.delay` from the last playback stream time() call (ticks).
+    pub playback_pw_delay: AtomicI64,
+
     /// errno from `pthread_setaffinity_np` (0 = success).
     pub rt_affinity_err: AtomicI32,
     /// errno from `pthread_setschedparam` (0 = success).
@@ -208,6 +221,12 @@ impl RtStatusFlags {
             requested_os_factor: AtomicU32::new(0),
             pw_buffer_miss: AtomicU32::new(0),
             playback_miss: AtomicU32::new(0),
+            capture_pw_now: AtomicI64::new(0),
+            capture_pw_ticks: AtomicU64::new(0),
+            capture_pw_delay: AtomicI64::new(0),
+            playback_pw_now: AtomicI64::new(0),
+            playback_pw_ticks: AtomicU64::new(0),
+            playback_pw_delay: AtomicI64::new(0),
             rt_affinity_err: AtomicI32::new(0),
             rt_sched_err: AtomicI32::new(0),
             rt_getsched_err: AtomicI32::new(0),
