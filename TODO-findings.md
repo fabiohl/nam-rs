@@ -499,6 +499,14 @@ caminho pad-to-16 para out_ch=12, layout de pesos com padding no loader, store 8
 Lite revalidados (bit-exact esperado; se divergir dentro do tier, decisão explícita de
 re-baseline com PO). Meta: Lite ≤ 38 µs.
 
+**Status da meta (T2.S4.2, 2026-07-19):** Após implementação do loader 16-wide (F-P1 + F-P2), o Lite CH12
+mediu **64,1 µs** (AMD Ryzen 7 5700U, AVX2, taskset -c 0). A latência caiu marginalmente de 65,0 → 64,1 µs
+(−1,4%), mas permanece **69% acima da meta de 38 µs**. Para referência, o Standard CH16 — rodando o mesmo
+kernel 16-wide — mede 36,7 µs, ou seja, o Lite com 12 canais está **1,75× mais lento que o Standard com 16
+canais**. Hipóteses para investigação futura: (a) custo do store 8+4 (duas instruções vs uma de 16), (b)
+overhead do padding no carregamento de pesos, (c) ineficiência de cache no padrão de acesso com stride
+irregular de 12 canais.
+
 ### EPIC-3 — Coerência de memória & kernel moderno 🟠
 
 > Findings: **F-L1** (madvise split — quick win, pode ser feito imediatamente) e **F-L2**
