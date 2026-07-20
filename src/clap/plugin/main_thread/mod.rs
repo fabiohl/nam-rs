@@ -39,6 +39,8 @@ pub struct NamClapMainThread<'a> {
     pub slimmable_tx: Producer<Option<Box<StaticModel>>>,
     /// Cached last latency reported to the host to avoid redundant notifications.
     pub last_reported_latency: u32,
+    /// Cached last CabSim tail length reported to the host to avoid redundant notifications.
+    pub last_reported_cabsim_tail: u32,
     /// Baseview window handle for GUI lifecycle control (embedded mode).
     #[cfg(feature = "clap-plugin")]
     pub window_handle: Option<baseview::WindowHandle>,

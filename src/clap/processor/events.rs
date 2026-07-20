@@ -8,7 +8,6 @@ use super::NamClapProcessor;
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
 use crate::models::StaticModel;
-use clack_extensions::tail::HostTail;
 use clack_plugin::prelude::OutputEvents;
 use std::sync::atomic::Ordering;
 
@@ -93,9 +92,6 @@ impl<'a> NamClapProcessor<'a> {
                 .rt_to_ui
                 .current_latency
                 .store(effective_latency, Ordering::Relaxed);
-            if let Some(tail_ext) = self.host.get_extension::<HostTail>() {
-                tail_ext.changed(&mut self.host);
-            }
         }
 
         // Honor render mode override: in offline mode, force adaptive compute to Off

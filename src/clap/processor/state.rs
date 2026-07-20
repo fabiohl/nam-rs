@@ -125,6 +125,10 @@ pub struct NamClapProcessor<'a> {
     pub(crate) last_render_mode: u32,
     /// Pre-resolved gain LUT reference, hoisted from process_events hot-path.
     pub(crate) gain_lut: &'static GainLUT,
-    /// Host audio processor handle, stored for tail-changed notifications on the audio thread.
+    /// Host audio processor handle, stored for host extension queries on the audio thread.
+    #[expect(
+        dead_code,
+        reason = "retained for future audio-thread host extension queries"
+    )]
     pub(crate) host: HostAudioProcessorHandle<'a>,
 }

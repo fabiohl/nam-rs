@@ -213,6 +213,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             gc_rx,
             slimmable_tx,
             last_reported_latency: 0,
+            last_reported_cabsim_tail: 0,
             #[cfg(feature = "clap-plugin")]
             window_handle: None,
             #[cfg(feature = "clap-plugin")]
