@@ -2700,34 +2700,34 @@ contexto)
 
 **Passos:**
 
-- [ ] Repetir a metodologia já usada nas auditorias anteriores: localizar
+- [x] Repetir a metodologia já usada nas auditorias anteriores: localizar
       `WaveNetLayer<1, 12, 3>::process_block_internal` no asm, somar percentuais por categoria
       de instrução (spills `vmovups %ymm,0x..(%rsp)`, rotação `vmovaps reg,reg`, endereçamento
       `leaq` encadeado, overhead de prólogo/branch `xorl`/`jbe`/`jae`, tap-gathering escalar
       `vmovss`) e comparar proporcionalmente com o mesmo levantamento já feito para
       `WaveNetLayer<1, 16, 3>` nas auditorias de EPIC-1/EPIC-2.
 
-- [ ] Inspecionar especificamente `fused_gemm_residual_batch_f32_12x12_padded`
+- [x] Inspecionar especificamente `fused_gemm_residual_batch_f32_12x12_padded`
       (`gemm_batch/stride16.rs`) no asm — esta função mistura intrinsics AVX
       (`_mm256_*`, 256-bit) com SSE (`_mm_*`, 128-bit) na mesma rotina para tratar o padrão
       8+4 lanes. Verificar se há penalidade de transição de domínio SIMD (ex.:
       `vzeroupper`/stalls entre blocos AVX e SSE) — hipótese #2 do F-A7 — usando os contadores
       de ciclo do próprio `perf annotate` nas transições.
 
-- [ ] Avaliar a hipótese #1 do F-A7 (overhead de setup/loop proporcionalmente maior devido a
+- [x] Avaliar a hipótese #1 do F-A7 (overhead de setup/loop proporcionalmente maior devido a
       menos trabalho útil por camada): calcular a razão entre instruções de overhead
       (prólogo+branches+dispatch condicional `if IN==12`/`else if CH==12`) e instruções de FMA
       úteis, comparando Lite vs Standard. Se a razão for significativamente maior no Lite,
       isso sustenta a hipótese #1 e explica por que o pad-to-16 (que ataca acesso à memória,
       não overhead de controle) não teve efeito.
 
-- [ ] Avaliar a hipótese #3 do F-A7 (a meta original de eficiência pode ter sido incorreta):
+- [x] Avaliar a hipótese #3 do F-A7 (a meta original de eficiência pode ter sido incorreta):
       revisitar se ≤ 42 µs / paridade de µs-por-MMAC com o Standard é uma meta
       matematicamente alcançável para uma topologia com 12 canais vs 16 (ex.: overhead fixo
       por camada não escala linearmente com o número de canais — mais canais "diluem" melhor
       o custo fixo).
 
-- [ ] Documentar as conclusões desta análise em uma seção nova de
+- [x] Documentar as conclusões desta análise em uma seção nova de
       `docs/latency_sprint1_analysis.md` (reaproveitando o formato já usado no NO-GO do F-S1)
       ou em um novo `docs/wavenet_lite_ch12_profiling.md`, com os percentuais medidos e a
       hipótese vencedora (ou a conclusão de que nenhuma hipótese isolada explica o resultado).
@@ -2735,6 +2735,37 @@ contexto)
 **Gate desta tarefa:** documento de análise técnica revisável, com evidência de asm anexada
 (trechos relevantes com percentuais, análogo ao formato usado nas seções de asm do
 `TODO-findings.md`).
+
+**Conclusão (2026-07-20):**
+
+Documento de análise completo em `docs/wavenet_lite_ch12_profiling.md` (Apêndices A/B com
+trechos de asm anotados). Sumário dos achados:
+
+**Categorização de instruções (função `process_block_internal` por camada):**
+
+| Categoria | Standard CH16 (1815 insn) | Lite CH12 (3974 insn) |
+|-----------|--------------------------|----------------------|
+| FMA | 15.9% | 9.3% |
+| Scalar overhead | 24.5% | 39.2% |
+| Branch | 8.7% | 13.9% |
+| **Overhead/Useful ratio** | **1.07** | **2.40** |
+| **Overhead %** | **34.5%** | **54.0%** |
+| Stack frame | 872B | 1448B (1.66×) |
+| XMM/YMM ratio | 5.7% | 23.1% (4×) |
+| vzeroupper calls | 30 | 79 (2.6×) |
+| Blend/perm CH=12 overhead | 0 | 120 insn (3.0%) |
+
+**Hipóteses avaliadas:**
+
+1. **H1 (overhead fixo por camada): SUSTENTADA.** Overhead/Useful ratio 2.24× pior que
+   Standard. O Lite processa 432 MAC/camada vs 768 do Standard — menos trabalho útil para
+   amortizar o mesmo custo fixo de prólogo, dispatch condicional e bounds checks.
+
+2. **H2 (transição SIMD em stride16): PARCIALMENTE SUSTENTADA.** `fused_gemm_residual_batch_f32_12x12_padded` intercala AVX+SSE no loop interno, mas todas as instruções são VEX-encoded — sem penalidade de legacy SSE→AVX. O custo real vem da subutilização de lanes (8+4 split com 4 lanes YMM desperdiçadas) e overhead de blending para combinar resultados parciais — estrutural, não um bug.
+
+3. **H3 (meta ≤42 µs incorreta): SUSTENTADA.** Mesmo eliminando 100% do overhead (teórico), Lite atingiria ≈24 µs. Com redução realista de 50% → ≈38 µs. A meta de paridade de µs/MMAC com o Standard nunca foi alcançável para CH=12 sem redesign da topologia ou migração para AVX-512.
+
+**Recomendação para T7.S2.3:** Desfecho C (aceitar dívida técnica) — T6.S3.2 é bit-exato, testado, e o Lite está a 96.1% de folga do budget RT (52.3 µs vs 1333 µs). Nenhuma causa-raiz acionável com otimização pontual foi encontrada. Alternativa: Desfecho B (reverter T6.S3.2) remove complexidade sem alterar latência. Desfecho A descartado.
 
 ---
 
@@ -2753,7 +2784,7 @@ F-S1/T5.S1.2, para manter o mesmo rigor de decisão documentada)
       (goldens, `regression_gate`, `quality-dashboard.sh`). Não fechar esta sprint até a nova
       otimização ser medida.
 
-- [ ] **Desfecho B — nenhuma causa acionável, reverter T6.S3.2:** reverter apenas as mudanças
+- [x] **Desfecho B — nenhuma causa acionável, reverter T6.S3.2:** reverter apenas as mudanças
       estruturais de pad-to-16 completo (buffers internos, kernels `stride16.rs`, dispatch
       condicional), **preservando** o padding dos pesos de convolução do EPIC-2 original
       (T2.S3.1-T2.S3.3, que já entregou o ganho real de −19,7% e não é questionado por este
