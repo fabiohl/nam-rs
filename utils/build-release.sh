@@ -302,6 +302,7 @@ if [ -n "$LLVM_BOLT" ]; then
         "tests/fixtures/models/lstm.nam" \
         "tests/fixtures/models/BossWN-standard.nam" \
         "tests/fixtures/models/BossWN-feather.nam" \
+        "tests/fixtures/models/BossWN-lite.nam" \
         "tests/fixtures/models/BossLSTM-1x16.nam"; do
         if [ -f "$candidate" ]; then
             STANDALONE_MODELS+=("$candidate")

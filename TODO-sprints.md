@@ -2593,7 +2593,7 @@ de restaurar corretamente o modo except-advised.
 
 **Gate desta tarefa:**
       ```bash
-      cargo test --test thp_coherence -- --test-threads=1
+      cargo test --test models thp_coherence --features testing -- --test-threads=1
       utils/lints.sh
       utils/tests-quick.sh
       ```
@@ -2610,7 +2610,7 @@ idêntico ao anterior (nenhuma regressão no caminho comum já validado pelo F-A
       utils/lints.sh
       utils/tests-quick.sh
       cargo test --lib dynamic_parity
-      cargo test --test thp_coherence -- --test-threads=1
+      cargo test --test models thp_coherence --features testing -- --test-threads=1
       ```
 
 **Critérios de aceite da Sprint S1:**
@@ -2641,7 +2641,7 @@ idêntico ao anterior (nenhuma regressão no caminho comum já validado pelo F-A
 > manter T6.S3.2 (ex.: por já estar testado e não haver urgência funcional — Lite está a 96,1%
 > de folga do budget RT) e apenas re-documentar a meta como dívida técnica aceita.
 
-### T7.S2.1 — Reperfilar o Lite CH12 especificamente (não apenas o Standard)
+### T7.S2.1 — Reperfilar o Lite CH12 especificamente (não apenas o Standard) [DONE]
 
 **Responsável:** Engenheiro Sênior de Performance/DSP
 **Arquivos:** `utils/build-release.sh` (apenas verificação, sem alteração funcional esperada),
@@ -2649,18 +2649,18 @@ idêntico ao anterior (nenhuma regressão no caminho comum já validado pelo F-A
 
 **Passos:**
 
-- [ ] Confirmar que `STANDALONE_MODELS` (array populado em `utils/build-release.sh:298-307`)
+- [x] Confirmar que `STANDALONE_MODELS` (array populado em `utils/build-release.sh:298-307`)
       inclui um modelo `.nam` do tipo WaveNet Lite (CH=12) com amostragem suficiente durante a
       fase de instrumentação BOLT — se o catálogo de perfilagem já inclui Lite (ver EPIC-4/
       F-L3, "workload multi-modelo"), apenas confirmar; se não, adicionar um fixture Lite ao
       array.
 
-- [ ] Executar `utils/build-release.sh` e, no `perf annotate` gerado, filtrar especificamente
+- [x] Executar `utils/build-release.sh` e, no `perf annotate` gerado, filtrar especificamente
       pela função `WaveNetLayer<1, 12, 3>::process_block_internal` — comparar percentual de
       amostras (deve ser proporcional ao tempo de wall-clock do Lite no workload de
       profiling; se estiver sub-representado, o perfil não é confiável para esta investigação).
 
-- [ ] Se a amostragem do Lite no `dsp_hotpath.asm` padrão for insuficiente, gerar uma rodada de
+- [x] Se a amostragem do Lite no `dsp_hotpath.asm` padrão for insuficiente, gerar uma rodada de
       `perf record` dedicada, isolando apenas o binário standalone rodando com um modelo Lite
       (`nam-rs -m <lite.nam> -b 64`), seguindo o mesmo procedimento de `perf annotate` já
       documentado no script.
@@ -2669,6 +2669,25 @@ idêntico ao anterior (nenhuma regressão no caminho comum já validado pelo F-A
 `target/dsp_hotpath_lite.asm`) contendo amostras suficientes (`perf annotate` reportando ≥
 100 amostras na função do Lite, análogo ao que já se tinha para o Standard/CH16 nas auditorias
 anteriores) para análise confiável na próxima tarefa.
+
+**Conclusão (2026-07-20):**
+
+- `BossWN-lite.nam` adicionado a `STANDALONE_MODELS` em `utils/build-release.sh:305`
+  (modelo WaveNet Lite CH12 com 6554 weights, 132KB).
+- `dsp_hotpath.asm` existente (pré-S2) tinha **zero** amostras do Lite — apenas CH16 Standard.
+- Rodada dedicada de `perf record` (sudo, -F 997, 12s com injeção de áudio senoidal via
+  `pw-play`) com binário `release` rebuilt (`strip="none"` para resolução de símbolos).
+- Artefato gerado: `target/dsp_hotpath_lite.asm` (353KB, 5673 linhas, 5 funções anotadas).
+- **Gate: 294 amostras (local period) em `WaveNetLayer<1,12,3>::process_block_internal`
+  (30.66% do workload total, 1029 amostras)** — bem acima do limiar de 100.
+- Hotspot breakdown do workload Lite:
+  - `WaveNetLayer<1,12,3>::process_block_internal` (Avx2Math) — 30.66% (294 samples)
+  - `fused_gemm_residual_batch_f32_avx2` (batched GEMM) — 25.54%
+  - `WaveNetLayer<1,6,3>::process_block_internal` (head layer, Avx2Math) — 23.19%
+  - `fused_gemm_residual_batch_f32_12x12_padded` (T6.S3.2 artifact) — **5.11%**
+  - `WaveNetModel<12,3,6>::process` (model top-level) — 2.36%
+- Nota para T7.S2.2: `fused_gemm_residual_batch_f32_12x12_padded` (5.11%) é o alvo primário
+  para a hipótese #2 do F-A7 (transição de domínio SIMD AVX/SSE em 8+4 lanes).
 
 ---
 
@@ -2790,7 +2809,7 @@ Após S1 e S2 aprovadas, executar o gate completo do épico:
       # 2. Testes rápidos (guardas restauradas)
       utils/tests-quick.sh
       cargo test --lib dynamic_parity
-      cargo test --test thp_coherence -- --test-threads=1
+      cargo test --test models thp_coherence --features testing -- --test-threads=1
 
       # 3. Contrato de qualidade integral (nenhuma mudança esperada em ESR vs NAMcore)
       utils/quality-dashboard.sh --check docs/quality-contract.txt
