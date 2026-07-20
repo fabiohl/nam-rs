@@ -5,11 +5,11 @@ name = "nam-rs"
 version = "3.0.0"
 edition = "2024"
 license = "Apache-2.0"
-readme = "README.md"
 repository = "https://github.com/fabiohl/nam-rs"
-description = "Neural Amp Modeler (NAM) client in Rust"
+description = "An opinionated, high-performance Neural Amp Modeler (NAM) client and core implementation in Rust for Linux/PipeWire and CLAP plugins."
+readme = "README.md"
 authors = ["Fábio Henrique de Lima Silva <fabio.henrique.lima.silva@gmail.com>"]
-keywords = ["audio", "dsp", "neural", "amp", "modeler"]
+keywords = ["audio", "dsp", "nam", "neural-amp-modeler", "guitar"]
 categories = [
     "multimedia::audio",
     "multimedia::audio::analysis",
@@ -180,3 +180,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 
 [lints.clippy]
 allow_attributes = "warn"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

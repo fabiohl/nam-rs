@@ -1,4 +1,4 @@
-theme: jekyll-theme-architect # Um tema limpo e focado em documentação técnica
+theme: jekyll-theme-architect
 title: nam-rs
-description: Neural Amp Modeler client implemented in Rust
-render_with_liquid: false # Impede que códigos Rust no README quebrem o build
+description: An opinionated, high-performance Neural Amp Modeler (NAM) client and core implementation in Rust for Linux/PipeWire and CLAP plugins.
+render_with_liquid: false
