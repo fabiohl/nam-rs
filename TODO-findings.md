@@ -737,7 +737,7 @@ própria reverificação. Revisitar somente se, no futuro, o `partition_size`/bl
 
 ---
 
-## EPIC-6 — Fechamento da reverificação: correção de semântica e continuidade dos gaps abertos 🔴
+## EPIC-6 — Fechamento da reverificação: correção de semântica e continuidade dos gaps abertos 🔴 [DONE]
 
 > Findings desta segunda auditoria: **F-A1** (crítico, bug real de comportamento no host),
 > **F-A2** (continuação do EPIC-2, meta revisada), **F-A3** (higiene de teste), **F-A4**
@@ -757,10 +757,293 @@ Ordem recomendada:
    questão de qualidade de engenharia/consistência, não de correção funcional.
 4. **F-A4** — sem ação; apenas manter no radar via o próprio dashboard (F-L4).
 
+**Status (2026-07-20):** EPIC-6 concluído. F-A1 e F-A3 implementados corretamente e
+verificados de forma independente nesta terceira passada de auditoria. F-A2 foi implementado
+com rigor técnico (mecanismo seguro, bem testado, bit-exact nas lanes reais), mas **não
+entregou o ganho de performance esperado** — ver **F-A6** e **F-A7** abaixo. Um efeito
+colateral não-intencional em uma guarda de fidelidade interna também foi identificado
+(**F-A6**) e um bug latente na própria correção do F-A3 (**F-A5**).
+
+---
+
+## TERCEIRA AUDITORIA DE REVERIFICAÇÃO (2026-07-20) — EPIC-6 revisitado
+
+Terceira passada da `revisor-auditor`, mesma metodologia rigorosa: leitura linha-a-linha de
+todos os commits do EPIC-6, verificação independente do mecanismo de padding-zero (não apenas
+o teste dedicado, mas a cadeia completa de alocação → dispatch → kernels padded → interface
+array1→array2), e cruzamento com o resultado do `utils/tests-performance-regression.sh`
+fornecido pelo usuário (não foi re-executado; usados exatamente os números fornecidos).
+
+### Veredito por finding do EPIC-6
+
+| Finding                        | Veredito                                                                 | Evidência                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-A1 (`clap.tail`)             | ✅ **Corrigido corretamente**                                            | `tail.rs` agora soma `current_latency + cabsim_tail_samples`; `cabsim_tail_samples` publicado em `cold_load_cabsim` (RT, cold-path, sem race com main-thread) como `num_partitions() × latency_samples()` (== comprimento real do IR particionado); `tail.changed()` corretamente movido para a main-thread (`housekeeping.rs`), removendo a chamada indevida da RT; teste de integração `tail_semantics` (T6.S1.5) cobre a asserção `>= 90% do IR` que eu havia proposto |
+| F-A2 (pad-to-16 completo)      | 🟡 **Mecanismo correto e seguro; meta de performance NÃO atingida**      | Ver análise detalhada abaixo + **F-A7**                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| F-A3 (isolamento de teste THP) | 🟡 **Corrigido, com bug latente novo introduzido pela própria correção** | `#[serial]` aplicado a ambos os testes; estado original lido via `PR_GET_THP_DISABLE` e restaurado — porém a restauração em si tem um bug de mapeamento bit→argumento. Ver **F-A5**                                                                                                                                                                                                                                                                                       |
+| F-A4                           | ✅ Sem ação necessária, confirmado ainda válido                          | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+
+### Verificação independente do mecanismo de padding (F-A2)
+
+Tracei manualmente a cadeia completa, não apenas o teste que a equipe escreveu:
+
+1. **Alocação:** `AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0f32)` em
+   `standard.rs:151-152` — zero-init explícito, `stride = effective_stride::<CH>() = 16` para
+   CH=12. ✅ Correto.
+2. **Interface crítica array1→array2** (o ponto que eu mais suspeitava de bug): `array1`
+   produz saída em stride 16 (12 canais válidos + 4 de padding); `array2.rechannel` é um
+   `DenseLayer<IN=12, CH=HEAD>` que, se lesse `array1_outputs` assumindo stride nativo de 12
+   floats/frame, corromperia silenciosamente a entrada a partir do 2º frame (todo frame N>0
+   seria lido do offset errado). Confirmei em `layer_array.rs:75-97` que existe um dispatch
+   explícito `if IN == 12 { gemv_with_bias_f32_avx2_padded(...) }` que lê `layer_inputs` no
+   stride correto (16) e escreve a saída de `array2` no stride nativo de `array2` (`HEAD`, que
+   para o Lite é 6 — não precisa de padding, `effective_stride::<6>() == 6`). **A interface
+   entre arrays está correta.**
+3. **Padding permanentemente zero:** as lanes 12-15 nunca são escritas por nenhum kernel
+   (`broadcast_scale_with_bias_f32_avx2_padded` usa `_mm256_maskstore_ps` para as lanes 8-11 e
+   nunca toca 12-15; `fused_gemm_residual_batch_f32_12x12_padded` só faz store de 8+4 lanes).
+   Combinado com o zero-init da alocação, a invariante é estruturalmente garantida — não
+   depende de sorte ou de nenhum código externo "lembrar" de zerar.
+4. **Teste dedicado** (`wavenet_lite_block_invariance.rs`, T6.S3.3): cobre 5 buffers
+   diferentes (`scratch_mixin`, `scratch_conv`, `layer_buffer`, `array_outputs`,
+   `head_accum`) por 100 blocos de tamanho aleatório + variante proptest (128 casos, até 64
+   blocos) — **mais rigoroso do que eu havia pedido** (eu pedia apenas "nunca NaN/Inf/
+   subnormal"; o teste verifica "exatamente 0.0", uma invariante mais forte e mais fácil de
+   depurar quando falha).
+
+**Conclusão desta parte:** o mecanismo do F-A2 está **corretamente implementado e
+adequadamente testado**. Nenhum bug de correção foi encontrado. O problema está em outro
+lugar — ver F-A7.
+
+---
+
+## NOVOS FINDINGS (da terceira reverificação, 2026-07-20)
+
+### F-A5 — Bug latente na correção do F-A3: restauração de THP mapeia incorretamente o bitmask de `PR_GET_THP_DISABLE` para os argumentos de `PR_SET_THP_DISABLE` 🟢 BAIXO
+
+**Onde:** `tests/models/thp_coherence.rs:97,120-127` (função
+`test_prctl_thp_except_advised_no_crash`, exatamente o teste que o F-A3 corrigiu).
+
+**O problema:** `PR_GET_THP_DISABLE` retorna um **bitmask de 2 bits** (0 = não especificado,
+1 = desabilitado classicamente, 3 = modo except-advised — conforme documentação do kernel
+citada na primeira auditoria). A restauração feita é:
+
+```rust
+let original_thp_state = unsafe { libc::prctl(PR_GET_THP_DISABLE, 0, 0, 0, 0) };
+// ... teste ...
+unsafe {
+    libc::prctl(PR_SET_THP_DISABLE, original_thp_state as libc::c_ulong, 0, 0, 0);
+}
+```
+
+Isso passa o bitmask completo (`0`, `1` ou `3`) como **arg2** de `PR_SET_THP_DISABLE` — mas
+arg2 é um booleano (0=habilitar, ≠0=desabilitar) e o **modo** (classic vs except-advised) é
+codificado em **arg3**, não em arg2. Se o estado original fosse `3` (except-advised já ativo
+antes do teste — por exemplo, se `configure_process_wide()` já tivesse rodado no processo),
+a restauração chamaria `prctl(PR_SET_THP_DISABLE, 3, 0, 0, 0)`, que reinterpreta `3` como
+"desabilitar" (arg2≠0) com arg3=0 (**modo classic**) — restaurando o processo para
+"completamente desabilitado" em vez de "except-advised", uma mudança de comportamento
+silenciosa e incorreta.
+
+**Por que é severidade baixa:** no binário de testes atual, nada mais chama
+`PR_SET_THP_DISABLE` com o modo except-advised antes deste teste rodar (o `main()` de
+produção não é exercitado pelo harness de testes), então `original_thp_state` é tipicamente
+`0` na prática — o bug é real mas dormente no cenário de teste atual. Ainda assim, é
+exatamente o tipo de bug que o próprio F-A3 foi criado para eliminar (estado global
+mal-restaurado), então vale a correção por rigor e para blindar contra mudanças futuras no
+harness de teste.
+
+**Proposta de solução:**
+
+```rust
+let (restore_flag, restore_mode): (i32, libc::c_ulong) = match original_thp_state {
+    0 => (0, 0),
+    1 => (1, 0),
+    3 => (1, PR_THP_DISABLE_EXCEPT_ADVISED),
+    other => {
+        eprintln!("Unexpected PR_GET_THP_DISABLE value {other}; defaulting to re-enable THP.");
+        (0, 0)
+    }
+};
+unsafe {
+    libc::prctl(PR_SET_THP_DISABLE, restore_flag, restore_mode, 0, 0);
+}
+```
+
+**Validação:** `cargo test --test thp_coherence -- --test-threads=1`; opcionalmente, um teste
+sintético que força `original_thp_state=3` via mock/injeção para exercitar o branch de
+restauração except-advised (ou aceitar cobertura apenas por inspeção, dado o baixo risco).
+
+**Nota do PO:** Aprovado para execução.
+
+---
+
+### F-A6 — T6.S3.2 afrouxou a tolerância de paridade estático-vs-dinâmico para TODOS os SKUs (16/8/4), não apenas para CH=12 que foi de fato alterado 🟠 ALTO (higiene de guarda de fidelidade)
+
+**Onde:** `src/models/wavenet/dynamic_parity_test.rs:371` (macro `parity_test!`, usada nas 4
+instanciações `test_dynamic_parity_{standard,lite,feather,nano}` nas linhas 380-383).
+
+**O problema:** o diff de `3637a340` mudou a tolerância da macro de `err < 1e-7` para
+`err < 1e-6` (10× mais permissivo) **de forma global** — mas a macro é compartilhada por
+CH=16 (Standard), CH=12 (Lite), CH=8 (Feather) e CH=4 (Nano), e **apenas o caminho CH=12
+teve qualquer alteração de kernel** nesta rodada (F-A2/T6.S3.2). Os caminhos CH=16/8/4 não
+mudaram uma linha de código de produção, mas agora têm sua guarda de paridade
+estático-vs-dinâmico 10× mais frouxa **sem justificativa** — uma regressão silenciosa da
+capacidade do teste de detectar divergência futura nesses três SKUs.
+
+**Nuance importante (para não soar mais grave do que é):** este teste compara o caminho
+**const-generic vs dinâmico internos do Rust** — não é o contrato de ESR vs NAMcore
+(`docs/quality-contract.txt`), que permanece intacto e até levemente melhor para o Lite
+(EVH-5150-Lite: 1.20e-12 → 7.87e-13, mesma categoria "IDENTICO"). Não há violação da regra
+"terminantemente proibida" de regressão de paridade com o NAMcore/fidelidade sonora. Ainda
+assim, é o tipo exato de afrouxamento amplo-demais que a política de "nenhuma regressão sem
+justificativa por linha" deveria capturar — e não foi parametrizado por SKU quando poderia
+(e deveria) ter sido.
+
+**Proposta de solução:** parametrizar a tolerância na macro por SKU, mantendo `1e-7` para os
+3 SKUs inalterados e `1e-6` apenas para CH=12 (documentando a causa: diferença de ordem de
+FMA entre o kernel stride-16 e o stride-12 legado, erro absoluto máximo observado 5.07e-7,
+sub-piso de ruído, ≈ -126 dBFS):
+
+```rust
+macro_rules! parity_test {
+    ($name:ident, $ch:expr, $k:expr, $head:expr, $tol:expr) => { /* ... usa $tol ... */ };
+}
+parity_test!(test_dynamic_parity_standard, 16, 3, 8, 1e-7);
+parity_test!(test_dynamic_parity_lite, 12, 3, 6, 1e-6); // pad-to-16: FMA order differs, ver F-A2
+parity_test!(test_dynamic_parity_feather, 8, 3, 4, 1e-7);
+parity_test!(test_dynamic_parity_nano, 4, 3, 2, 1e-7);
+```
+
+**Validação:** `cargo test dynamic_parity` — os 3 SKUs inalterados devem continuar passando
+com a tolerância original `1e-7` (nenhuma regressão esperada, já que nenhum kernel mudou para
+eles); apenas Lite usa a tolerância relaxada e documentada.
+
+**Nota do PO:** Aprovado para execução.
+
+---
+
+### F-A7 — F-A2/T6.S3.2 (pad-to-16 completo) não entregou ganho de performance mensurável — hipótese de causa-raiz ("cache-line split") refutada pelo próprio experimento 🟠 ALTO
+
+**Onde:** resultado medido em `docs/quality-contract.txt:89` e no
+`target/logs/regression-check.log` fornecido pelo usuário.
+
+**O fato:** antes de T6.S3.2 (apenas pesos padded, EPIC-2 original), Lite CH12 estava em
+**52,2 µs** (6043,98 µs/MMAC). Depois de T6.S3.2 (pad-to-16 estrutural completo em *todos* os
+buffers internos — scratch, layer_buffer, array_outputs, head_accum, mais os 3 novos kernels
+dedicados `stride16.rs`), o dashboard mostra **52,3 µs** (6056,71 µs/MMAC) — uma diferença de
++0,2%, dentro do ruído de medição, ou seja, **nenhum ganho real**. O `regression-check.log`
+fornecido pelo usuário confirma de forma independente: `RT_WaveNet_Lite_CH12` está em
+**52,065 µs** nesse run, e o próprio Criterion classifica a variação (`−1,05%`) como *"Change
+within noise threshold"* — nem regressão, nem melhoria.
+
+**Por que isto é significativo:** T6.S3.2 foi uma mudança grande e invasiva (537 linhas, 19
+arquivos, 3 novos módulos de kernel `stride16.rs`, um afrouxamento de tolerância de teste —
+ver F-A6) **motivada explicitamente pela hipótese de causa-raiz "cache-line splits por
+stride de 12 floats"** documentada no EPIC-2 original (linha 520 deste documento). O
+resultado do experimento (zero ganho medido) **refuta essa hipótese** — o gargalo remanescente
+do Lite CH12 (2,51× menos eficiente por MAC que o Standard) não está, ou não está
+majoritariamente, em cache-line splits de acesso a memória. A causa-raiz real permanece
+desconhecida.
+
+**Hipóteses alternativas a investigar (nenhuma testada ainda):**
+
+1. **Overhead de setup/loop proporcionalmente maior:** Lite tem 12 canais vs 16 do Standard,
+   mas o número de *camadas* é o mesmo (topologia NAM padrão de 2×10 camadas) — o custo fixo
+   por chamada de função (prólogo, branches de dispatch `if IN==12`/`else if CH==12`,
+   contagem de iterações do laço externo) pode estar dominando de forma desproporcional
+   porque há *menos trabalho útil por camada* para amortizá-lo, não porque o acesso à memória
+   está mal-alinhado.
+2. **Os novos kernels `stride16.rs` introduziram overhead próprio:** o kernel
+   `fused_gemm_residual_batch_f32_12x12_padded` usa uma mistura de `_mm256`+`_mm128`
+   (AVX+SSE) por linha, o que pode gerar penalidades de transição de domínio SIMD (AVX↔SSE)
+   em alguns microarquiteturas — precisaria de inspeção de asm dedicada.
+3. **O real gargalo pode já ter sido resolvido pelo EPIC-2 original** (apenas padding dos
+   pesos) e o que resta é simplesmente o custo estrutural inerente de uma topologia com menos
+   canais por camada — ou seja, 52 µs pode já ser próximo do "ótimo alcançável" para CH=12
+   nesta arquitetura, e a meta de ≤ 38-42 µs (que assumia paridade de eficiência com o
+   Standard) pode ter sido uma meta incorreta desde a formulação original do finding F-P2.
+
+**Proposta de solução:**
+
+1. **Regenerar `target/dsp_hotpath.asm` com foco específico no Lite CH12** (hoje o perfil de
+   BOLT/PGO usa majoritariamente o Standard como workload — ver EPIC-4/F-L3, "workload
+   multi-modelo" já implementado, mas confirmar que o Lite recebe amostras suficientes) e
+   inspecionar a nova função `WaveNetLayer<1,12,3>::process_block_internal` diretamente,
+   comparando spills/leaq/overhead de setup com o Standard, em vez de assumir a priori que o
+   problema é cache-line split.
+2. **Considerar reverter T6.S3.2** (o pad-to-16 estrutural completo, não o pad-to-16 dos
+   pesos do EPIC-2 original que já mostrou ganho real de −19,7%) se a investigação do item 1
+   não encontrar uma causa acionável — a mudança adiciona complexidade permanente de código
+   (3 novos kernels, dispatch condicional em 2 pontos, tolerância de teste relaxada) sem
+   benefício medido. Regra de bom senso de engenharia: código que não paga sua complexidade
+   deve ser removido, não mantido "por precaução".
+3. Se mantido, ao menos **documentar explicitamente no `TODO-sprints.md`** que a meta de ≤ 42
+   µs foi reavaliada como não-alcançável com as técnicas tentadas até agora, e reclassificar
+   o item como "dívida técnica de eficiência aceita" (o SKU está a 96,1% de folga do budget
+   RT — não há urgência funcional), em vez de deixar implícito que ≤ 42 µs ainda é uma meta
+   ativa.
+
+**Validação:** nova rodada de `perf record` focada em Lite (ou reuso do já existente com
+filtro), decisão explícita de revert-ou-manter registrada no sprints doc, sem necessidade de
+gate de fidelidade adicional (nenhuma mudança de comportamento numérico está em jogo nesta
+investigação, apenas remoção/manutenção de código já bit-exato).
+
+**Nota do PO:** Aprovado para execução. Reverta o T6.S3.2. Use o próprio git commit para isto. Esta dúvida do Lite pode ser documentada como uma "known issue" no local adequado em "docs/".
+
+---
+
+### Nota sobre o resultado de `tests-performance-regression.sh` fornecido pelo usuário
+
+O run fornecido reporta `❌ PERFORMANCE REGRESSION DETECTED`, motivado por
+`RT_A2_Lite_CH3: +8.3827% (p = 0.00 < 0.05) Performance has regressed` (16% de outliers
+severos nessa amostragem específica). **Esta regressão não está relacionada ao EPIC-6**:
+nenhum commit do EPIC-6 (nem de nenhum épico anterior) tocou `src/models/a2/` — confirmado
+por `git log --all -- src/models/a2/`, cujo último commit relevante antecede toda esta
+auditoria. Combinado com a taxa de outliers anormalmente alta (16% severos vs 2-8% típico nos
+outros benchmarks do mesmo run) e o padrão já documentado em `56b0761b` ("regressões foram
+falsos positivos térmicos"), a causa mais provável é ruído de sistema/térmico durante a
+janela de amostragem desse benchmark específico, não uma regressão de código.
+
+**Todos os demais SKUs do WaveNet** no mesmo run (Standard −1,42%, Feather sem mudança, Lite
+−1,06% — dentro do ruído, consistente com F-A7 acima, Nano −0,46%) estão dentro da faixa de
+ruído ou melhoraram — nenhuma evidência de regressão real introduzida pelo EPIC-6.
+
+**Recomendação:** re-executar isoladamente `cargo bench --bench regression_gate --
+RT_A2_Lite_CH3` (sem o resto da suíte, para reduzir contenção térmica/de CPU) antes de decidir
+entre `--save` (aceitar como novo baseline) ou investigar mais. Não bloquear o merge do
+EPIC-6 por esta métrica isolada e não-relacionada.
+
+**Nota do PO:** Concordo, não vamos mexer nisto agora.
+
+---
+
+## EPIC-7 — Fechamento fino: guarda de paridade, bug latente de teste e decisão sobre o pad-to-16 sem ganho medido 🟠
+
+> Findings desta terceira auditoria: **F-A5** (baixo, bug latente na correção do F-A3),
+> **F-A6** (alto, guarda de fidelidade afrouxada sem escopo), **F-A7** (alto, decisão de
+> engenharia pendente sobre T6.S3.2).
+
+Ordem recomendada:
+
+1. **F-A6 primeiro** — é a correção mais simples (parametrizar tolerância por SKU) e restaura
+   imediatamente o rigor da guarda de paridade estático-vs-dinâmico para os 3 SKUs que nunca
+   deveriam ter sido afetados. Gate: `cargo test dynamic_parity` com tolerâncias
+   diferenciadas, sem regressão nos 3 SKUs inalterados.
+2. **F-A7 em paralelo** — é uma investigação/decisão, não uma correção de bug; pode ser feita
+   por outra pessoa simultaneamente. Resultado esperado: ou uma causa-raiz acionável e um novo
+   commit de otimização, ou uma decisão documentada de revert/aceitar-dívida-técnica.
+3. **F-A5 por último** — trivial, sem urgência (bug dormente), pode entrar em qualquer PR de
+   manutenção de teste.
+
+Nenhum destes três findings bloqueia o uso em produção do que já foi entregue no EPIC-6 (F-A1
+está corrigido e correto; o comportamento numérico de produção do Lite não mudou). São itens
+de qualidade de engenharia e precisão de guardas de teste, não bugs funcionais novos.
+
 ---
 
 *Gerado pela auditoria `revisor-auditor`/`pesquisador-inovador` de 2026-07-17, reverificado em
-2026-07-19. Nenhuma linha de código de produção foi alterada nesta reverificação (apenas
-leitura, regeneração de `dsp_hotpath.asm` para inspeção, e este documento). `TODO-sprints.md`
-será atualizado com o EPIC-6 quando solicitado.
+2026-07-19 (EPIC-1 a EPIC-5) e em 2026-07-20 (EPIC-6). Nenhuma linha de código de produção foi
+alterada em nenhuma das reverificações (apenas leitura, regeneração de `dsp_hotpath.asm` para
+inspeção, e este documento). `TODO-sprints.md` será atualizado com o EPIC-7 quando
 solicitado.*

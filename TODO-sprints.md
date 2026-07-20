@@ -2362,7 +2362,7 @@ pudesse vazar para a saída em um bug futuro.
 
 ---
 
-### T6.S3.4 — Validação de performance e aceite da meta revisada
+### T6.S3.4 — Validação de performance e aceite da meta revisada [DONE]
 
 **Responsável:** Engenheiro de QA / Performance
 **Arquivos:** N/A (scripts de validação)
@@ -2456,3 +2456,382 @@ Após S3 aprovado, executar o gate completo do épico:
 *Criado por `planejador-arquiteto` em 2026-07-19. Baseado na auditoria de reverificação
 registrada em [`TODO-findings.md`](./TODO-findings.md) (EPIC-6, linha 740 e findings F-A1,
 linha 587; F-A2, linha 648; F-A3, linha 696; F-A4, linha 718 — sem ação).*
+
+---
+
+## EPIC-7 — Fechamento fino: guarda de paridade, bug latente de teste e decisão sobre o pad-to-16 sem ganho medido 🟠
+
+> **Referência principal:** [`TODO-findings.md`](./TODO-findings.md) — EPIC-7 (linha 1021) e
+> findings **F-A5** (bug latente na restauração de THP introduzido pela própria correção do
+> F-A3), **F-A6** (guarda de paridade estático-vs-dinâmico afrouxada sem escopo para 3 SKUs
+> não alterados), **F-A7** (pad-to-16 estrutural completo do EPIC-6/T6.S3.2 não entregou
+> ganho de performance mensurável — hipótese de causa-raiz refutada pelo próprio experimento).
+>
+> **Contexto:** Terceira auditoria de reverificação (2026-07-20) — todos os commits do
+> EPIC-6 foram relidos linha a linha, com verificação independente da cadeia completa de
+> mecanismo do pad-to-16 (alocação → dispatch → kernels padded → interface array1→array2),
+> não apenas os testes que a própria implementação escreveu. F-A1 e F-A3 confirmados ✅
+> (com a ressalva do bug latente F-A5, dentro do próprio F-A3). F-A2 confirmado como
+> **mecanismo correto e seguro**, mas o resultado de performance esperado não se
+> materializou — ver F-A7.
+>
+> **Gerado por:** `planejador-arquiteto` em 2026-07-20.
+
+---
+
+## Princípios de Execução do EPIC-7
+
+| #   | Princípio                                                                                                                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Nenhum bug funcional novo em produção:** todos os três findings deste épico são de higiene de guarda de teste (F-A5, F-A6) ou de uma decisão de engenharia sobre código já bit-exato (F-A7) — nenhum afeta o comportamento numérico de produção hoje. |
+| 2   | **F-A6 restaura rigor, nunca o afrouxa mais:** a tolerância nunca deve ficar mais permissiva do que `1e-6` (já documentada e justificada para CH=12); qualquer novo afrouxamento exige nova justificativa por linha, não por lote. |
+| 3   | **F-A7 é investigação-primeiro:** nenhum código de produção deve ser revertido ou reotimizado antes de reperfilar especificamente o Lite CH12 e ter uma causa-raiz concreta em mãos — mesma disciplina "medir antes de construir" usada em F-S1/EPIC-5. |
+| 4   | **Gate mínimo por tarefa:** `utils/lints.sh` → `utils/tests-quick.sh` → gate específico da tarefa. |
+| 5   | **Invariante de fidelidade:** nenhuma tarefa deste épico deve alterar `docs/quality-contract.txt` (ESR vs NAMcore) — são todas guardas internas (Rust-vs-Rust) ou decisões de performance, não de fidelidade sonora. Se F-A7 concluir por revert, o contrato de fidelidade deve permanecer bit-exato antes/depois (já é o caso hoje). |
+| 6   | **Ordem recomendada pelo finding original:** F-A6 e F-A5 primeiro (triviais, apenas testes, sem risco), F-A7 em paralelo ou depois (maior escopo de investigação/decisão). Agrupados aqui em duas sprints para otimizar entrega: S1 despacha as duas correções de teste juntas numa única PR pequena; S2 é dedicada inteiramente à investigação/decisão do F-A7. |
+
+---
+
+## Sprint S1 — Guardas de teste: paridade por SKU (F-A6) + restauração de THP correta (F-A5) 🟢 BAIXO RISCO
+
+> **Findings:** [F-A6](./TODO-findings.md#L881) (alto — mas correção trivial e apenas em
+> teste) e [F-A5](./TODO-findings.md#L822) (baixo — bug latente/dormente). Agrupadas numa
+> única sprint porque ambas tocam exclusivamente arquivos de teste, sem nenhuma alteração de
+> código de produção, e podem ser entregues na mesma PR para minimizar overhead de review.
+
+### T7.S1.1 — Parametrizar a tolerância da macro `parity_test!` por SKU
+
+**Responsável:** Engenheiro Rust (qualquer)
+**Arquivo:** [`src/models/wavenet/dynamic_parity_test.rs`](./src/models/wavenet/dynamic_parity_test.rs)
+
+**Problema (F-A6):** a macro `macro_rules! parity_test!` (linha 351) tem a tolerância
+`err < 1e-6` fixa (linha 371), aplicada identicamente às 4 instanciações (linhas 383-386):
+`test_dynamic_parity_standard` (CH=16), `_lite` (CH=12), `_feather` (CH=8), `_nano` (CH=4).
+Apenas o caminho CH=12 foi alterado por T6.S3.2 (pad-to-16); os outros 3 SKUs não tiveram
+nenhum kernel de produção modificado, mas herdaram a mesma tolerância 10× mais frouxa que a
+original (`1e-7`).
+
+**Passos:**
+
+- [ ] Adicionar um parâmetro `$tol:expr` à `macro_rules! parity_test!`, substituindo o literal
+      `1e-6` da linha 371 pelo parâmetro.
+
+- [ ] Atualizar as 4 instanciações:
+      ```rust
+      parity_test!(test_dynamic_parity_standard, 16, 3, 8, 1e-7);
+      parity_test!(test_dynamic_parity_lite, 12, 3, 6, 1e-6); // pad-to-16: FMA order differs — ver F-A2/EPIC-findings.md
+      parity_test!(test_dynamic_parity_feather, 8, 3, 4, 1e-7);
+      parity_test!(test_dynamic_parity_nano, 4, 3, 2, 1e-7);
+      ```
+
+- [ ] Adicionar um comentário acima da instanciação do Lite explicando a causa documentada do
+      afrouxamento (diferença de ordem de FMA entre kernel stride-16 e stride-12, erro
+      absoluto máximo observado 5.07e-7, ≈ −126 dBFS, sub-piso de ruído — referenciar
+      `TODO-findings.md` F-A2/F-A6 no comentário).
+
+- [ ] Rodar `cargo test dynamic_parity` e confirmar que os 3 SKUs com tolerância restaurada
+      (`1e-7`) continuam passando sem nenhuma alteração de código de produção — se algum deles
+      falhar com `1e-7`, isso seria uma descoberta nova e mais grave (regressão de paridade
+      não detectada antes por causa do afrouxamento global) e deve ser escalada imediatamente,
+      não silenciada.
+
+**Gate desta tarefa:**
+
+      ```bash
+      cargo test --lib dynamic_parity
+      utils/lints.sh
+      utils/tests-quick.sh
+      ```
+
+**Critério de aceite:** `test_dynamic_parity_standard`, `_feather`, `_nano` passam com
+`err < 1e-7` (tolerância original restaurada); `test_dynamic_parity_lite` continua passando
+com `err < 1e-6` (tolerância documentada, escopo restrito ao SKU realmente alterado).
+
+---
+
+### T7.S1.2 — Corrigir o mapeamento bitmask→argumentos na restauração de THP
+
+**Responsável:** Engenheiro Rust (qualquer)
+**Arquivo:** [`tests/models/thp_coherence.rs`](./tests/models/thp_coherence.rs)
+
+**Problema (F-A5):** `test_prctl_thp_except_advised_no_crash` lê o estado original via
+`PR_GET_THP_DISABLE` (linha 97, retorna um bitmask de 2 bits: `0`, `1` ou `3`) e o passa
+diretamente como `arg2` de `PR_SET_THP_DISABLE` na restauração (linha 120-127) — mas `arg2` é
+booleano (0=habilitar, ≠0=desabilitar) e o modo (classic vs except-advised) vai em `arg3`. Se
+`original_thp_state == 3` (except-advised já ativo antes do teste), a restauração atual
+reinterpretaria isso como "desabilitar em modo classic" (`arg2=3` é truthy, `arg3=0`) em vez
+de restaurar corretamente o modo except-advised.
+
+**Passos:**
+
+- [ ] Substituir a chamada de restauração (linhas 120-127) por um mapeamento explícito
+      bit→argumento:
+      ```rust
+      let (restore_flag, restore_mode): (i32, libc::c_ulong) = match original_thp_state {
+          0 => (0, 0),
+          1 => (1, 0),
+          3 => (1, PR_THP_DISABLE_EXCEPT_ADVISED),
+          other => {
+              eprintln!(
+                  "Unexpected PR_GET_THP_DISABLE value {other}; defaulting to re-enable THP."
+              );
+              (0, 0)
+          }
+      };
+      unsafe {
+          libc::prctl(PR_SET_THP_DISABLE, restore_flag, restore_mode, 0, 0);
+      }
+      ```
+
+- [ ] Confirmar que o teste ainda passa com `#[serial]` já aplicado (não remover a decoração
+      existente do F-A3).
+
+- [ ] Opcional (baixa prioridade, não bloqueia o gate): considerar um teste sintético que force
+      `original_thp_state = 3` via mock, para exercitar o branch de restauração
+      except-advised diretamente — aceitável adiar dado o baixo risco prático já documentado
+      no finding.
+
+**Gate desta tarefa:**
+      ```bash
+      cargo test --test thp_coherence -- --test-threads=1
+      utils/lints.sh
+      utils/tests-quick.sh
+      ```
+
+**Critério de aceite:** a função de restauração nunca passa um valor fora de `{0, 1}` como
+`arg2` de `PR_SET_THP_DISABLE`; o comportamento para `original_thp_state ∈ {0, 1}` permanece
+idêntico ao anterior (nenhuma regressão no caminho comum já validado pelo F-A3).
+
+---
+
+## Gate da Sprint S1
+
+      ```bash
+      utils/lints.sh
+      utils/tests-quick.sh
+      cargo test --lib dynamic_parity
+      cargo test --test thp_coherence -- --test-threads=1
+      ```
+
+**Critérios de aceite da Sprint S1:**
+
+- Guarda de paridade estático-vs-dinâmico restaurada para `1e-7` nos 3 SKUs não alterados
+  pelo T6.S3.2 (Standard, Feather, Nano); Lite mantém `1e-6` com justificativa documentada
+  inline no código.
+- Restauração de THP no teste mapeia corretamente o bitmask de `PR_GET_THP_DISABLE` para os
+  argumentos de `PR_SET_THP_DISABLE`, sem regressão no caminho comum (`original_thp_state=0`).
+- Nenhuma linha de código de produção alterada nesta sprint — apenas arquivos de teste.
+
+---
+
+## Sprint S2 — Investigação e decisão: pad-to-16 do Lite sem ganho medido (F-A7) 🟠 ALTO (decisão de arquitetura)
+
+> **Finding:** [F-A7](./TODO-findings.md#L926) — o pad-to-16 estrutural completo (T6.S3.2,
+> 537 linhas, 19 arquivos, 3 módulos de kernel novos) não moveu a latência do Lite CH12
+> (52,2 µs → 52,3 µs, dentro do ruído — confirmado independentemente pelo
+> `tests-performance-regression.sh` fornecido pelo usuário: 52,065 µs, "*change within noise
+> threshold*"). A hipótese de causa-raiz que motivou a mudança ("cache-line splits por stride
+> de 12 floats") foi **refutada** pelo próprio experimento — o gargalo real permanece
+> desconhecido.
+>
+> **Diferente das sprints anteriores, esta sprint pode terminar em três desfechos distintos**
+> (todos válidos): (A) uma causa-raiz concreta é encontrada e uma nova otimização dirigida é
+> implementada; (B) nenhuma causa acionável é encontrada e T6.S3.2 é revertido, removendo a
+> complexidade sem benefício; (C) nenhuma causa acionável é encontrada, mas o time decide
+> manter T6.S3.2 (ex.: por já estar testado e não haver urgência funcional — Lite está a 96,1%
+> de folga do budget RT) e apenas re-documentar a meta como dívida técnica aceita.
+
+### T7.S2.1 — Reperfilar o Lite CH12 especificamente (não apenas o Standard)
+
+**Responsável:** Engenheiro Sênior de Performance/DSP
+**Arquivos:** `utils/build-release.sh` (apenas verificação, sem alteração funcional esperada),
+`target/dsp_hotpath.asm` (regenerado)
+
+**Passos:**
+
+- [ ] Confirmar que `STANDALONE_MODELS` (array populado em `utils/build-release.sh:298-307`)
+      inclui um modelo `.nam` do tipo WaveNet Lite (CH=12) com amostragem suficiente durante a
+      fase de instrumentação BOLT — se o catálogo de perfilagem já inclui Lite (ver EPIC-4/
+      F-L3, "workload multi-modelo"), apenas confirmar; se não, adicionar um fixture Lite ao
+      array.
+
+- [ ] Executar `utils/build-release.sh` e, no `perf annotate` gerado, filtrar especificamente
+      pela função `WaveNetLayer<1, 12, 3>::process_block_internal` — comparar percentual de
+      amostras (deve ser proporcional ao tempo de wall-clock do Lite no workload de
+      profiling; se estiver sub-representado, o perfil não é confiável para esta investigação).
+
+- [ ] Se a amostragem do Lite no `dsp_hotpath.asm` padrão for insuficiente, gerar uma rodada de
+      `perf record` dedicada, isolando apenas o binário standalone rodando com um modelo Lite
+      (`nam-rs -m <lite.nam> -b 64`), seguindo o mesmo procedimento de `perf annotate` já
+      documentado no script.
+
+**Gate desta tarefa:** artefato `target/dsp_hotpath.asm` (ou um arquivo dedicado, ex.
+`target/dsp_hotpath_lite.asm`) contendo amostras suficientes (`perf annotate` reportando ≥
+100 amostras na função do Lite, análogo ao que já se tinha para o Standard/CH16 nas auditorias
+anteriores) para análise confiável na próxima tarefa.
+
+---
+
+### T7.S2.2 — Inspecionar o asm do Lite CH12 e comparar estruturalmente com o Standard CH16
+
+**Responsável:** Engenheiro Sênior de Performance/DSP (mesmo de T7.S2.1, para continuidade de
+contexto)
+**Arquivos:** `target/dsp_hotpath.asm` (leitura), `src/models/wavenet/layer.rs`,
+`src/math/gemm/gemm_batch/stride16.rs`, `src/math/gemm/gemv/stride16.rs`
+
+**Passos:**
+
+- [ ] Repetir a metodologia já usada nas auditorias anteriores: localizar
+      `WaveNetLayer<1, 12, 3>::process_block_internal` no asm, somar percentuais por categoria
+      de instrução (spills `vmovups %ymm,0x..(%rsp)`, rotação `vmovaps reg,reg`, endereçamento
+      `leaq` encadeado, overhead de prólogo/branch `xorl`/`jbe`/`jae`, tap-gathering escalar
+      `vmovss`) e comparar proporcionalmente com o mesmo levantamento já feito para
+      `WaveNetLayer<1, 16, 3>` nas auditorias de EPIC-1/EPIC-2.
+
+- [ ] Inspecionar especificamente `fused_gemm_residual_batch_f32_12x12_padded`
+      (`gemm_batch/stride16.rs`) no asm — esta função mistura intrinsics AVX
+      (`_mm256_*`, 256-bit) com SSE (`_mm_*`, 128-bit) na mesma rotina para tratar o padrão
+      8+4 lanes. Verificar se há penalidade de transição de domínio SIMD (ex.:
+      `vzeroupper`/stalls entre blocos AVX e SSE) — hipótese #2 do F-A7 — usando os contadores
+      de ciclo do próprio `perf annotate` nas transições.
+
+- [ ] Avaliar a hipótese #1 do F-A7 (overhead de setup/loop proporcionalmente maior devido a
+      menos trabalho útil por camada): calcular a razão entre instruções de overhead
+      (prólogo+branches+dispatch condicional `if IN==12`/`else if CH==12`) e instruções de FMA
+      úteis, comparando Lite vs Standard. Se a razão for significativamente maior no Lite,
+      isso sustenta a hipótese #1 e explica por que o pad-to-16 (que ataca acesso à memória,
+      não overhead de controle) não teve efeito.
+
+- [ ] Avaliar a hipótese #3 do F-A7 (a meta original de eficiência pode ter sido incorreta):
+      revisitar se ≤ 42 µs / paridade de µs-por-MMAC com o Standard é uma meta
+      matematicamente alcançável para uma topologia com 12 canais vs 16 (ex.: overhead fixo
+      por camada não escala linearmente com o número de canais — mais canais "diluem" melhor
+      o custo fixo).
+
+- [ ] Documentar as conclusões desta análise em uma seção nova de
+      `docs/latency_sprint1_analysis.md` (reaproveitando o formato já usado no NO-GO do F-S1)
+      ou em um novo `docs/wavenet_lite_ch12_profiling.md`, com os percentuais medidos e a
+      hipótese vencedora (ou a conclusão de que nenhuma hipótese isolada explica o resultado).
+
+**Gate desta tarefa:** documento de análise técnica revisável, com evidência de asm anexada
+(trechos relevantes com percentuais, análogo ao formato usado nas seções de asm do
+`TODO-findings.md`).
+
+---
+
+### T7.S2.3 — Decisão GO/NO-GO: nova otimização dirigida, revert de T6.S3.2, ou aceitar dívida técnica
+
+**Responsável:** Arquiteto de Sistemas (mesma função que decidiu o NO-GO do `pw_filter` em
+F-S1/T5.S1.2, para manter o mesmo rigor de decisão documentada)
+**Arquivos:** `TODO-findings.md` (atualizar F-A7 e F-A2 com o desfecho), `TODO-sprints.md`
+(marcar esta sprint como `[DONE]` com o desfecho registrado)
+
+**Critério de decisão, baseado no resultado de T7.S2.2:**
+
+- [ ] **Desfecho A — causa-raiz acionável encontrada:** abrir uma nova tarefa de otimização
+      dirigida (ex.: eliminar a mistura AVX/SSE se essa for a causa, ou reduzir overhead de
+      dispatch condicional) com o mesmo rigor de bit-exatidão das sprints anteriores
+      (goldens, `regression_gate`, `quality-dashboard.sh`). Não fechar esta sprint até a nova
+      otimização ser medida.
+
+- [ ] **Desfecho B — nenhuma causa acionável, reverter T6.S3.2:** reverter apenas as mudanças
+      estruturais de pad-to-16 completo (buffers internos, kernels `stride16.rs`, dispatch
+      condicional), **preservando** o padding dos pesos de convolução do EPIC-2 original
+      (T2.S3.1-T2.S3.3, que já entregou o ganho real de −19,7% e não é questionado por este
+      finding). Reverter também o afrouxamento de tolerância (T7.S1.1 já deve ter restrito o
+      afrouxamento apenas ao Lite — se o revert remover a causa raiz do afrouxamento, avaliar
+      se a tolerância do Lite pode voltar a `1e-7` também). Rodar o gate completo do EPIC-2
+      original para confirmar que o revert não introduz regressão em relação ao estado
+      pós-EPIC-2 (52,2 µs).
+      Vide Git ID: 3637a3400a439457c6365d76ce539dd394fc1d26
+      Vide Git Message: T6.S3.2: pad all CH=12 internal buffers to stride 16 — effective_stride helper, padded GEMM/GEMV/broadcast kernels, conditional CH=12 dispatch
+
+- [ ] **Desfecho C — manter como dívida técnica aceita:** atualizar
+      `TODO-sprints.md` (seção T6.S3.4, hoje com meta "≤ 42 µs" pendente) e
+      `TODO-findings.md` (F-A2) para remover a meta ativa de ≤ 42 µs e substituí-la por uma
+      nota explícita: "Lite CH12 em 52,3 µs / 6056,71 µs/MMAC — dívida técnica de eficiência
+      aceita, sem urgência funcional (96,1% de folga do budget RT). Meta de paridade de
+      eficiência com o Standard abandonada como incorreta desde a formulação original
+      (F-P2)." Justificar por que o código de T6.S3.2 é mantido mesmo sem ganho medido (ex.:
+      valor de manutenibilidade/consistência arquitetural, ou custo de revert maior que o
+      benefício).
+
+- [ ] Registrar a decisão tomada (A, B ou C) e sua justificativa em um novo documento
+      `docs/wavenet_lite_efficiency_decision.md`, seguindo o mesmo padrão do
+      `docs/latency_sprint1_analysis.md` (resumo executivo, análise, decisão, referências).
+
+**Gate desta tarefa:**
+
+      ```bash
+      # Gate comum a qualquer desfecho:
+      utils/lints.sh
+      utils/tests-quick.sh
+      utils/quality-dashboard.sh --check docs/quality-contract.txt
+      utils/tests-performance-regression.sh
+      # Se desfecho A ou B (código de produção alterado): cargo bench --bench regression_gate
+      # completo + goldens bit-exact obrigatórios.
+      ```
+
+**Critério de aceite:** decisão documentada e defensável, gate de qualidade/performance
+executado e sem regressão em relação ao estado atual (52,2-52,3 µs, ESR inalterado),
+`TODO-findings.md`/`TODO-sprints.md` atualizados para refletir o desfecho final — nenhuma meta
+ambígua ou pendente deixada em aberto.
+
+---
+
+## Gate Final do EPIC-7
+
+Após S1 e S2 aprovadas, executar o gate completo do épico:
+
+      ```bash
+      # 1. Linting e verificações estáticas
+      utils/lints.sh
+
+      # 2. Testes rápidos (guardas restauradas)
+      utils/tests-quick.sh
+      cargo test --lib dynamic_parity
+      cargo test --test thp_coherence -- --test-threads=1
+
+      # 3. Contrato de qualidade integral (nenhuma mudança esperada em ESR vs NAMcore)
+      utils/quality-dashboard.sh --check docs/quality-contract.txt
+
+      # 4. Regressão de performance (confirmar ausência de regressão real, distinguindo de
+      #    ruído térmico conforme já documentado nas auditorias anteriores)
+      utils/tests-performance-regression.sh
+
+      # 5. Se F-A7 resultou em desfecho A ou B (código de produção alterado):
+      cargo bench --bench regression_gate
+      cargo bench --bench inference_bench -- wavenet_lite wavenet_standard
+      ```
+
+**Critérios de aceite do EPIC-7:**
+
+- Guarda de paridade estático-vs-dinâmico com tolerância `1e-7` restaurada para Standard,
+  Feather e Nano; `1e-6` documentado e restrito ao Lite (F-A6 resolvido).
+- Restauração de estado THP no teste mapeia corretamente o bitmask, sem regressão no caminho
+  comum (F-A5 resolvido).
+- Decisão documentada e executada para o pad-to-16 sem ganho medido — sem meta ambígua
+  remanescente em `TODO-sprints.md`/`TODO-findings.md` (F-A7 resolvido, qualquer que seja o
+  desfecho A/B/C).
+- `docs/quality-contract.txt` (ESR vs NAMcore) inalterado — nenhuma regressão de fidelidade.
+- Nenhuma regressão real de performance introduzida por este épico (thermal noise
+  pré-existente, como o observado em `RT_A2_Lite_CH3`, não é atribuível a este épico e deve
+  ser investigado separadamente, fora do escopo do EPIC-7).
+
+---
+
+## Tabela-resumo de Tarefas EPIC-7
+
+| Sprint | Tarefa                                                        | Finding | Arquivo(s)                                                          | Risco | Bit-exact | Gate                              |
+| ------ | -------------------------------------------------------------- | ------- | --------------------------------------------------------------------- | ----- | --------- | ---------------------------------- |
+| S1     | T7.S1.1 — Parametrizar tolerância de `parity_test!` por SKU   | F-A6    | `dynamic_parity_test.rs`                                              | 🟢    | N/A       | cargo test dynamic_parity + lints  |
+| S1     | T7.S1.2 — Corrigir restauração de THP (bitmask→args)          | F-A5    | `tests/models/thp_coherence.rs`                                       | 🟢    | N/A       | cargo test thp_coherence + lints   |
+| S2     | T7.S2.1 — Reperfilar Lite CH12 especificamente                | F-A7    | `utils/build-release.sh`, `target/dsp_hotpath.asm`                    | 🟡    | N/A       | perf annotate com amostras do Lite |
+| S2     | T7.S2.2 — Inspecionar asm e testar hipóteses de causa-raiz    | F-A7    | `layer.rs`, `gemm_batch/stride16.rs`, `gemv/stride16.rs` (leitura)     | 🟢    | N/A       | documento de análise técnica       |
+| S2     | T7.S2.3 — Decisão GO/NO-GO (otimizar / reverter / aceitar)    | F-A7    | `TODO-findings.md`, `TODO-sprints.md`, novo doc de decisão             | 🟡–🔴 | ✅ (se A/B) | gate completo do desfecho escolhido |
+
+---
+
+*Criado por `planejador-arquiteto` em 2026-07-20. Baseado na terceira auditoria de
+reverificação registrada em [`TODO-findings.md`](./TODO-findings.md) (EPIC-7, linha 1021 e
+findings F-A5, linha 822; F-A6, linha 881; F-A7, linha 926).*
