@@ -45,6 +45,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         out_frame: &mut [f32],
         frame_idx: usize,
         mixin: &[f32],
+        stride: usize,
     ) {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
@@ -60,7 +61,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 frame_idx,
                 self.dilation * (K - 1)
             );
-            let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
+            let in_slice_start = ((frame_idx as isize) + offset) as usize * stride;
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     layer_buffer.as_ptr().add(in_slice_start),
@@ -72,7 +73,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 if self.dilation >= 128 {
                     prefetch_strategy_2stage(
                         layer_buffer.as_ptr().add(in_slice_start),
-                        self.dilation * IN,
+                        self.dilation * stride,
                         k,
                         K,
                         self.dilation,
@@ -80,7 +81,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 } else {
                     prefetch_strategy_simple(
                         layer_buffer.as_ptr().add(in_slice_start),
-                        self.dilation * IN,
+                        self.dilation * stride,
                         k,
                         K,
                         self.dilation,
@@ -161,6 +162,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         layer_buffer: &[f32],
         out_frame: &mut [f32],
         frame_idx: usize,
+        stride: usize,
     ) {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
@@ -175,7 +177,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 frame_idx,
                 self.dilation * (K - 1)
             );
-            let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
+            let in_slice_start = ((frame_idx as isize) + offset) as usize * stride;
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     layer_buffer.as_ptr().add(in_slice_start),
@@ -187,7 +189,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 if self.dilation >= 128 {
                     prefetch_strategy_2stage(
                         layer_buffer.as_ptr().add(in_slice_start),
-                        self.dilation * IN,
+                        self.dilation * stride,
                         k,
                         K,
                         self.dilation,
@@ -195,7 +197,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 } else {
                     prefetch_strategy_simple(
                         layer_buffer.as_ptr().add(in_slice_start),
-                        self.dilation * IN,
+                        self.dilation * stride,
                         k,
                         K,
                         self.dilation,
@@ -272,11 +274,12 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         block: &mut [f32],
         buffer_start: usize,
         num_frames: usize,
+        stride: usize,
     ) {
         for i in 0..num_frames {
             let out_frame = unsafe { block.get_unchecked_mut(i * OUT..i * OUT + OUT) };
             unsafe {
-                self.process_single_frame::<M>(layer_buffer, out_frame, buffer_start + i);
+                self.process_single_frame::<M>(layer_buffer, out_frame, buffer_start + i, stride);
             }
         }
     }

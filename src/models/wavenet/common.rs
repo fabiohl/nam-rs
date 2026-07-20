@@ -12,6 +12,15 @@ pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
 /// Maximum supported kernel size.
 pub const MAX_KERNEL: usize = 16;
 
+/// Computes the effective buffer stride for a given logical channel count.
+///
+/// For `CH=12` (WaveNet Lite), the 12-float stride (48 B) causes cache-line
+/// splits on 64 B lines. Padding to 16-floats (64 B = 1 cache line) eliminates
+/// the split. Other channel counts are already aligned and keep their native stride.
+pub const fn effective_stride<const CH: usize>() -> usize {
+    if CH == 12 { 16 } else { CH }
+}
+
 /// Processing context to optimize parameter passing on the WaveNet hot-path.
 /// Unifies the needs of static (const generic) models.
 pub struct WavenetProcessContext<'a> {

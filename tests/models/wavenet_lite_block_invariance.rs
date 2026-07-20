@@ -62,9 +62,9 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
                     .expect("allocation should succeed for test-sized buffers"),
                 do_bias: false,
             },
-            scratch_mixin: AlignedVec::new(12 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            scratch_mixin: AlignedVec::new(16 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
                 .expect("scratch alloc"),
-            scratch_conv: AlignedVec::new(12 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            scratch_conv: AlignedVec::new(16 * WAVENET_MAX_NUM_FRAMES, 0.0f32)
                 .expect("scratch alloc"),
         }
     };
@@ -107,7 +107,7 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
         dilations_1.iter().map(|&d| make_layer_a1(d)).collect();
     let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
         .map(|i| {
-            WaveNetLayerState::new(12, (3 - 1) * dilations_1[i], i)
+            WaveNetLayerState::new(16, (3 - 1) * dilations_1[i], i)
                 .expect("Failed to create WaveNetLayerState")
         })
         .collect();
@@ -129,15 +129,15 @@ fn build_tiny_lite_wavenet() -> WaveNetModel<12, 3, 6> {
                 .expect("allocation should succeed for test-sized buffers"),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 12 * WAVENET_MAX_NUM_FRAMES])
+        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
-        head_accum: AlignedVec::from_vec(vec![0.0; 12 * WAVENET_MAX_NUM_FRAMES])
+        head_accum: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
         head_outputs: AlignedVec::from_vec(vec![0.0; 6 * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf1,
-        block_size: 12,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 12 * WAVENET_MAX_NUM_FRAMES])
+        block_size: 16,
+        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
     };
 

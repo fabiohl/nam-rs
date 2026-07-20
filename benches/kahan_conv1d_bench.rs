@@ -157,6 +157,7 @@ macro_rules! bench_conv1d_config {
                             &mut out,
                             start_frame + f,
                             &mixin,
+                            $in_ch,
                         );
                     }
                 }

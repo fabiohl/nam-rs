@@ -117,7 +117,8 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
                 // output — all layers then accumulate on top of this seed. The final output
                 // is head_scale × array2.head_outputs (only the last array's head).
                 let array1_head_out = &self.array1.head_outputs[0..num_frames * HEAD];
-                let array1_outputs = &self.array1.array_outputs[0..num_frames * CH];
+                let stride = super::common::effective_stride::<{ CH }>();
+                let array1_outputs = &self.array1.array_outputs[0..num_frames * stride];
                 self.array2.process_block_internal::<M, false>(
                     array1_outputs,
                     in_slice,
@@ -187,7 +188,8 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             self.array1
                 .prewarm_internal::<M>(&layer_inputs_1, &condition, None);
         }
-        let array1_outputs = &self.array1.array_outputs[0..CH];
+        let array1_outputs =
+            &self.array1.array_outputs[0..super::common::effective_stride::<{ CH }>()];
         let array1_head_out = &self.array1.head_outputs[0..HEAD];
         unsafe {
             self.array2

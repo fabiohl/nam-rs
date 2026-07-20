@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use super::common::{WaveNetLayerState, WavenetProcessContext};
+use super::common::{WaveNetLayerState, WavenetProcessContext, effective_stride};
 use super::dense::DenseLayer;
 use super::layer::WaveNetLayer;
 use crate::math::common::{AlignedVec, SimdMath};
@@ -72,17 +72,36 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         num_frames: usize,
         prev_head_outputs: Option<&[f32]>,
     ) {
+        let stride = effective_stride::<{ CH }>();
         debug_assert_eq!(self.layers.len(), self.states.len());
         let states_ptr = self.states.as_mut_ptr();
 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
-            let start = state_0.buffer_start * CH;
-            self.rechannel.process_block::<M>(
-                layer_inputs,
-                &mut state_0.layer_buffer[start..start + num_frames * CH],
-                num_frames,
-            );
+            let start = state_0.buffer_start * stride;
+            let dest_slice = &mut state_0.layer_buffer[start..start + num_frames * stride];
+
+            if IN == 12 {
+                crate::math::gemm::gemv::stride16::gemv_with_bias_f32_avx2_padded(
+                    layer_inputs,
+                    &self.rechannel.weights,
+                    &self.rechannel.bias,
+                    dest_slice,
+                    num_frames,
+                    CH,
+                );
+            } else if CH == 12 {
+                crate::math::gemm::gemv::stride16::broadcast_scale_with_bias_f32_avx2_padded(
+                    layer_inputs,
+                    &self.rechannel.weights,
+                    &self.rechannel.bias,
+                    dest_slice,
+                    num_frames,
+                );
+            } else {
+                self.rechannel
+                    .process_block::<M>(layer_inputs, dest_slice, num_frames);
+            }
 
             let num_layers = self.effective_layers;
             let last_layer = num_layers - 1;
@@ -98,8 +117,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                     // [STEP 4.1: Static State Propagation (Backfill)]
                     // In prewarm mode, we replicate the current sample to the entire history (Receptive Field).
                     // This ensures the network stabilizes instantly to the stationary value.
-                    let start_idx = current_state.buffer_start * CH;
-                    let src_range = start_idx..start_idx + CH;
+                    let start_idx = current_state.buffer_start * stride;
+                    let src_range = start_idx..start_idx + stride;
 
                     for offset in 1..=current_state.receptive_field_size {
                         debug_assert!(
@@ -108,9 +127,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                             current_state.buffer_start,
                             offset
                         );
-                        // SAFETY: garantido pelo construtor WaveNetLayerState::new que valida buffer_start >= receptive_field_size
                         let dst_start = current_state.buffer_start - offset;
-                        let dst_idx = dst_start * CH;
+                        let dst_idx = dst_start * stride;
                         current_state
                             .layer_buffer
                             .copy_within(src_range.clone(), dst_idx);
@@ -118,8 +136,6 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 }
 
                 // Software Prefetch the next state in the cascade.
-                // Bring the cache line of state i+1 (and i+2 if possible) into L1
-                // while the processor resolves the arithmetic pipeline of the current layer.
                 if i + 1 < num_layers {
                     _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 1) as *const i8);
                 }
@@ -130,8 +146,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        head_input: &mut self.head_accum[0..num_frames * CH],
-                        output: &mut self.array_outputs[0..num_frames * CH],
+                        head_input: &mut self.head_accum[0..num_frames * stride],
+                        output: &mut self.array_outputs[0..num_frames * stride],
                         layer_buffer: &current_state.layer_buffer[..],
                         buffer_start: current_state.buffer_start,
                         num_frames,
@@ -141,13 +157,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
-                    let n_start = next_state.buffer_start * CH;
+                    let n_start = next_state.buffer_start * stride;
                     let next_layer_buffer =
-                        &mut next_state.layer_buffer[n_start..n_start + num_frames * CH];
+                        &mut next_state.layer_buffer[n_start..n_start + num_frames * stride];
 
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        head_input: &mut self.head_accum[0..num_frames * CH],
+                        head_input: &mut self.head_accum[0..num_frames * stride],
                         output: next_layer_buffer,
                         layer_buffer: &current_state.layer_buffer[..],
                         buffer_start: current_state.buffer_start,
@@ -159,20 +175,27 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 }
 
                 if !PREWARM {
-                    current_state.advance_frames(num_frames, CH);
+                    current_state.advance_frames(num_frames, stride);
                 }
             }
 
             // [STEP 5: Dimensional Closure (Head Rechannel)]
-            // The dense matrix funnels the accumulator (sum of skip-connections from all layers,
-            // of size `CH`) into a smaller `HEAD` dimension (e.g., 16 -> 8 or 16 -> 1).
-            // Uses f32 native precision for this critical final projection (tonal fidelity),
-            // while the backbone runs quantized (BF16/F16) for performance.
-            self.head_rechannel.process_block::<M>(
-                &self.head_accum[0..num_frames * CH],
-                &mut self.head_outputs[0..num_frames * HEAD],
-                num_frames,
-            );
+            if CH == 12 {
+                crate::math::gemm::gemv::stride16::gemv_with_bias_f32_avx2_padded(
+                    &self.head_accum[0..num_frames * stride],
+                    &self.head_rechannel.weights,
+                    &self.head_rechannel.bias,
+                    &mut self.head_outputs[0..num_frames * HEAD],
+                    num_frames,
+                    HEAD,
+                );
+            } else {
+                self.head_rechannel.process_block::<M>(
+                    &self.head_accum[0..num_frames * CH],
+                    &mut self.head_outputs[0..num_frames * HEAD],
+                    num_frames,
+                );
+            }
         }
     }
 

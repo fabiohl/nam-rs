@@ -124,6 +124,7 @@ fn test_conv1d_ch12_scalar_vs_simd() {
             &state,
             &mut simd_out,
             frame_idx,
+            CH,
         );
     }
 

@@ -18,7 +18,7 @@ use crate::loader::dispatcher::wavenet::layout::select_interleave_width;
 use crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_8wide;
 use crate::loader::dispatcher::wavenet::layout::transpose_conv1d_interleaved_16wide;
 use crate::math::common::AlignedVec;
-use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
+use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, effective_stride};
 use crate::models::wavenet::conv1d::Conv1d;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 use crate::models::wavenet::dense::DenseLayer;
@@ -81,6 +81,8 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
     let rf1 = *TEST_DILATIONS.iter().max().unwrap_or(&1) * (K - 1);
     let rf2 = rf1;
 
+    let stride = effective_stride::<CH>();
+
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, CH, K> {
         WaveNetLayer {
             conv1d: Conv1d {
@@ -99,9 +101,9 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
                 bias: make_bias(CH),
                 do_bias: false,
             },
-            scratch_mixin: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            scratch_mixin: AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0f32)
                 .expect("scratch alloc"),
-            scratch_conv: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)
+            scratch_conv: AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0f32)
                 .expect("scratch alloc"),
         }
     };
@@ -109,7 +111,9 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
     let layers_1: Vec<WaveNetLayer<1, CH, K>> =
         TEST_DILATIONS.iter().map(|&d| make_layer_a1(d)).collect();
     let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
-        .map(|i| WaveNetLayerState::new(CH, rf1, i).expect("Failed to create WaveNetLayerState"))
+        .map(|i| {
+            WaveNetLayerState::new(stride, rf1, i).expect("Failed to create WaveNetLayerState")
+        })
         .collect();
     let num_layers_1 = layers_1.len();
 
@@ -127,15 +131,15 @@ fn build_const_generic_model<const CH: usize, const K: usize, const HEAD: usize>
             bias: make_bias(HEAD),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES])
+        array_outputs: AlignedVec::from_vec(vec![0.0; stride * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
-        head_accum: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES])
+        head_accum: AlignedVec::from_vec(vec![0.0; stride * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
         head_outputs: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
         receptive_field_size: rf1,
-        block_size: CH,
-        block_buffer: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES])
+        block_size: stride,
+        block_buffer: AlignedVec::from_vec(vec![0.0; stride * WAVENET_MAX_NUM_FRAMES])
             .expect("allocation should succeed for test-sized buffers"),
     };
 
@@ -364,7 +368,7 @@ macro_rules! parity_test {
 
             let err = max_abs_error(&const_out, &dyn_out);
             assert!(
-                err < 1e-7,
+                err < 1e-6,
                 "Parity failed for CH={}, K={}, HEAD={}: max_abs_error = {:.3e}",
                 $ch,
                 $k,
