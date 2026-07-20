@@ -2499,7 +2499,7 @@ linha 587; F-A2, linha 648; F-A3, linha 696; F-A4, linha 718 — sem ação).*
 > única sprint porque ambas tocam exclusivamente arquivos de teste, sem nenhuma alteração de
 > código de produção, e podem ser entregues na mesma PR para minimizar overhead de review.
 
-### T7.S1.1 — Parametrizar a tolerância da macro `parity_test!` por SKU
+### T7.S1.1 — Parametrizar a tolerância da macro `parity_test!` por SKU [DONE]
 
 **Responsável:** Engenheiro Rust (qualquer)
 **Arquivo:** [`src/models/wavenet/dynamic_parity_test.rs`](./src/models/wavenet/dynamic_parity_test.rs)

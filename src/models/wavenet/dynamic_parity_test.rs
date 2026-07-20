@@ -349,7 +349,7 @@ fn max_abs_error(a: &[f32], b: &[f32]) -> f32 {
 }
 
 macro_rules! parity_test {
-    ($name:ident, $ch:literal, $k:literal, $head:literal) => {
+    ($name:ident, $ch:literal, $k:literal, $head:literal, $tol:expr) => {
         #[test]
         fn $name() {
             let mut const_model = build_const_generic_model::<$ch, $k, $head>();
@@ -368,7 +368,7 @@ macro_rules! parity_test {
 
             let err = max_abs_error(&const_out, &dyn_out);
             assert!(
-                err < 1e-6,
+                err < $tol,
                 "Parity failed for CH={}, K={}, HEAD={}: max_abs_error = {:.3e}",
                 $ch,
                 $k,
@@ -380,10 +380,13 @@ macro_rules! parity_test {
 }
 
 // Catalog geometries: Standard, Lite, Feather, Nano
-parity_test!(test_dynamic_parity_standard, 16, 3, 8);
-parity_test!(test_dynamic_parity_lite, 12, 3, 6);
-parity_test!(test_dynamic_parity_feather, 8, 3, 4);
-parity_test!(test_dynamic_parity_nano, 4, 3, 2);
+parity_test!(test_dynamic_parity_standard, 16, 3, 8, 1e-7);
+// Lite (CH=12) uses pad-to-16 stride kernel where FMA order differs from
+// the const-generic stride-12 path; max observed absolute error 5.07e-7
+// (≈ −126 dBFS, sub-noise-floor). See TODO-findings.md F-A2/F-A6.
+parity_test!(test_dynamic_parity_lite, 12, 3, 6, 1e-6);
+parity_test!(test_dynamic_parity_feather, 8, 3, 4, 1e-7);
+parity_test!(test_dynamic_parity_nano, 4, 3, 2, 1e-7);
 
 /// Determinism: two identically built and prewarmed dynamic models must produce
 /// identical output for the same input.
