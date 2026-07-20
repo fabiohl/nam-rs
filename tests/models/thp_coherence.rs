@@ -119,13 +119,16 @@ fn test_prctl_thp_except_advised_no_crash() {
         assert_eq!(ret, 0, "prctl should return 0 on success");
     }
 
+    let (restore_flag, restore_mode): (i32, libc::c_ulong) = match original_thp_state {
+        0 => (0, 0),
+        1 => (1, 0),
+        3 => (1, PR_THP_DISABLE_EXCEPT_ADVISED),
+        other => {
+            eprintln!("Unexpected PR_GET_THP_DISABLE value {other}; defaulting to re-enable THP.");
+            (0, 0)
+        }
+    };
     unsafe {
-        libc::prctl(
-            PR_SET_THP_DISABLE,
-            original_thp_state as libc::c_ulong,
-            0,
-            0,
-            0,
-        );
+        libc::prctl(PR_SET_THP_DISABLE, restore_flag, restore_mode, 0, 0);
     }
 }

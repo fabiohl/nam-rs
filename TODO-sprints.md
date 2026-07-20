@@ -2549,7 +2549,7 @@ com `err < 1e-6` (tolerância documentada, escopo restrito ao SKU realmente alte
 
 ---
 
-### T7.S1.2 — Corrigir o mapeamento bitmask→argumentos na restauração de THP
+### T7.S1.2 — Corrigir o mapeamento bitmask→argumentos na restauração de THP [DONE]
 
 **Responsável:** Engenheiro Rust (qualquer)
 **Arquivo:** [`tests/models/thp_coherence.rs`](./tests/models/thp_coherence.rs)
