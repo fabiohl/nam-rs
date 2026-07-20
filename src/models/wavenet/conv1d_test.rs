@@ -43,7 +43,7 @@ fn test_conv1d_identity_kernel() {
     // Manually invoke the SIMD routine optimized for AVX2.
     // The unsafe block is necessary because we access hardware intrinsic primitives.
     unsafe {
-        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1, 4);
+        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1);
     }
 
     // Since the kernel is identity, the output should be a bit-perfect copy of the input.
@@ -86,7 +86,7 @@ fn test_conv1d_with_bias() {
 
     // The SIMD engine executes Fused Multiply-Add (FMA): (input * 1.0) + 0.5.
     unsafe {
-        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1, 4);
+        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1);
     }
 
     // Verify that each element was correctly translated by the bias value.
@@ -145,7 +145,7 @@ fn test_conv1d_dilation() {
     // Tap 1: frame 4 - (2 * 1) = frame 2 -> [3.0, 4.0]
     // Tap 2: frame 4 - (2 * 0) = frame 4 -> [5.0, 6.0]
     unsafe {
-        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 4, 1, 2);
+        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 4, 1);
     }
 
     // Expected total sum: 1+2 + 3+4 + 5+6 = 21.0.
@@ -186,7 +186,7 @@ fn test_conv1d_zero_input() {
 
     // First pass: Without bias, output should be absolute 0.0.
     unsafe {
-        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1, 2);
+        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1);
     }
 
     assert_eq!(block, vec![0.0, 0.0]);
@@ -197,7 +197,7 @@ fn test_conv1d_zero_input() {
         .expect("allocation should succeed for test-sized buffers");
 
     unsafe {
-        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1, 2);
+        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1);
     }
 
     assert_eq!(block, vec![7.5, 8.5]);
@@ -247,7 +247,7 @@ fn test_conv1d_known_output() {
     // out1 = bias[1] + dot(F0, w[out1,k0]) + dot(F1, w[out1,k1])
     //      = -1.0 + (2*-0.5 + 3*-1.0) + (4*-1.5 + 5*-2.0) = -1.0 - 4.0 - 16.0 = -21.0
     unsafe {
-        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 1, 1, 2);
+        conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 1, 1);
     }
 
     assert_eq!(block[0], 21.0);
@@ -295,12 +295,7 @@ fn test_conv1d_ch8_wide_interleaving() {
 
     let mut simd_out = vec![0.0f32; CH];
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            5,
-            CH,
-        );
+        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut simd_out, 5);
     }
 
     let mut scalar_out = [0.0f32; CH];
@@ -371,12 +366,7 @@ fn test_conv1d_ch16_wide_interleaving() {
 
     let mut simd_out = vec![0.0f32; CH];
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(
-            &layer_buffer,
-            &mut simd_out,
-            5,
-            CH,
-        );
+        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut simd_out, 5);
     }
 
     let mut scalar_out = [0.0f32; CH];

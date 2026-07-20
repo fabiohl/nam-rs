@@ -144,7 +144,7 @@ impl NamModel for model_dyn::WaveNetModelDyn {
 
 pub use common::{
     LAYER_ARRAY_BUFFER_PADDING, MAX_KERNEL, WAVENET_MAX_NUM_FRAMES, WaveNetLayerState,
-    WavenetProcessContext, effective_stride,
+    WavenetProcessContext,
 };
 pub use conv1d::Conv1d;
 pub use conv1d_dyn::Conv1dDyn;

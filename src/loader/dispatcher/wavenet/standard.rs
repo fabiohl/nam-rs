@@ -5,10 +5,8 @@ use super::super::WeightCursor;
 use super::layout;
 use crate::loader::nam_json::{NamModelData, NamWavenetTopology};
 use crate::math::common::AlignedVec;
-use crate::models::wavenet::{
-    DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
-    WaveNetModel, effective_stride,
-};
+use crate::models::wavenet::{DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetModel};
+use crate::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use anyhow::Context;
 use log::info;
 
@@ -143,17 +141,16 @@ pub(crate) fn build_wavenet_array<
         let one_by_one =
             layout::read_dense_weights_typed::<DenseLayer<CH, CH>>(cursor, CH, CH, true)?;
 
-        let stride = effective_stride::<CH>();
         layers.push(WaveNetLayer {
             conv1d,
             input_mixin,
             one_by_one,
-            scratch_mixin: AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0f32)?,
-            scratch_conv: AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0f32)?,
+            scratch_mixin: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)?,
+            scratch_conv: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0f32)?,
         });
 
         let rf = (K - 1) * dilation;
-        states.push(WaveNetLayerState::new(stride, rf, *alloc_num)?);
+        states.push(WaveNetLayerState::new(CH, rf, *alloc_num)?);
         *alloc_num += 1;
     }
 
@@ -166,8 +163,7 @@ pub(crate) fn build_wavenet_array<
 
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 
-    let stride = effective_stride::<CH>();
-    let block_size = stride;
+    let block_size = CH;
     let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0)?;
     let num_layers = layers.len();
 
@@ -176,8 +172,8 @@ pub(crate) fn build_wavenet_array<
         states,
         rechannel,
         head_rechannel,
-        array_outputs: AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0)?,
-        head_accum: AlignedVec::new(stride * WAVENET_MAX_NUM_FRAMES, 0.0)?,
+        array_outputs: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0)?,
+        head_accum: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0)?,
         head_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0)?,
         receptive_field_size,
         block_size,

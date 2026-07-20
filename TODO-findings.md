@@ -991,6 +991,15 @@ investigação, apenas remoção/manutenção de código já bit-exato).
 
 **Nota do PO:** Aprovado para execução. Reverta o T6.S3.2. Use o próprio git commit para isto. Esta dúvida do Lite pode ser documentada como uma "known issue" no local adequado em "docs/".
 
+**Resolução (2026-07-20, EPIC-7/T7.S2.3):** Desfecho B executado. T6.S3.2 revertido cirurgicamente
+(commit reverso preservando padding de pesos do EPIC-2 original). Análise técnica completa em
+`docs/wavenet_lite_ch12_profiling.md` (T7.S2.2). Lite CH12 em 52.7 µs pós-revert — essencialmente
+idêntico a 52.2 µs pré-T6.S3.2 e 52.3 µs pós-T6.S3.2, confirmando que o pad-to-16 estrutural
+completo era no-op para performance. Hipótese #1 (overhead fixo por camada) foi sustentada como
+causa dominante; #2 (transição SIMD) parcialmente sustentada (VEX encoding, sem penalidade legacy);
+#3 (meta ≤42 µs incorreta) sustentada. A meta de ≤42 µs foi abandonada como não-alcançável sem
+redesign arquitetural profundo. Documentação da decisão em `docs/wavenet_lite_efficiency_decision.md`.
+
 ---
 
 ### Nota sobre o resultado de `tests-performance-regression.sh` fornecido pelo usuário

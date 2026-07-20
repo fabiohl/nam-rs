@@ -35,8 +35,6 @@ pub mod f32_avx512;
 mod f32_kernel_macro;
 #[doc = "Internal: the `gemv_kernel!` macro used by f16 AVX2 and AVX-512 kernels."]
 pub mod kernel_macro;
-#[doc = "Pad-to-16 stride variants for CH=12 GEMV/broadcast kernels."]
-pub mod stride16;
 
 pub use f16_avx2::*;
 pub use f16_avx512::*;

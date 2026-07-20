@@ -41,7 +41,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         frame_idx_f1: usize,
         mixin_f0: &[f32],
         mixin_f1: &[f32],
-        stride: usize,
     ) {
         let interleave_width = select_interleave_width(OUT);
         let num_blocks = OUT.div_ceil(interleave_width);
@@ -50,8 +49,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let mut in_taps_f1 = [[0.0f32; IN]; K];
         for k in 0..K {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
-            let in_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * stride;
-            let in_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * stride;
+            let in_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
+            let in_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * IN;
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     layer_buffer.as_ptr().add(in_start_f0),
@@ -66,7 +65,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 if self.dilation >= 128 {
                     prefetch_strategy_2stage(
                         layer_buffer.as_ptr().add(in_start_f0),
-                        self.dilation * stride,
+                        self.dilation * IN,
                         k,
                         K,
                         self.dilation,
@@ -74,7 +73,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 } else {
                     prefetch_strategy_simple(
                         layer_buffer.as_ptr().add(in_start_f0),
-                        self.dilation * stride,
+                        self.dilation * IN,
                         k,
                         K,
                         self.dilation,

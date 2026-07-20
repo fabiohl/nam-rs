@@ -9,7 +9,6 @@ mod avx512;
 mod fused_add_gemm_batch;
 mod fused_residual_batch;
 mod kernel_macro;
-pub mod stride16;
 
 pub use avx512::{
     fused_add_gemm_batch_avx512, fused_gemm_residual_batch_avx512,

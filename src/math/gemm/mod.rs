@@ -36,8 +36,5 @@ pub use dot_16x::dot_f32_avx512::*;
 pub use dot_16x::scalar::dot_product_16x_f32_scalar; // Test/bench oracle only — not for production dispatch
 pub use dot_basic::*;
 pub use gemm_batch::*;
-pub use gemv::f16_avx2::*;
-pub use gemv::f16_avx512::*;
-pub use gemv::f32_avx2::*;
-pub use gemv::f32_avx512::*;
+pub use gemv::*;
 pub use gemv_4gate::*;
