@@ -3,6 +3,8 @@
 
 use std::fs;
 
+use serial_test::serial;
+
 use nam_rs::dsp::mirror_buf::{
     MirrorHugePageStatus, MirroredBuffer, huge_page_status, is_huge_page_active,
 };
@@ -24,6 +26,7 @@ fn read_anon_huge_pages_kb() -> Option<u64> {
 
 #[test]
 #[cfg(target_os = "linux")]
+#[serial]
 fn test_thp_coherence_smaps_consistency() {
     let buf = match MirroredBuffer::<f32>::new(600_000) {
         Ok(b) => b,
@@ -85,9 +88,13 @@ fn test_thp_coherence_smaps_consistency() {
 /// In neither case does it crash or leave corrupted state.
 #[test]
 #[cfg(target_os = "linux")]
+#[serial]
 fn test_prctl_thp_except_advised_no_crash() {
     const PR_SET_THP_DISABLE: libc::c_int = 41;
+    const PR_GET_THP_DISABLE: libc::c_int = 42;
     const PR_THP_DISABLE_EXCEPT_ADVISED: libc::c_ulong = 2;
+
+    let original_thp_state = unsafe { libc::prctl(PR_GET_THP_DISABLE, 0, 0, 0, 0) };
 
     let ret = unsafe { libc::prctl(PR_SET_THP_DISABLE, 1, PR_THP_DISABLE_EXCEPT_ADVISED, 0, 0) };
 
@@ -113,6 +120,12 @@ fn test_prctl_thp_except_advised_no_crash() {
     }
 
     unsafe {
-        libc::prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0);
+        libc::prctl(
+            PR_SET_THP_DISABLE,
+            original_thp_state as libc::c_ulong,
+            0,
+            0,
+            0,
+        );
     }
 }

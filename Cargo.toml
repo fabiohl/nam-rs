@@ -5,6 +5,7 @@ name = "nam-rs"
 version = "3.0.0"
 edition = "2024"
 license = "Apache-2.0"
+readme = "README.md"
 repository = "https://github.com/fabiohl/nam-rs"
 description = "Neural Amp Modeler (NAM) client in Rust"
 authors = ["Fábio Henrique de Lima Silva <fabio.henrique.lima.silva@gmail.com>"]
@@ -64,6 +65,8 @@ criterion = { version = "0.8.2", default-features = false }
 proptest = "1.11.0"
 # Model-checking tool for concurrency protocols
 loom = "0.7"
+# Serialize test execution to isolate global-state side effects (e.g. THP prctl).
+serial_test = { version = "3", features = ["async"] }
 
 [[bench]]
 name = "inference_bench"

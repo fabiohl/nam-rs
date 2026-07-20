@@ -1983,7 +1983,7 @@ Este teste fecha o gap.
 
 ---
 
-### T6.S1.6 — Gate final do Sprint S1: validação em hosts reais
+### T6.S1.6 — Gate final do Sprint S1: validação em hosts reais [DONE]
 
 **Responsável:** Engenheiro de QA / músico de referência
 **Arquivos:** N/A (validação manual)
@@ -2044,7 +2044,7 @@ Este teste fecha o gap.
 >
 > **Pode entrar em qualquer PR** — recomenda-se anexar à PR de S1 para minimizar overhead de review.
 
-### T6.S2.1 — Restaurar estado original do THP no teardown do teste
+### T6.S2.1 — Restaurar estado original do THP no teardown do teste [DONE]
 
 **Responsável:** Engenheiro Rust (qualquer)
 **Arquivo:** [`tests/models/thp_coherence.rs`](./tests/models/thp_coherence.rs)
@@ -2078,12 +2078,12 @@ Adicionalmente: decorar ambos os testes deste arquivo com `#[serial]` do crate `
 (já verificar se é dependência de dev existente — se não, adicionar ao `[dev-dependencies]` em
 `Cargo.toml`) para garantir que nunca rodem simultaneamente, independente do scheduler do libtest.
 
-- [ ] Ler o estado original via `PR_GET_THP_DISABLE` no início de `test_prctl_thp_except_advised_no_crash`.
-- [ ] Restaurar o estado original no final do teste (usar um guard RAII ou simplesmente ao final
+- [x] Ler o estado original via `PR_GET_THP_DISABLE` no início de `test_prctl_thp_except_advised_no_crash`.
+- [x] Restaurar o estado original no final do teste (usar um guard RAII ou simplesmente ao final
 
       do corpo, antes do `return` — sem panic path aqui pois o teste é `#[should_panic]`-free).
-- [ ] Verificar se o crate `serial_test` já está em `[dev-dependencies]`. Se não, adicioná-lo.
-- [ ] Decorar `test_prctl_thp_except_advised_no_crash` e `test_thp_coherence_smaps_consistency`
+- [x] Verificar se o crate `serial_test` já está em `[dev-dependencies]`. Se não, adicioná-lo.
+- [x] Decorar `test_prctl_thp_except_advised_no_crash` e `test_thp_coherence_smaps_consistency`
 
       com `#[serial]`.
 
