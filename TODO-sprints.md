@@ -1759,9 +1759,12 @@ publicado como `AtomicU32` para leitura lock-free na main-thread (em `tail.rs`).
 - [ ] Adicionar campo `cabsim_tail_samples: AtomicU32` em `RtToUi` logo após `current_latency`
 
       ([`shared.rs:137`](./src/clap/plugin/shared.rs)).
+
 - [ ] Inicializar para `AtomicU32::new(0)` nos dois locais de construção do `RtToUi`:
+
   - [`src/clap/plugin/mod.rs:75`](./src/clap/plugin/mod.rs) (inicialização normal do plugin)
   - [`src/clap/plugin/shared_test.rs:23`](./src/clap/plugin/shared_test.rs) (harness de testes)
+
 - [ ] Atualizar o doc-comment do struct `RtToUi` documentando o invariante de escrita
 
       exclusivamente pela thread de áudio.
@@ -1814,11 +1817,14 @@ data race.
 - [ ] Modificar `cold_load_cabsim` em [`events.rs:184-188`](./src/clap/processor/events.rs)
 
       para calcular e publicar `cabsim_tail_samples` conforme o pseudocódigo acima.
+
 - [ ] Verificar que `conv.latency_samples()` retorna `partition_size` (já confirmado em
 
       [`conv.rs:203-207`](./src/dsp/cabsim/conv.rs)) — usar este método em vez de acessar
       `partition_size` diretamente para preservar o encapsulamento.
+
 - [ ] Manter a invariante: `cabsim_tail = 0` quando `conv_engine.is_none()` (IR não carregado).
+
 - [ ] **Não remover** o campo `conv.latency_samples()` do cálculo de `effective_latency` em
 
       `process_block` [`events.rs:87-89`](./src/clap/processor/events.rs) — esse valor
@@ -1866,9 +1872,11 @@ somar `current_latency` (latência de processamento fixa — resampler + UPOLS) 
 > é a soma correta.
 
 - [ ] Substituir o corpo de `get()` pelo código acima.
+
 - [ ] Atualizar o doc-comment da função — remover a afirmação incorreta de que `current_latency`
 
       inclui as contribuições de CabSim.
+
 - [ ] Verificar que `NamPluginTail` (alias de tipo em linha 25) permanece inalterado.
 
 **Gate T6.S1.3:**
@@ -1916,11 +1924,15 @@ deve ser adotado para `cabsim_tail_samples`: poll do atômico → se mudou → `
 - [ ] Adicionar campo `last_reported_cabsim_tail: u32` na struct `NamClapMainThread`
 
       (`src/clap/plugin/main_thread/mod.rs` — verificar onde está a struct).
+
 - [ ] Inicializar `last_reported_cabsim_tail: 0` no construtor (junto de `last_reported_latency`).
+
 - [ ] Adicionar o bloco de tail-monitoring em `on_main_thread` conforme o pseudocódigo acima,
 
       imediatamente após o bloco de latência existente.
+
 - [ ] Verificar que o `use` para `HostTail` já está importado ou adicioná-lo.
+
 - [ ] **Remover** o código existente em `events.rs:96-98` que chama `tail_ext.changed()` da
 
       thread de áudio — a notificação passa a ser responsabilidade exclusiva da main-thread via
@@ -1961,16 +1973,21 @@ Este teste fecha o gap.
       ```
 
 - [ ] Criar `tests/clap/tail_semantics.rs` com SPDX/copyright.
+
 - [ ] Usar o harness de testes CLAP existente (`src/clap/test_util.rs`) para instanciar o plugin.
+
 - [ ] Gerar um IR sintético no teste (ex.: vetor de `ir_len = 48000` amostras — 1s @48kHz —
 
       com impulso na posição 0 e zeros no restante), para independência de arquivos externos.
+
 - [ ] Carregar o IR, aguardar o `cold_load_cabsim` ser executado pela thread de áudio
 
       (via `process_block` com evento `CLAP_EVENT_PARAM_VALUE` ou equivalente no harness).
+
 - [ ] Afirmar que `PluginTailImpl::get()` retorna `TailLength::Finite(v)` com
 
       `v >= ir_len * 9 / 10` (tolerância 10%, arredondamento de partição).
+
 - [ ] Adicionar ao módulo `tests/clap/mod.rs` (ou criar se inexistente).
 
 **Gate T6.S1.5:**
@@ -1989,11 +2006,15 @@ Este teste fecha o gap.
 **Arquivos:** N/A (validação manual)
 
 - [ ] Compilar `utils/build-release.sh` para gerar `nam-rs.clap` com as correções.
+
 - [ ] Validar com `clap-validator`: confirmar presença e valor coerente da extensão `tail`.
+
 - [ ] Carregar `nam-rs.clap` em **Reaper**: configurar uma faixa com CabSim ativo (IR de ~1s),
 
       realizar um bounce offline, confirmar que a cauda do CabSim não é cortada no arquivo final.
+
 - [ ] Repetir em **Bitwig** (ou outro host CLAP disponível).
+
 - [ ] Registrar os resultados na PR como evidência de aceite.
 
 **Gate T6.S1.6:**
@@ -2079,10 +2100,13 @@ Adicionalmente: decorar ambos os testes deste arquivo com `#[serial]` do crate `
 `Cargo.toml`) para garantir que nunca rodem simultaneamente, independente do scheduler do libtest.
 
 - [x] Ler o estado original via `PR_GET_THP_DISABLE` no início de `test_prctl_thp_except_advised_no_crash`.
+
 - [x] Restaurar o estado original no final do teste (usar um guard RAII ou simplesmente ao final
 
       do corpo, antes do `return` — sem panic path aqui pois o teste é `#[should_panic]`-free).
+
 - [x] Verificar se o crate `serial_test` já está em `[dev-dependencies]`. Se não, adicioná-lo.
+
 - [x] Decorar `test_prctl_thp_except_advised_no_crash` e `test_thp_coherence_smaps_consistency`
 
       com `#[serial]`.
@@ -2115,7 +2139,7 @@ Adicionalmente: decorar ambos os testes deste arquivo com `#[serial]` do crate `
 >
 > **Estimativa:** 3–5 dias de engenharia.
 
-### T6.S3.1 — Análise e inventário: todos os buffers internos dimensionados para CH=12
+### T6.S3.1 — Análise e inventário: todos os buffers internos dimensionados para CH=12 [DONE]
 
 **Responsável:** Engenheiro Sênior DSP/Rust
 **Arquivos de leitura (sem modificação de produção nesta tarefa):**
@@ -2133,11 +2157,11 @@ alvo (16-wide), impacto de memória e risco de paridade.
 
 **Checklist de inventário esperado (a confirmar/expandir pela análise):**
 
-- [ ] `scratch_mixin`: dimensão atual × stride atual → dimensão alvo.
-- [ ] `scratch_conv` (se existir campo separado): idem.
-- [ ] Ring buffers de dilatação em `conv1d_dual.rs` (estado de dilated convolution para CH=12).
-- [ ] Buffers de saída intermediários em `conv_input.rs` (se houver stride de 12 não corrigido).
-- [ ] Quaisquer outros buffers com `ch=12` como constante literal em vez de `CH_PADDED=16`.
+- [x] `scratch_mixin`: dimensão atual × stride atual → dimensão alvo.
+- [x] `scratch_conv` (se existir campo separado): idem.
+- [x] Ring buffers de dilatação em `conv1d_dual.rs` (estado de dilated convolution para CH=12).
+- [x] Buffers de saída intermediários em `conv_input.rs` (se houver stride de 12 não corrigido).
+- [x] Quaisquer outros buffers com `ch=12` como constante literal em vez de `CH_PADDED=16`.
 
 **Artefato de saída:** comentário de análise na PR documentando o inventário completo, o plano
 de dimensionamento, e a prova de que as 4 lanes de padding (índices 12..15) são inicializadas
@@ -2148,6 +2172,62 @@ em zero e nunca lidas para produzir a saída (análogo à invariante `T2.S1.1` d
       ```bash
       cargo check  # sem modificação de produção — apenas garantir que o código compila
       ```
+
+**Conclusão T6.S3.1 (2026-07-20):**
+
+Inventário completo dos buffers internos com stride CH=12 para o WaveNet Lite.
+Foram identificados **8 buffers** que precisam ser redimensionados para stride 16,
+distribuídos em 3 categorias:
+
+| Categoria        | Buffers                                                        | Localização da alocação                |
+| ---------------- | -------------------------------------------------------------- | -------------------------------------- |
+| Per‑layer (×N)   | `scratch_mixin`, `scratch_conv`, `layer_buffer`, `Conv1d.bias` | `standard.rs:148-149`, `common.rs:67`  |
+| Per‑array (×2)   | `array_outputs`, `head_accum`, `block_buffer`                  | `standard.rs:175-176,167`              |
+| Stack (per call) | `in_taps`, `in_taps_f0`, `in_taps_f1`                          | `conv1d.rs:52`, `conv1d_dual.rs:48-49` |
+
+**Impacto total de memória:** ~550 KiB adicionais (cold path, alocação no load do modelo).
+
+**Achado crítico para T6.S3.2 — Acoplamento de stride nos kernels de compute:**
+O stride CH=12 não está apenas nos tamanhos de alocação — está *hardcoded* em 7
+kernels/loops de compute que derivam o stride do frame a partir do tamanho do slice:
+
+| Consumidor                        | Stride hardcoded                  | Arquivo:linha                         |
+| --------------------------------- | --------------------------------- | ------------------------------------- |
+| `input_mixin` (broadcast_scale)   | `OUT=12` → `n*12+oc`              | `f32_avx2.rs:627`                     |
+| `chunks_exact_mut(2*CH)` splitter | `CH=12`                           | `layer.rs:116`                        |
+| `process_dual_frame_with_mixin`   | `IN=12` → `frame_idx*12`          | `conv1d_dual.rs:51-53`                |
+| `one_by_one` (GEMM 12×12)         | `f*12` para input/residual/output | `fused_residual_batch.rs:677,715,731` |
+| `head_rechannel` (GEMV)           | `in_len=12` → `n*12+ic`           | `f32_avx2.rs:48,112`                  |
+| `copy_within` prewarm             | `CH=12` copy range                | `layer_array.rs:102`                  |
+| `advance_frames(channels=CH)`     | `size() / 12` = frame count       | `common.rs:107`                       |
+
+Portanto, T6.S3.2 **não é apenas redimensionar alocações** — exige também atualizar
+esses kernels para operar com stride 16 mantendo apenas 12 canais lógicos válidos.
+A invariante de paridade bit-exact é demonstrável (padding lanes = 0.0 em pesos,
+nunca indexadas por loops `0..12`, nunca escritas por `store_16_accums(out_n=12)`),
+mas a validação requer testes golden-file antes/depois.
+
+**Descoberta extra:** `block_buffer` (768 f32 por array) é uma alocação morta no
+hot-path do WaveNet — o campo `WavenetProcessContext.block` é destruturado com `..`
+em `layer.rs:69`. Esse buffer existe apenas para A2/ConvNet. Não bloqueia o pad‑to‑16
+mas deve ser removido em PR separada para evitar confusão.
+
+**Orientações para T6.S3.2:**
+
+1. Introduzir constante `CH_PADDED = 16` e/ou passar stride como parâmetro explícito
+   nos métodos `process_*_frame_with_mixin` (atualmente o stride é derivado de `IN`).
+2. A estratégia mais segura: começar pelos buffers de scratch (`scratch_mixin`,
+   `scratch_conv`), validar bit-exact com testes golden, depois avançar para
+   `layer_buffer` (que mexe na cópia `copy_nonoverlapping` dos conv kernels).
+3. Para o `one_by_one` (GEMM 12×12): será necessário um novo kernel
+   `fused_gemm_residual_batch_f32_12x12_padded` que aceite stride 16 no input e
+   escreva stride 16 no output, ou adaptar o existente com parâmetro de stride.
+4. Para `head_rechannel` (GEMV 12→HEAD): como `in_len` é derivado do slice length,
+   a abordagem mais limpa é passar `head_accum` com stride 16 e ajustar o GEMV para
+   usar stride explícito em vez de `in_len` derivado.
+5. O `block_buffer` não precisa ser redimensionado com urgência (é morto no WaveNet),
+   mas para consistência estrutural do `WaveNetLayerArray`, redimensionar junto com
+   os demais buffers do array.
 
 ---
 
@@ -2224,9 +2304,11 @@ pudesse vazar para a saída em um bug futuro.
 - [ ] Identificar quais buffers são acessíveis para inspeção no pós-bloco (talvez exija
 
       expor um accessor `#[cfg(test)]` nos buffers internos de `WaveNetLayer`).
+
 - [ ] Implementar proptest ou teste determinístico (N=100 blocos, seed fixo) verificando
 
       a invariante de zero nas lanes de padding.
+
 - [ ] Marcar o teste como `#[ignore]` se for lento (>1s) — executado via `tests-long.sh`.
 
 **Gate T6.S3.3:**
@@ -2251,11 +2333,15 @@ explícito — deve sair de 6043,98 para ≤ 3000.
 - [ ] Executar `utils/quality-dashboard.sh --check docs/quality-contract.txt` e confirmar que
 
       o Lite CH12 sai do estado de outlier >2× mediana.
+
 - [ ] Executar `utils/tests-performance-regression.sh` — comparar antes/depois.
+
 - [ ] Registrar os valores medidos de µs e µs/MMAC no corpo da PR como evidência.
+
 - [ ] Se o resultado estiver entre 42–52 µs (sem atingir a meta), investigar antes de fechar —
 
       verificar com `perf stat` se ainda há cache-line splits residuais.
+
 - [ ] Atualizar `docs/quality-contract.txt` com `--save` se a latência do Lite melhorar
 
       (re-baseline planejado — ESR bit-exact não muda).
