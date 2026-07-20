@@ -73,6 +73,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
                 ui_clipped: std::sync::atomic::AtomicBool::new(false),
                 current_latency: AtomicU32::new(0),
+                cabsim_tail_samples: AtomicU32::new(0),
                 active_channel_count: AtomicU32::new(1),
             },
             ui_to_rt: UiToRt {

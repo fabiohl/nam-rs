@@ -125,6 +125,11 @@ impl NamClapSharedRef {
 // ---------------------------------------------------------------------------
 
 /// Fields written every block by the RT thread, read by the UI thread.
+///
+/// All fields in this struct are written exclusively by the audio thread
+/// and read lock-free by the UI/main thread via `Ordering::Relaxed` (or
+/// stronger when the field is part of a synchronization pair).
+/// The UI thread must never write to any field in this struct.
 #[repr(align(128))]
 pub struct RtToUi {
     /// True Peak L level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
@@ -135,6 +140,10 @@ pub struct RtToUi {
     pub ui_clipped: AtomicBool,
     /// Current latency reported to the host (in samples).
     pub current_latency: AtomicU32,
+    /// CabSim tail length in samples (= num_partitions × partition_size).
+    /// Written by the audio thread after each IR swap; read by the main thread
+    /// via `clap.tail`. Zero when no IR is loaded (passthrough mode).
+    pub cabsim_tail_samples: AtomicU32,
     /// Number of active channels: 1 = mono, 2 = stereo.
     pub active_channel_count: AtomicU32,
 }

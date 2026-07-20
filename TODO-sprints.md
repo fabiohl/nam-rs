@@ -1732,7 +1732,7 @@ Relação custo-benefício do `pw_filter`:
 >
 > **Estimativa:** 1–2 dias de engenharia.
 
-### T6.S1.1 — Adicionar `cabsim_tail_samples: AtomicU32` em `RtToUi`
+### T6.S1.1 — Adicionar `cabsim_tail_samples: AtomicU32` em `RtToUi` [DONE]
 
 **Responsável:** Engenheiro Sênior Rust / CLAP
 **Arquivo:** [`src/clap/plugin/shared.rs`](./src/clap/plugin/shared.rs)
