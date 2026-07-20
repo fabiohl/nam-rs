@@ -234,3 +234,233 @@ fn process_in_blocks_lite(
         pos = end;
     }
 }
+
+// =============================================================================
+// T6.S3.3 — Prop-test: padding lanes (12-15) never become NaN/Inf/subnormal
+// =============================================================================
+
+/// Verify that lanes 12-15 of a stride-16 buffer are exactly 0.0 for
+/// `num_frames` frames. Returns the first violation as `Err((frame, lane, value))`.
+fn check_padding_lanes_zero(
+    buf: &[f32],
+    stride: usize,
+    num_frames: usize,
+    _label: &str,
+) -> Result<(), (usize, usize, f32)> {
+    for f in 0..num_frames {
+        let base = f * stride;
+        for lane in 12..16 {
+            let val = buf[base + lane];
+            if val != 0.0f32 {
+                return Err((f, lane, val));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Deterministic LCG for generating pseudo-random test data without external crates.
+#[inline]
+fn next_lcg(state: &mut u64) -> f32 {
+    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+    let x = (*state >> 33) as f32 * (1.0f32 / (1u32 << 31) as f32);
+    (x * 2.0) - 1.0
+}
+
+#[test]
+fn test_wavenet_lite_padding_lanes_zero() {
+    let mut model = build_tiny_lite_wavenet();
+    model.prewarm();
+
+    const STRIDE: usize = 16; // effective_stride(12)
+    const NUM_BLOCKS: usize = 100;
+    let mut lcg_state: u64 = 0xDEAD_BEEF_CAFE_BABE;
+
+    for block_idx in 0..NUM_BLOCKS {
+        let num_frames = ((lcg_state & 0x3F) as usize) + 1; // 1..=64
+        lcg_state = lcg_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+
+        let input: Vec<f32> = (0..num_frames).map(|_| next_lcg(&mut lcg_state)).collect();
+        let mut output = vec![0.0f32; num_frames];
+
+        let saved_starts: Vec<usize> = model.array1.states.iter().map(|s| s.buffer_start).collect();
+
+        model.process(&input, &mut output);
+
+        for (layer_idx, layer) in model.array1.layers.iter().enumerate() {
+            check_padding_lanes_zero(
+                layer.scratch_mixin.as_ref(),
+                STRIDE,
+                num_frames,
+                &format!("array1.layer[{layer_idx}].scratch_mixin"),
+            )
+            .unwrap_or_else(|(f, l, v)| {
+                panic!(
+                    "array1.layer[{layer_idx}].scratch_mixin frame {f} lane {l} = {v:e}, \
+                     expected 0.0 after block {block_idx}"
+                )
+            });
+
+            check_padding_lanes_zero(
+                layer.scratch_conv.as_ref(),
+                STRIDE,
+                num_frames,
+                &format!("array1.layer[{layer_idx}].scratch_conv"),
+            )
+            .unwrap_or_else(|(f, l, v)| {
+                panic!(
+                    "array1.layer[{layer_idx}].scratch_conv frame {f} lane {l} = {v:e}, \
+                     expected 0.0 after block {block_idx}"
+                )
+            });
+
+            let lb_start = saved_starts[layer_idx] * STRIDE;
+            check_padding_lanes_zero(
+                &model.array1.states[layer_idx].layer_buffer
+                    [lb_start..lb_start + num_frames * STRIDE],
+                STRIDE,
+                num_frames,
+                &format!("array1.layer[{layer_idx}].layer_buffer"),
+            )
+            .unwrap_or_else(|(f, l, v)| {
+                panic!(
+                    "array1.layer[{layer_idx}].layer_buffer frame {f} lane {l} = {v:e}, \
+                     expected 0.0 after block {block_idx}"
+                )
+            });
+        }
+
+        check_padding_lanes_zero(
+            &model.array1.array_outputs[..num_frames * STRIDE],
+            STRIDE,
+            num_frames,
+            "array1.array_outputs",
+        )
+        .unwrap_or_else(|(f, l, v)| {
+            panic!(
+                "array1.array_outputs frame {f} lane {l} = {v:e}, \
+                 expected 0.0 after block {block_idx}"
+            )
+        });
+
+        check_padding_lanes_zero(
+            &model.array1.head_accum[..num_frames * STRIDE],
+            STRIDE,
+            num_frames,
+            "array1.head_accum",
+        )
+        .unwrap_or_else(|(f, l, v)| {
+            panic!(
+                "array1.head_accum frame {f} lane {l} = {v:e}, \
+                 expected 0.0 after block {block_idx}"
+            )
+        });
+    }
+}
+
+#[cfg(test)]
+mod padding_lanes_proptest {
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+            .. ProptestConfig::with_cases(128)
+        })]
+        #[test]
+        #[ignore]
+        fn prop_wavenet_lite_padding_lanes_zero(
+            num_blocks in 1usize..=64usize,
+        ) {
+            let mut model = super::build_tiny_lite_wavenet();
+            model.prewarm();
+
+            const STRIDE: usize = 16;
+            let mut lcg_state: u64 = 0xB16B00B5_13579753;
+
+            for block_idx in 0..num_blocks {
+                let num_frames = ((lcg_state & 0x3F) as usize) + 1;
+                lcg_state = lcg_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+
+                let input: Vec<f32> = (0..num_frames)
+                    .map(|_| super::next_lcg(&mut lcg_state))
+                    .collect();
+                let mut output = vec![0.0f32; num_frames];
+
+                let saved_starts: Vec<usize> =
+                    model.array1.states.iter().map(|s| s.buffer_start).collect();
+
+                model.process(&input, &mut output);
+
+                for (layer_idx, layer) in model.array1.layers.iter().enumerate() {
+                    super::check_padding_lanes_zero(
+                        layer.scratch_mixin.as_ref(),
+                        STRIDE,
+                        num_frames,
+                        &format!("[proptest] array1.layer[{layer_idx}].scratch_mixin"),
+                    )
+                    .unwrap_or_else(|(f, l, v)| {
+                        panic!(
+                            "array1.layer[{layer_idx}].scratch_mixin frame {f} lane {l} = {v:e}, \
+                             expected 0.0 after block {block_idx} (num_blocks={num_blocks})"
+                        )
+                    });
+
+                    super::check_padding_lanes_zero(
+                        layer.scratch_conv.as_ref(),
+                        STRIDE,
+                        num_frames,
+                        &format!("[proptest] array1.layer[{layer_idx}].scratch_conv"),
+                    )
+                    .unwrap_or_else(|(f, l, v)| {
+                        panic!(
+                            "array1.layer[{layer_idx}].scratch_conv frame {f} lane {l} = {v:e}, \
+                             expected 0.0 after block {block_idx} (num_blocks={num_blocks})"
+                        )
+                    });
+
+                    let lb_start = saved_starts[layer_idx] * STRIDE;
+                    super::check_padding_lanes_zero(
+                        &model.array1.states[layer_idx].layer_buffer
+                            [lb_start..lb_start + num_frames * STRIDE],
+                        STRIDE,
+                        num_frames,
+                        &format!("[proptest] array1.layer[{layer_idx}].layer_buffer"),
+                    )
+                    .unwrap_or_else(|(f, l, v)| {
+                        panic!(
+                            "array1.layer[{layer_idx}].layer_buffer frame {f} lane {l} = {v:e}, \
+                             expected 0.0 after block {block_idx} (num_blocks={num_blocks})"
+                        )
+                    });
+                }
+
+                super::check_padding_lanes_zero(
+                    &model.array1.array_outputs[..num_frames * STRIDE],
+                    STRIDE,
+                    num_frames,
+                    "[proptest] array1.array_outputs",
+                )
+                .unwrap_or_else(|(f, l, v)| {
+                    panic!(
+                        "array1.array_outputs frame {f} lane {l} = {v:e}, \
+                         expected 0.0 after block {block_idx} (num_blocks={num_blocks})"
+                    )
+                });
+
+                super::check_padding_lanes_zero(
+                    &model.array1.head_accum[..num_frames * STRIDE],
+                    STRIDE,
+                    num_frames,
+                    "[proptest] array1.head_accum",
+                )
+                .unwrap_or_else(|(f, l, v)| {
+                    panic!(
+                        "array1.head_accum frame {f} lane {l} = {v:e}, \
+                         expected 0.0 after block {block_idx} (num_blocks={num_blocks})"
+                    )
+                });
+            }
+        }
+    }
+}

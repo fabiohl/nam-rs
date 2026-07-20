@@ -2324,7 +2324,7 @@ sub-noise-floor para áudio (≈ −126 dBFS) e não afeta a qualidade perceptua
 
 ---
 
-### T6.S3.3 — Teste de proptest/fuzzing: lanes de padding nunca viram NaN/Inf/subnormal
+### T6.S3.3 — Teste de proptest/fuzzing: lanes de padding nunca viram NaN/Inf/subnormal [DONE]
 
 **Responsável:** Engenheiro de QA / Rust
 **Arquivo:** Adicionar ao módulo de testes existente do WaveNet Lite (integração ou inline)
