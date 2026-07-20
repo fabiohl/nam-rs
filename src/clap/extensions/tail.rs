@@ -13,11 +13,20 @@ use std::sync::atomic::Ordering;
 impl PluginTailImpl for NamClapProcessor<'_> {
     /// Returns the current tail length in samples.
     ///
-    /// The value is computed from the same `current_latency` shared atomic
-    /// used by the latency extension — it already includes the resampler,
-    /// oversampling, and CabSim convolution contributions.
+    /// The value is the sum of `current_latency` (fixed processing latency:
+    /// resampler + oversampling) and `cabsim_tail_samples` (IR ring-out
+    /// duration = num_partitions × partition_size, zero when no IR is loaded).
+    /// Per the CLAP specification, the tail extension reports the *additional*
+    /// time the host must process after input silence to capture the full
+    /// ring-out — including both the fixed pipeline latency and the CabSim tail.
     fn get(&self) -> TailLength {
-        TailLength::Finite(self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed))
+        let base = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
+        let cabsim_tail = self
+            .shared
+            .rt_to_ui
+            .cabsim_tail_samples
+            .load(Ordering::Relaxed);
+        TailLength::Finite(base + cabsim_tail)
     }
 }
 

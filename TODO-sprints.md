@@ -1828,7 +1828,7 @@ data race.
 
 ---
 
-### T6.S1.3 — Corrigir `tail.rs`: ler `cabsim_tail_samples` em vez de `current_latency`
+### T6.S1.3 — Corrigir `tail.rs`: ler `cabsim_tail_samples` em vez de `current_latency` [DONE]
 
 **Responsável:** Engenheiro Rust / CLAP
 **Arquivo:** [`src/clap/extensions/tail.rs`](./src/clap/extensions/tail.rs)
