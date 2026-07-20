@@ -1772,7 +1772,7 @@ publicado como `AtomicU32` para leitura lock-free na main-thread (em `tail.rs`).
 
 ---
 
-### T6.S1.2 — Atualizar `cabsim_tail_samples` no ponto de troca do CabSim
+### T6.S1.2 — Atualizar `cabsim_tail_samples` no ponto de troca do CabSim [DONE]
 
 **Responsável:** Engenheiro Sênior Rust / CLAP
 **Arquivo:** [`src/clap/processor/events.rs`](./src/clap/processor/events.rs)

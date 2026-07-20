@@ -185,6 +185,15 @@ impl<'a> NamClapProcessor<'a> {
         if let Some(old_engine) = std::mem::replace(&mut self.conv_engine, engine) {
             self.push_to_gc(GcItem::CabConvEngine(old_engine));
         }
+        let cabsim_tail = self
+            .conv_engine
+            .as_deref()
+            .map(|conv| (conv.num_partitions() * conv.latency_samples()) as u32)
+            .unwrap_or(0);
+        self.shared
+            .rt_to_ui
+            .cabsim_tail_samples
+            .store(cabsim_tail, Ordering::Relaxed);
     }
 
     #[cold]
