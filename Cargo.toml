@@ -17,7 +17,7 @@ categories = [
 
 [dependencies]
 # Lean error signaling for prep/CLI threads; not used on the RT thread.
-anyhow = "1.0.103"
+anyhow = "1.0.104"
 # Typed errors for the NAMB/loader surface (`src/loader/namb/error.rs`) and CLAP state extensions.
 thiserror = "2.0"
 # POSIX calls with no safe wrapper needed: SCHED_FIFO, core affinity, mlockall, prctl (THP), sigaction.
@@ -27,7 +27,7 @@ pipewire = { version = "0.10.0", optional = true }
 # Lock-free SPSC ring buffer for CLI/GUI -> DSP thread communication (params, models, resamplers).
 rtrb = "0.3.4"
 # `.nam` (JSON) model deserialization.
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.150"
 # Minimalist, zero-alloc CLI parser for `--model`/`--input-gain`/etc. (avoids `clap`'s binary-size cost).
 lexopt = "0.3.2"
@@ -53,7 +53,7 @@ keyboard-types = { version = "0.6", default-features = false, optional = true }
 clack-host = { version = "0.1", features = ["clack-plugin"], optional = true }
 
 [dev-dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.150"
 # CLAP host harness for integration tests (lifecycle, state migration, multi-instance).
 clack-host = { version = "0.1", features = ["clack-plugin"] }
