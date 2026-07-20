@@ -3,7 +3,7 @@
 
 //! NAM-rs plugin definition and its CLAP lifecycle components.
 
-mod shared;
+pub mod shared;
 pub use shared::{
     ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata, PendingModel,
     RENDER_MODE_OFFLINE, RENDER_MODE_REALTIME, RtToUi, UiToRt,

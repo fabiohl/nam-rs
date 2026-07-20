@@ -1875,7 +1875,7 @@ somar `current_latency` (latência de processamento fixa — resampler + UPOLS) 
 
 ---
 
-### T6.S1.4 — Notificação `tail.changed()` na housekeeping quando `cabsim_tail_samples` muda
+### T6.S1.4 — Notificação `tail.changed()` na housekeeping quando `cabsim_tail_samples` muda [DONE]
 
 **Responsável:** Engenheiro Rust / CLAP
 **Arquivo:** [`src/clap/plugin/main_thread/housekeeping.rs`](./src/clap/plugin/main_thread/housekeeping.rs)
@@ -1926,7 +1926,7 @@ deve ser adotado para `cabsim_tail_samples`: poll do atômico → se mudou → `
 
 ---
 
-### T6.S1.5 — Teste de integração: `clap.tail` ≥ 90% do comprimento real do IR
+### T6.S1.5 — Teste de integração: `clap.tail` ≥ 90% do comprimento real do IR [DONE]
 
 **Responsável:** Engenheiro de QA / Rust
 **Arquivo:** `tests/clap/tail_semantics.rs` [NOVO]
