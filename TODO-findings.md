@@ -193,7 +193,7 @@ fica a critério do escopo definido pelo PO.
 
 ---
 
-## F4 — Referências de rastreador (sprint/tarefa) stale em `tests/*.rs` (118 ocorrências)
+## F4 — Referências de rastreador (sprint/tarefa) stale em `tests/*.rs` (118 ocorrências) [DONE]
 
 **Escopo:** 12 arquivos `.rs` sob `tests/` (excluindo `fixtures/`).
 
@@ -433,7 +433,7 @@ Estas correções já foram editadas diretamente nos arquivos durante a inspeç�
 | F1      | `tests/clap.rs:4`                                                     | E1.T01      | Nenhum | ✅ Aplicado |
 | F2      | `tests/common/signals.rs` (deletado; re-export movido p/ `mod.rs:31`) | E2.T01      | Baixo  | ✅ Aplicado |
 | F3      | `utils/tests-long.sh:526,541`                                         | E1.T02      | Nenhum | ✅ Aplicado |
-| F4      | 12 arquivos `tests/**/*.rs` (118×)                                    | E3.T03      | Baixo  | Planejado   |
+| F4      | 12 arquivos `tests/**/*.rs` (118×)                                    | E3.T03      | Baixo  | ✅ Aplicado |
 | F5      | `tests/fixtures/README.md:141,813`                                    | E3.T04      | Nenhum | Decisão PO  |
 | F6      | `tests/common/{manifest,precision,metrics,constants}.rs`              | E3.T05      | Nenhum | Planejado   |
 

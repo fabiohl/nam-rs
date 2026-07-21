@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//  Activation precision measurement under real model weights (T5.3).
+//  Activation precision measurement under real model weights.
 //
 //  Measures the contribution of Padé [5,4] tanh and minimax degree-17 sigmoid
 //  to the total **ESR** using the f64 oracle with real model weights
 //  and realistic stress signals — fulfilling the recommendation from
-//  `docs/fastmath-approximations.md:162` (the S1.T1.4 measurement used
+//  `docs/fastmath-approximations.md:162` (the previous measurement used
 //  small synthetic weights where tanh ≈ linear, underestimating Padé error).
 //
 //  ## Test structure
@@ -27,7 +27,7 @@
 //  LSTM fused gate kernels (`fused_lstm_gates_*`) which bypass the slice dispatch.
 //  The oracle-based ESR measurement correctly isolates Padé contribution for all
 //  model families regardless of the runtime switch.  Full LSTM HF path wiring is
-//  deferred to a follow-up (T5.3b or T5.5).
+//  deferred to a follow-up.
 
 use crate::common::PrecisionGuard;
 use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
@@ -114,7 +114,7 @@ fn test_esr_activation_contribution() {
         ("BossLSTM-2x8.nam", "LSTM 2×8"),
     ];
 
-    println!("\n=== T5.3: ΔESR from Padé activation (real weights, v2 stress 4k samples) ===");
+    println!("\n=== Activation ΔESR from Padé (real weights, v2 stress 4k samples) ===");
     for (filename, label) in &models {
         let path = models_dir().join(filename);
         if !path.exists() {
@@ -160,7 +160,7 @@ fn test_activation_contribution_summary_table() {
         ),
     ];
 
-    println!("\n=== T5.3: Padé vs Exact/High-Fidelity (Acceptance Criteria) ===");
+    println!("\n=== Activation: Padé vs Exact/High-Fidelity (Acceptance Criteria) ===");
     println!(
         "{:<30} {:<10} {:<18} {:<15} {:<50}",
         "Model", "Family", "ΔESR Padé→Exact", "ΔESR (dB)", "Notes"
@@ -234,7 +234,7 @@ fn test_a_weighted_esr() {
     let n = input_f32.len().min(4096);
     let input_f64: Vec<f64> = input_f32[..n].iter().map(|&x| x as f64).collect();
 
-    println!("\n=== T5.3: A-weighted ESR (Wright & Välimäki 2020) ===");
+    println!("\n=== Activation: A-weighted ESR (Wright & Välimäki 2020) ===");
     println!(
         "{:<30} {:<15} {:<15} {:<15} {:<15}",
         "Model", "ESR flat", "ESR flat dB", "ESR A-wt", "ESR A-wt dB"
@@ -292,7 +292,7 @@ fn test_hf_mode_switch_functional() {
         ("BossLSTM-2x8.nam", "LSTM 2×8"),
     ];
 
-    println!("\n=== T5.3: HF mode switch functional check ===");
+    println!("\n=== Activation: HF mode switch functional check ===");
 
     for (filename, label) in &models {
         let path = models_dir().join(filename);
@@ -331,19 +331,19 @@ fn test_hf_mode_switch_functional() {
     }
     println!("Note: LSTM fused_gates_* functions directly import SIMD kernels,");
     println!("bypassing the activation slice dispatch. Full LSTM HF path wiring");
-    println!("requires adding HF gate kernel variants (T5.3 follow-up / T5.5).");
+    println!("requires adding HF gate kernel variants (pending follow-up).");
 }
 
 // =============================================================================
-// α2.3 — Integration Tests: Zero-Alloc Activation Precision Switch
+// Integration Tests: Zero-Alloc Activation Precision Switch
 // =============================================================================
 //
 // These tests simulate the CLI and CLAP control flow for activation precision
 // switching and verify that set_activation_precision() is zero-alloc
-// (no heap allocation occurs during the mode switch, meeting RT-safety guarantee F9).
+// (no heap allocation occurs during the mode switch, meeting RT-safety guarantee).
 //
 // For the CLAP simulation: PARAM_ACTIVATION=8 is declared but the RT-thread
-// wiring (α2.2) is pending. These tests exercise the global atomic switch
+// wiring is pending. These tests exercise the global atomic switch
 // path that both CLI and CLAP share, proving the mechanism is RT-safe.
 //
 // LSTM models are included in the audit: the switch call itself is zero-alloc
@@ -367,7 +367,7 @@ fn test_zero_alloc_activation_switch_primitive() {
     };
     assert_eq!(
         count, 0,
-        "set_activation_precision() allocated {} times — violation of RT-safety F9!",
+        "set_activation_precision() allocated {} times — violation of RT-safety!",
         count
     );
 }
@@ -566,11 +566,11 @@ fn test_activation_switch_output_idempotent() {
 
 /// CLAP simulation: block-boundary activation switch pattern.
 ///
-/// Simulates the CLAP processor pattern described in TODO-sprints.md α2.2:
+/// Simulates the CLAP processor pattern for activation precision switching:
 /// the RT thread reads PARAM_ACTIVATION from UiToRt at block boundaries
 /// and calls set_activation_precision() without model rebuild.
 ///
-/// While PARAM_ACTIVATION=8 is pending α2.2, the global setter path
+/// While PARAM_ACTIVATION=8 is pending, the global setter path
 /// exercised here is the identical code path the CLAP processor will use.
 #[test]
 fn test_clap_pattern_block_boundary_activation_switch() {

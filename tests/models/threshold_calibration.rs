@@ -7,14 +7,14 @@
 //  calibrated entry in `get_calibrated_threshold()` — never silently
 //  falling back to heuristic thresholds.
 //
-//  Part of T3.3: formalizing the calibration infrastructure.
+//  Part of the calibration infrastructure.
 //
 //  All meta-tests implement the Gate Calibration Policy from
 //  docs/perceptual_validation.md (Rules 1–5): validated reference,
 //  below placebo, provenance comment, link to independent measurement,
 //  sanity-check Σ sources ≈ total.
 //
-//  ## F10 Investigation (E2.1 — 2026-06-24)
+//  ## Investigation (E2.1 — 2026-06-24)
 //
 //  Fidelity Margin ≤ 0.5 dB in `live_cross_validation_lstm_dyn_1x7 (v2)`
 //  and `live_cross_validation_linear (v2)` was investigated via `git bisect`
@@ -30,7 +30,7 @@
 //  The cpp_parity tests originally cited (LSTM-Dyn 1×7 v2, Linear v2) show
 //  Fidelity Margin > 40 dB at both commits. The actual low-margin entries
 //  belong to the golden_vectors suite (WaveNet A2-Full/Lite, LSTM Official),
-//  which were already at those values before Épico B.
+//  which were already at those values before the kernel rewrites.
 
 use std::fs;
 use std::path::PathBuf;
@@ -78,7 +78,7 @@ fn golden_bin_to_model_name(filename: &str) -> Option<&str> {
         "golden_wavenet_slammin_marshall" => Some("SLAMMIN MARSHALL JTM 45 REISSUE"),
         // Linear FFT — partitioned convolution engine validated against direct FIR oracle
         // and C++ golden vectors (NeuralAmpModelerCore `nam::Linear` dsp.cpp:255-301).
-        // Near-bit-exact FFT round-trip; mrstft_max ≤ 0.05 (conservative, S3.T04).
+        // Near-bit-exact FFT round-trip; mrstft_max ≤ 0.05 (conservative).
         "golden_linear_fft_rf2048" => Some("linear_fft_rf2048"),
         "golden_linear_fft_rf4096" => Some("linear_fft_rf4096"),
         "golden_linear_fft_rf8192" => Some("linear_fft_rf8192"),
@@ -151,7 +151,7 @@ fn test_all_golden_models_have_calibrated_thresholds() {
 ///
 /// Uses the **first** string pattern in each match arm to locate the
 /// arm boundary — for `|`-grouped arms this is closest to the
-/// `// Measured:` comment at the top of the block (Tarefa 5.6).
+/// `// Measured:` comment at the top of the block.
 #[test]
 fn test_all_calibrated_entries_have_measurement_comments() {
     let validation_src =
@@ -187,7 +187,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
         "lstm_dyn_test",
         "a2_example",
         "convnet_test",
-        // Linear FFT — partitioned convolution (S3.T04)
+        // Linear FFT — partitioned convolution
         "linear_fft_rf2048",
         "linear_fft_rf4096",
         "linear_fft_rf8192",
@@ -224,14 +224,14 @@ fn test_all_calibrated_entries_have_measurement_comments() {
             found_measured,
             "Calibrated entry for model '{model}' at line {} is missing \
              '// Measured: ESR=..., MRSTFT=...' comment within 15 lines above. \
-             Add the measurement documentation. (Tarefa 5.6)",
+             Add the measurement documentation.",
             model_line + 1,
         );
     }
 }
 
 /// Every model with a committed golden `.bin` MUST NOT have any
-/// placebo (neutralized) threshold component. Unlike T3.3's basic
+/// placebo (neutralized) threshold component. The basic
 /// check (which only rejects when `SNR ≤ 0 AND ESR ≥ 1`), this test
 /// treats each dimension independently — any single neutralized
 /// component makes the gate a placebo.
@@ -247,11 +247,10 @@ fn test_all_calibrated_entries_have_measurement_comments() {
 ///    are "rigid" enough to compensate (SNR ≥ 40 dB AND ESR < 0.1).
 ///    The A2 Full/Lite/a2_example models intentionally use `None`
 ///    because their ESR gates are ultra-strict, making
-///    MSE redundant. (Tarefa 4.9 — MseGate::NotApplicable Explicite.)
+///    MSE redundant. (MseGate::NotApplicable Explicite.)
 /// 4. `mrstft_max ≥ 0.5` → MR-STFT gate is neutralized (never catches
 ///    spectral regressions). MR-STFT is a relative metric bounded [0,1];
 ///    a threshold ≥ 0.5 would allow severe spectral divergence.
-///    (Tarefa 3.1, F-2)
 ///
 /// ## Principle: "todo golden pode falhar"
 ///
@@ -261,7 +260,7 @@ fn test_all_calibrated_entries_have_measurement_comments() {
 /// rigid SNR+ESR) are **not gates** — they are placebos that grant
 /// a false sense of confidence.
 ///
-/// Part of T3.4: anti-placebo meta-test.
+/// Part of the anti-placebo meta-test.
 #[test]
 fn test_all_thresholds_anti_placebo() {
     let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -316,11 +315,11 @@ fn test_all_thresholds_anti_placebo() {
                 );
             }
 
-            // Rule 4 (Tarefa 3.1): MR-STFT ≥ 0.5 → placebo.
+            // Rule 4: MR-STFT ≥ 0.5 → placebo.
             // MR-STFT is a relative metric bounded [0,1]; values approaching 1.0
             // indicate spectral collapse. A gate with threshold ≥ 0.5 would never
             // catch meaningful regressions.
-            // Tarefa 5.5 (f64 oracle recalibration): LSTM models are no longer exempt —
+            // F64 oracle recalibration: LSTM models are no longer exempt —
             // their MR-STFT thresholds are now recalibrated from v1 measurements
             // (format floor + minimal recurrent drift, all < 0.5) with v2 relaxation
             // handled in cpp_parity.rs via rate-dependent multiplier and ABSOLUTE_MRSTFT_CAP.
@@ -328,7 +327,7 @@ fn test_all_thresholds_anti_placebo() {
                 assert!(
                     mrstft < 0.5,
                     "Model '{model_name}' has MR-STFT = {mrstft} ≥ 0.5 — \
-                     placebo gate (Tarefa 3.1). MR-STFT must be < 0.5 to catch \
+                     placebo gate. MR-STFT must be < 0.5 to catch \
                      spectral regressions. Calibrate from real measurements."
                 );
             }
@@ -343,7 +342,7 @@ fn test_all_thresholds_anti_placebo() {
     );
 }
 
-/// Tarefa 8.6 — Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo.
+/// Meta-teste: nenhum gate do oráculo pode ser ≥ linha de placebo.
 ///
 /// Reads the oracle ESR limits (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT)
 /// from the shared `tests/common/constants.rs` module and asserts that ALL are
@@ -351,7 +350,7 @@ fn test_all_thresholds_anti_placebo() {
 /// "ESR ≥ 1.0 = placebo gate that never catches regressions."
 ///
 /// This is the guard that prevents future calibration rounds from raising
-/// oracle limits back into the placebo zone. It must fail during T8.3
+/// oracle limits back into the placebo zone.
 /// (before limits are fixed) and pass after.
 ///
 /// Uses compile-time const assertions: if any limit is raised >= 1.0,
@@ -368,7 +367,7 @@ fn test_oracle_gates_below_placebo_threshold() {
     }
 }
 
-/// Tarefa G.1.2 — Eixo B isolation guard-rail.
+/// Eixo B isolation guard-rail.
 ///
 /// Ensures that no structural test (Phase 1, debug, `STRUCTURAL_TESTS`)
 /// references golden `.bin` files or `golden_vectors` test functions.
@@ -491,7 +490,7 @@ fn test_structural_tests_contain_no_bin_references() {
 
     if !violations.is_empty() {
         panic!(
-            "Eixo B isolation guard-rail FAILED (Tarefa G.1.2):\n\
+            "Eixo B isolation guard-rail FAILED:\n\
              \n\
              The following structural tests (Phase 1, debug) contain references\n\
              to .bin files or golden_vectors — they MUST run in Phase 2 (release),\n\
@@ -508,7 +507,7 @@ fn test_structural_tests_contain_no_bin_references() {
     }
 }
 
-/// Tarefa S3.T03 — Meta-teste: limite do soft gate de MR-STFT é calibrado.
+/// Meta-teste: limite do soft gate de MR-STFT é calibrado.
 ///
 /// Verifica que o `MRSTFT_SOFT_THRESHOLD` (gate brando informacional para taxas
 /// de amostragem não-padrão) é:
@@ -523,7 +522,7 @@ fn test_structural_tests_contain_no_bin_references() {
 ///
 /// 3. **Documentado:** a definição de `pub const MRSTFT_SOFT_THRESHOLD` em
 ///    `tests/common/validation.rs` deve ter um comentário `// Measured:` nas
-///    proximidades, documentando a proveniência da calibração (S3.T03).
+///    proximidades, documentando a proveniência da calibração.
 ///
 /// O gate brando opera em taxas não-padrão (≠ 44.1/48 kHz) onde os hard gates
 /// por-modelo não se aplicam. Ele é puramente informacional — não causa falha
@@ -576,19 +575,19 @@ fn test_mrstft_soft_threshold_is_calibrated() {
     assert!(
         found_measured,
         "MRSTFT_SOFT_THRESHOLD at line {} is missing '// Measured:' comment within 25 lines above. \
-         Add calibration provenance documentation. (S3.T03)",
+         Add calibration provenance documentation.",
         threshold_line + 1,
     );
 }
 
-/// S6.T01 — Meta-test: every `set_activation_precision(` call-site in
+/// Meta-test: every `set_activation_precision(` call-site in
 /// `tests/**/*.rs` (outside `tests/common/precision.rs`) must have
 /// `PrecisionGuard::new` in the same function.
 ///
 /// This meta-test reads all test source files and enforces the rule that
 /// any function calling `set_activation_precision()` is protected by a
 /// `PrecisionGuard`, guarding against race conditions when tests run
-/// in parallel (F11).
+/// in parallel.
 ///
 /// ## Mechanism
 ///
@@ -683,11 +682,11 @@ fn test_all_set_activation_calls_are_guarded() {
 
     if !violations.is_empty() {
         panic!(
-            "S6.T01 guard-rail FAILED: unprotected set_activation_precision() call-sites found:\n\
+            "Guard-rail FAILED: unprotected set_activation_precision() call-sites found:\n\
              \n{}\n\n\
              Every test function that calls set_activation_precision() must also contain\n\
              PrecisionGuard::new, acquired BEFORE TrackingGuard, to prevent race conditions\n\
-             when tests run in parallel (F11).\n",
+             when tests run in parallel.\n",
             violations
                 .iter()
                 .map(|v| format!("  ✗ {v}"))
@@ -697,7 +696,7 @@ fn test_all_set_activation_calls_are_guarded() {
     }
 }
 
-/// Tarefa T1.1 — Meta-teste anti-let_: nenhum wrapper em cpp_parity.rs pode
+/// Meta-teste anti-let_: nenhum wrapper em cpp_parity.rs pode
 /// descartar silenciosamente o `ParityOutcome` retornado por
 /// `run_render_comparison`.
 ///
@@ -717,11 +716,11 @@ fn test_no_silent_let_underscore_in_cpp_parity_wrappers() {
         !source.contains("let _ = run_render_comparison"),
         "cpp_parity.rs contains silent discard of ParityOutcome via \
          'let _ = run_render_comparison'. All calls to run_render_comparison \
-         must capture the returned ParityOutcome and assert on it (Tarefa T1.1)."
+         must capture the returned ParityOutcome and assert on it."
     );
 }
 
-/// T4.2 — Checks that a skip_reason string contains a date annotation
+/// Checks that a skip_reason string contains a date annotation
 /// in the format `(YYYY-MM-DD)`, proving the skip was reviewed.
 fn skip_reason_has_date(reason: &str) -> bool {
     let bytes = reason.as_bytes();
@@ -753,7 +752,7 @@ fn skip_reason_has_date(reason: &str) -> bool {
     false
 }
 
-/// T4.2 — Maps a catalog entry golden_name to the model name key used
+/// Maps a catalog entry golden_name to the model name key used
 /// in `get_calibrated_threshold()`. Returns `None` for entries that only
 /// need date-check validation (skip_reason).
 ///
@@ -798,7 +797,7 @@ fn catalog_entry_to_model_name<'a>(_nam_file: &str, golden_name: &'a str) -> Opt
     }
 }
 
-/// T4.2 — Auditoria Anti-Placebo Estendida ao CATALOG.
+/// Auditoria Anti-Placebo Estendida ao CATALOG.
 ///
 /// Extends `test_all_thresholds_anti_placebo` beyond `.bin` fixtures to
 /// cover ALL entries in the `golden_gen_build.sh` CATALOG, including models
@@ -817,7 +816,7 @@ fn catalog_entry_to_model_name<'a>(_nam_file: &str, golden_name: &'a str) -> Opt
 ///
 /// Format: `.nam_file:golden_name:label:v2_scope[:skip_srs[:skip_reason]]`
 ///
-/// Part of T4.2 (F-3): close the gap where models without `.bin` fixtures
+/// Part of the anti-placebo audit: close the gap where models without `.bin` fixtures
 /// (condition_lstm) escaped anti-placebo audit entirely.
 #[test]
 fn test_catalog_anti_placebo_audit() {
@@ -940,7 +939,7 @@ fn test_catalog_anti_placebo_audit() {
 
     if !failures.is_empty() {
         panic!(
-            "T4.2 CATALOG anti-placebo audit FAILED ({} failure(s)):\n\n{}\n\n\
+            "CATALOG anti-placebo audit FAILED ({} failure(s)):\n\n{}\n\n\
              {} entries checked ({} with skip_reason, {} calibrated).\n\
              \n\
              Fixes needed:\n\
@@ -960,7 +959,7 @@ fn test_catalog_anti_placebo_audit() {
     }
 }
 
-/// T4.2 — Meta-teste: qualidade-contract.txt não pode conter rótulos sintéticos.
+/// Meta-teste: qualidade-contract.txt não pode conter rótulos sintéticos.
 ///
 /// Self-tests que degradam o sinal para validar gates de regressão (ex:
 /// `test_mrstft_hard_gate_catches_regression`) emitem labels com `(synthetic)`.
@@ -972,7 +971,7 @@ fn test_catalog_anti_placebo_audit() {
 /// contiver `(synthetic)`, garantindo que o contrato só contém medições reais
 /// de fidelidade.
 ///
-/// Parte do F-2/T4.1: completar o expurgo com a trava de segurança permanente.
+/// Parte da trava de segurança permanente para completar o expurgo.
 #[test]
 fn test_quality_contract_no_synthetic_labels() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -986,6 +985,6 @@ fn test_quality_contract_no_synthetic_labels() {
         "docs/quality-contract.txt contains labels with '(synthetic)' — \
          self-test degradation entries have contaminated the quality baseline.\n\
          Remove all lines containing '(synthetic)' from the contract file.\n\
-         (T4.1 fixed the source; this meta-test is the permanent guard.)"
+         (The source was fixed; this meta-test is the permanent guard.)"
     );
 }

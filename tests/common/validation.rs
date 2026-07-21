@@ -7,13 +7,13 @@ use std::fmt::Write;
 
 /// Lock serializing report emission across threads so that each model's
 /// fidelity report (header + all metrics + footer) prints as a contiguous
-/// block even under `--test-threads > 1` (F-1, Tarefa 1.2).
+/// block even under `--test-threads > 1`.
 static REPORT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 // Per-thread flag: when true, `report_dsp_fidelity_impl` suppresses stdout
 // emission. Used by controlled-panic regression tests (e.g.
 // `test_mrstft_hard_gate_catches_regression`) to prevent "✗" and error
-// messages from polluting the green-test output (S3.T07 — Épico B.4).
+// messages from polluting the green-test output.
 thread_local! {
     static SUPPRESS_REPORT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -98,25 +98,25 @@ impl Drop for MetricKindGuard {
     }
 }
 
-/// Plausible LUFS range for golden reference output (sanity gate — BS.1770-4 2-pass, T2.5).
+/// Plausible LUFS range for golden reference output (sanity gate — BS.1770-4 2-pass).
 ///
 /// Guitar/amp model output at typical stress-signal levels falls between −35 and 0 LUFS.
 /// The lower bound of −50 LUFS is intentionally generous — it only catches egregious
-/// errors (e.g., T2.5 where LUFS −67 near-silence went undetected in a validly passing test).
+/// errors (e.g., where LUFS −67 near-silence went undetected in a validly passing test).
 /// The upper bound of +10 LUFS guards against output saturation/clipping that would also
 /// indicate a defective golden.
 ///
-/// Backed by BS.1770-4 full 2-pass gating (absolute −70 LUFS → relative −10 LU) as of T2.5,
+/// Backed by BS.1770-4 full 2-pass gating (absolute −70 LUFS → relative −10 LU),
 /// providing accurate integrated LUFS for the plausibility assert.
 ///
-/// Part of T4.2 / T4.3: metrics perceptuais como guard-rail.
+/// Part of the perceptual metrics guard-rail suite.
 const LUFS_PLAUSIBLE_MIN: f64 = -50.0;
 const LUFS_PLAUSIBLE_MAX: f64 = 10.0;
 
 /// Calibrated soft-gate warning threshold for MR-STFT at non-standard sample rates
 /// (rates other than 44.1/48 kHz where per-model hard gates apply).
 ///
-/// # Empirical calibration (S3.T03, 2026-07-11)
+/// # Empirical calibration (2026-07-11)
 ///
 /// MR-STFT is a bounded metric [0, 1] measuring spectral divergence. At standard
 /// rates (44.1/48 kHz), per-model hard gates from `get_calibrated_threshold()`
@@ -169,7 +169,7 @@ pub const MRSTFT_SOFT_THRESHOLD: f64 = 0.50;
 /// - `min_snr_db` — minimum SNR in dB that must be achieved
 /// - `max_esr`   — optional maximum ESR threshold for regression gating (default `None`)
 /// - `mrstft_max` — optional maximum MR-STFT gate; asserted as hard gate at
-///   44.1/48 kHz, informational at higher rates (Tarefa 3.1, F-2)
+///   44.1/48 kHz, informational at higher rates
 /// - `label`     — label for identification in diagnostic messages
 /// - `sample_rate` — sample rate in Hz (used for LUFS, MR-STFT gate severity, and anchor SNR diagnostics)
 ///
@@ -225,7 +225,7 @@ pub fn report_dsp_fidelity(
 /// - Dynamic/free-shape models with low head_scale (e.g., WaveNetDyn
 ///   Free-Shape at ~−65 LUFS, LSTM-Dyn at ~−55 LUFS)
 ///
-/// With BS.1770-4 full LUFS (T2.5), the measurement is accurate — these
+/// With BS.1770-4 full LUFS, the measurement is accurate — these
 /// are genuine opt-outs for models whose output loudness is inherently
 /// outside the [−50, +10] range, not a workaround for measurement error.
 #[track_caller]
@@ -329,7 +329,7 @@ fn report_dsp_fidelity_impl(
     };
     let esr_db = nam_rs::testing::perceptual::esr_to_db(esr_linear);
 
-    // LUFS — reference (golden) for plausibility sanity gate (T4.3)
+    // LUFS — reference (golden) for plausibility sanity gate
     let lufs_ref = nam_rs::testing::perceptual::compute_lufs(reference, sr);
     let lufs_test = nam_rs::testing::perceptual::compute_lufs(test, sr);
     let dbtp_ref = nam_rs::testing::perceptual::compute_true_peak_db(reference);
@@ -349,7 +349,7 @@ fn report_dsp_fidelity_impl(
     // Build the entire report into a single String buffer so that the block
     // (header + all metrics + footer) is emitted atomically.
     // Protected by REPORT_LOCK to prevent interleaving across threads
-    // even under --test-threads > 1 (F-1, Tarefa 1.2).
+    // even under --test-threads > 1.
     let mut buf = String::with_capacity(1024);
     writeln!(buf).unwrap();
     writeln!(buf, "[NeuralAmpModelerCore × NAM-rs — {label}]").unwrap();
@@ -410,7 +410,7 @@ fn report_dsp_fidelity_impl(
         writeln!(buf, "  ESR     = ∞  (identical)").unwrap();
     }
 
-    // MR-STFT — hard gate at 44.1/48 kHz (Tarefa 3.1, F-2), soft gate at higher rates
+    // MR-STFT — hard gate at 44.1/48 kHz, soft gate at higher rates
     let mr_stft = nam_rs::testing::perceptual::compute_mr_stft(reference, test);
     let mrstft_hard = mrstft_max.is_some() && (sample_rate == 44100 || sample_rate == 48000);
     if mrstft_hard {
@@ -450,7 +450,7 @@ fn report_dsp_fidelity_impl(
                 if lufs_plausible {
                     "✓"
                 } else if check_lufs_gate {
-                    "✗ — GOLDEN DEFECT (T2.5 lesson)"
+                    "✗ — GOLDEN DEFECT (LUFS plausibility check)"
                 } else {
                     "ⓘ informational (gate opt-out — expected)"
                 }
@@ -532,31 +532,30 @@ fn report_dsp_fidelity_impl(
             "[{label}] ESR={esr_linear:.6e} exceeds threshold {limit:.1e} (ESR dB={esr_db:.1})"
         );
     }
-    // Tarefa 3.1 (F-2): MR-STFT hard gate at 44.1/48 kHz
+    // MR-STFT hard gate at 44.1/48 kHz
     if mrstft_hard {
         let limit = mrstft_max.unwrap();
         assert!(
             mr_stft.is_finite() && mr_stft < limit,
             "[{label}] MR-STFT={mr_stft:.4e} exceeds threshold {limit:.2e} @ {sample_rate} Hz \
-             (Tarefa 3.1 hard gate — spectral fidelity regression detected)"
+             (spectral fidelity regression detected)"
         );
     }
-    // T4.3 LUFS plausibility sanity gate — catch near-silence / implausible golden output.
+    // LUFS plausibility sanity gate — catch near-silence / implausible golden output.
     // Only enforced when check_lufs_gate is true (opt-out for IR convolution goldens).
     if check_lufs_gate {
         assert!(
             lufs_plausible,
             "[{label}] Reference LUFS={lufs_ref:.1} is outside plausible audio range \
              [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}]. \
-             The golden output may be defective (near-silence, clipping, or wrong scaling). \
-             See T2.5 lesson: LUFS −67 went undetected without this gate."
+             The golden output may be defective (near-silence, clipping, or wrong scaling)."
         );
     } else if !lufs_plausible {
         eprintln!(
             "  ⓘ  LUFS gate skipped for [{label}]: reference LUFS={lufs_ref:.1} \
              outside [{LUFS_PLAUSIBLE_MIN:.0}, {LUFS_PLAUSIBLE_MAX:.0}] — \
              expected for IR convolution / dynamic free-shape goldens \
-             (gate opt-out, Tarefa 4.2)"
+             (gate opt-out)"
         );
     }
 }
@@ -573,17 +572,17 @@ fn snr_to_mse(snr_db: f64) -> f64 {
 /// Shared WaveNet MSE/SNR/ESR threshold lookup — used by both `topology_thresholds`
 /// (golden vectors) and `live_parity_thresholds` (cpp_parity) as a fallback.
 ///
-/// Post-T-HF6.6 live v1/v2 SNR measurements (f32-exact, 2026-06-18):
+/// Live v1/v2 SNR measurements (f32-exact, 2026-06-18):
 ///   Standard (CH=16): 123-135 dB → floor 105 dB (18 dB margin)
 ///   Feather  (CH=8):  117-133 dB → floor 100 dB (17 dB margin)
 ///   Nano     (CH=4):  114-132 dB → floor  95 dB (19 dB margin)
-///   Lite     (CH=12): 117.4 dB → floor 100 dB (17.4 dB margin, P1 ✅ T1.2+T1.3)
+///   Lite     (CH=12): 117.4 dB → floor 100 dB (17.4 dB margin, P1)
 ///
-/// Post-T-HF6.6 ESR gates (f32-exact):
+// ESR gates (f32-exact):
 ///   Standard:             3e-11
 ///   Feather:              1e-10
 ///   Nano:                 3e-10
-///   Lite:                 1e-10 (P1 ✅ resolved T1.2+T1.3)
+///   Lite:                 1e-10 (P1 ✅ resolved)
 ///   Default:              1e-3
 ///
 /// Returns `(mse_limit, min_snr_db, max_esr)`.
@@ -600,7 +599,7 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
             (snr_to_mse(snr_db), snr_db, Some(1e-10))
         }
         12 => {
-            // Post-P1 fix (T1.2+T1.3): measured SNR=117.4 dB, ESR=1.83e-12.
+            // Post-P1 fix: measured SNR=117.4 dB, ESR=1.83e-12.
             // Floor: 100 dB (17.4 dB margin, honest — on par with Feather CH=8).
             let snr_db = 100.0;
             (snr_to_mse(snr_db), snr_db, Some(1e-10))
@@ -628,7 +627,7 @@ fn wavenet_thresholds(channels: u32) -> (f64, f64, Option<f64>) {
 /// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)`.
 /// `mse_limit` is `None` when MSE gate is not applicable (ESR is the primary gate,
 /// explicit `MseGate::NotApplicable` semantics).
-/// `mrstft_max` is asserted as a hard gate at 44.1/48 kHz (Tarefa 3.1, F-2).
+/// `mrstft_max` is asserted as a hard gate at 44.1/48 kHz.
 #[allow(clippy::type_complexity, clippy::allow_attributes)]
 pub fn get_calibrated_threshold(
     model_name: &str,
@@ -672,10 +671,10 @@ pub fn get_calibrated_threshold(
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.0e-9), Some(0.05)))
         }
         // --- WaveNet Official (CH=3 free geom, dynamic path) ---
-        // T3.3 triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
+        // Triage: (a) Inherent — free-geometry CH=3 dynamic path exercises non-SKU
         // WaveNet Official (free-geom CH=3): synthetic dilations [(1,2),(8)].
         // Thresholds preserved from pre-fix calibration; now provide ~116 dB margin.
-        // Tarefa 3.5: mrstft_max relaxed to 0.45 — free-geometry dynamic path shows
+        // Relaxed mrstft_max to 0.45 — free-geometry dynamic path shows
         //   significant spectral drift over 5s v2 sequences despite near-bit-exact SNR.
         // Measured: SNR=130.4 dB, ESR=1.8e-12, MR-STFT=0.42 (v2 @ 48 kHz, 5s stress)
         "wavenet_official" => {
@@ -709,7 +708,7 @@ pub fn get_calibrated_threshold(
             let snr_db = 105.0;
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(9.0e-11), Some(0.22)))
         }
-        // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO (T1.2) ---
+        // --- WaveNet Lite (CH=12) — P1 ✅ RESOLVIDO ---
         // Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration),
         // MRSTFT near-zero (near-bit-exact, gate=0.05 conservative)
         // Floor: SNR - 17.3 dB margin, ESR factor ~60x
@@ -718,7 +717,7 @@ pub fn get_calibrated_threshold(
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet A2 Full (CH=8) ---
-        // SQ5.5: post-weight-dequantization — near-bit-exact (was 79.2 dB / 1.21e-8 with f16c weights).
+        // Post-weight-dequantization — near-bit-exact (was 79.2 dB / 1.21e-8 with f16c weights).
         // Measured: SNR = 129.5 dB, ESR = 1.13e-13 (golden v1, 2026-07-05),
         // MRSTFT = 4.2e-5 (near-bit-exact, gate=0.05 conservative)
         // Margin: SNR - 24.5 dB, ESR factor ~265×
@@ -727,7 +726,7 @@ pub fn get_calibrated_threshold(
             Some((None, snr_db, Some(3.0e-11), Some(0.05)))
         }
         // --- WaveNet A2 Lite (CH=3) ---
-        // SQ5.5: post-weight-dequantization — near-bit-exact (was 90.7 dB / 8.58e-10 with f16c weights).
+        // Post-weight-dequantization — near-bit-exact (was 90.7 dB / 8.58e-10 with f16c weights).
         // Measured: SNR = 132.2 dB, ESR = 6.08e-14 (golden v1, 2026-07-05),
         // MRSTFT = 2.9e-5 (near-bit-exact, gate=0.05 conservative)
         // Margin: SNR - 27.2 dB, ESR factor ~576×
@@ -736,13 +735,13 @@ pub fn get_calibrated_threshold(
             Some((None, snr_db, Some(3.5e-11), Some(0.05)))
         }
         // --- WaveNet Condition DSP (CH=3, cond=3, dynamic path) ---
-        // T3.2: condition_dsp sub-model with 2-layer WaveNet providing 3-channel
+        // condition_dsp sub-model with 2-layer WaveNet providing 3-channel
         // conditioning. The sub-model processes the raw audio before the main arrays.
         // Measured: SNR=139.5 dB, ESR=1.13e-14 (nearly bit-exact, 2026-06-19),
         // MR-STFT=0.021 (v1) / 0.336 (v2 @ 48 kHz 5s)
         // Floor: SNR - 39.5 dB margin, ESR factor ~8800x
-        // Tarefa 3.5: mrstft_max relaxed to 0.35 — condition_dsp sub-model accumulates
-        //   drift over 5-second v2 sequences. Flag for Tarefa 3.3.
+        // Relaxed mrstft_max to 0.35 — condition_dsp sub-model accumulates
+        //   drift over 5-second v2 sequences.
         "wavenet_condition_dsp" => {
             let snr_db = 100.0;
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-10), Some(0.35)))
@@ -897,7 +896,7 @@ pub fn get_calibrated_threshold(
             let snr_db = 80.0;
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(3.5e-9), Some(0.10)))
         }
-        // --- SlimmableContainer A2 Example (CH=3→6) — Tarefa 5/F6 ---
+        // --- SlimmableContainer A2 Example (CH=3→6) ---
         // Official C++ upstream model A2.nam with 2 WaveNet A2 submodels (CH=3, CH=6).
         // Measured: SNR=134.9 dB, ESR=3.27e-14, MR-STFT=9.22e-6
         // (golden v1, 2026-07-12, Standard engine). Post-Standard-default:
@@ -908,14 +907,14 @@ pub fn get_calibrated_threshold(
             let snr_db = 120.0;
             Some((None, snr_db, Some(3.5e-12), Some(0.08)))
         }
-        // --- ConvNet Test (CH=8, 6 blocks, C++ flat format, T4.7 F-A1) ---
+        // --- ConvNet Test (CH=8, 6 blocks, C++ flat format) ---
         // Measured: SNR=45.9 dB, ESR=2.54e-5, MR-STFT=2.66e-3 (C++ render
         // cross-validation, 2026-07-12, 2048-sample v1 stress signal).
         "convnet_test" => {
             let snr_db = 35.0;
             Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-4), Some(0.03)))
         }
-        // --- Linear FFT — Partitioned Convolution (S3.T04) ---
+        // --- Linear FFT — Partitioned Convolution ---
         // FFT-based FIR convolution via partitioned overlapless FFT.
         // Mathematically equivalent to time-domain convolution; FFT round-trip
         // error is the only noise source. Validated against direct FIR oracle
@@ -946,9 +945,9 @@ pub fn get_calibrated_threshold(
 /// For live cpp_parity cross-validation, use `live_parity_thresholds()`
 /// which applies tighter LSTM floors reflecting the 50–97 dB live SNR.
 ///
-/// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)` — T16.4 adds relative
+/// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)` — added relative
 /// ESR gate as primary threshold (robust to scale mismatch).
-/// Tarefa 3.1: mrstft_max asserted as hard gate at 44.1/48 kHz (F-2).
+/// mrstft_max asserted as hard gate at 44.1/48 kHz.
 pub fn topology_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
     model_name: &str,
@@ -998,7 +997,7 @@ pub fn topology_thresholds(
 /// T16.4: ESR gate added as primary threshold (robust to scale mismatch).
 ///
 /// Returns `(mse_limit, min_snr_db, max_esr, mrstft_max)`.
-/// Tarefa 3.1: mrstft_max asserted as hard gate at 44.1/48 kHz (F-2).
+/// mrstft_max asserted as hard gate at 44.1/48 kHz.
 pub fn live_parity_thresholds(
     data: &nam_rs::loader::nam_json::NamModelData,
     model_name: &str,

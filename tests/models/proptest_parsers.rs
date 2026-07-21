@@ -635,7 +635,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// F2 — Adversarial dimension proptest: kernel_size, dilations, channels,
+// Adversarial dimension proptest: kernel_size, dilations, channels,
 //      head_size, receptive_field — ensure Err, never abort/panic.
 // ---------------------------------------------------------------------------
 
@@ -1311,14 +1311,14 @@ fn adversarial_container_json_strategy() -> impl Strategy<Value = String> {
 }
 
 // ---------------------------------------------------------------------------
-// F12 — Adversarial state budget. Generates models that combine near-max
+// Adversarial state budget. Generates models that combine near-max
 //       kernel_size × dilation × channels × layer count to stress the new
 //       MAX_TOTAL_STATE_FRAMES bound.
 // ---------------------------------------------------------------------------
 
 /// Strategy: generates a WaveNet model JSON with high aggregate state budget.
 /// Targets the combination of kernel_size × dilation × channels across many
-/// layers — the F12 DoS vector that F2 individual bounds alone don't close.
+/// layers — the adversarial state budget DoS vector.
 fn adversarial_state_budget_strategy() -> impl Strategy<Value = String> {
     (
         any::<usize>(), // pattern selector
@@ -1390,7 +1390,7 @@ fn adversarial_state_budget_strategy() -> impl Strategy<Value = String> {
                 }
                 // Case 2: channels=1 amplification — tiny weight file exploiting receptive field
                 _ => {
-                    // Worst case from F12 description: k=64, d=4096, ch=1, 8 arrays × 64 dilations
+                    // Worst case from adversarial state budget test: k=64, d=4096, ch=1, 8 arrays × 64 dilations
                     // => 512 layers × ((63 * 4096) + 1600) × 1 = 512 × ~259,648 = ~133 Mi frames
                     let dil_cnt = (MAX_DILATIONS_PER_ARRAY / 2 + j / 2).min(MAX_DILATIONS_PER_ARRAY);
                     let dil_val = (MAX_DILATION / 2 + j * 128).min(MAX_DILATION);
@@ -1595,7 +1595,7 @@ proptest! {
         .. ProptestConfig::with_cases(10_000)
     })]
 
-    /// F2 — Adversarial dimensions: ensures topology detection rejects
+    /// Adversarial dimensions: ensures topology detection rejects
     /// models with dimensions exceeding safe bounds (never abort/panic).
     #[test]
     #[ignore]
@@ -1614,7 +1614,7 @@ proptest! {
                         geom.channels.iter().all(|&c| c <= MAX_WAVENET_FREE_CHANNELS),
                         "free geometry channels within bounds"
                     );
-                    // F12: verify state budget — no Free model should exceed MAX_TOTAL_STATE_FRAMES
+                    // Verify state budget — no Free model should exceed MAX_TOTAL_STATE_FRAMES
                     let total_state = geom
                         .dilations
                         .iter()
@@ -1641,7 +1641,7 @@ proptest! {
         }
     }
 
-    /// F2 — Adversarial ConvNet dimensions.
+    /// Adversarial ConvNet dimensions.
     #[test]
     #[ignore]
     fn prop_fuzz_adversarial_convnet_dims(json_str in adversarial_convnet_json_strategy()) {
@@ -1653,7 +1653,7 @@ proptest! {
         }
     }
 
-    /// F2 — Adversarial Linear receptive_field.
+    /// Adversarial Linear receptive_field.
     #[test]
     #[ignore]
     fn prop_fuzz_adversarial_linear_dims(json_str in adversarial_linear_json_strategy()) {
@@ -1735,7 +1735,7 @@ proptest! {
         }
     }
 
-    /// F12 — Adversarial state budget: ensures models exceeding
+    /// Adversarial state budget: ensures models exceeding
     /// MAX_TOTAL_STATE_FRAMES are Rejected, while others may be Free or Rejected
     /// but never cause panic or incorrect acceptance.
     #[test]

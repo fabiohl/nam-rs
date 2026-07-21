@@ -17,7 +17,7 @@
 //
 //  ## Parity Thresholds (Aggressive Live Floors)
 //
-//  Post-T-HF6.6 thresholds use `live_parity_thresholds()` — aggressive floors
+//  Post-migration thresholds use `live_parity_thresholds()` — aggressive floors
 //  calibrated from live C++ cross-validation measurements (f32-exact, 2026-06-18):
 //
 //  | Family  | Variant  | Measured SNR | Floor SNR | Margin  |
@@ -31,7 +31,7 @@
 //  | LSTM    | —        | 50–97 dB    | 45–75 dB  | formula |
 //  | Linear  | —        | bit-exact   | 140 dB    | —       |
 //
-//  Lite (CH=12) P1 resolved (T1.2 ringbuffer alignment fix) — now matches C++.
+//  Lite (CH=12) P1 resolved (ringbuffer alignment fix) — now matches C++.
 //
 //  ## Multi-Sample-Rate Support
 //
@@ -279,7 +279,7 @@ fn run_render_comparison(
     let output_wav = temp_dir.join(format!("{golden_name}_live_{sample_rate}{suffix}.wav"));
 
     // Execute render tool — capture stdout/stderr to prevent interleaving
-    // with the Rust test harness output (F-1 fix).
+    // with the Rust test harness output.
     let bin = render_bin();
     let output = Command::new(&bin)
         .arg(model_path.to_str().unwrap())
@@ -332,7 +332,7 @@ fn run_render_comparison(
 
     // Sanity-check C++ render output: skip comparison if render produced garbage.
     //
-    // Only check for non-finite samples (NaN/Inf), as requested in T2.4.
+    // Only check for non-finite samples (NaN/Inf).
     {
         let has_nonfinite = cpp_output.iter().any(|x| !x.is_finite());
         if has_nonfinite {
@@ -401,15 +401,14 @@ fn run_render_comparison(
     let is_film = golden_name.to_lowercase().contains("film")
         || model_filename.to_lowercase().contains("film");
 
-    // S1.T06: Absolute ESR/SNR/MR-STFT caps for Standard-mode parity.
+    // Absolute ESR/SNR/MR-STFT caps for Standard-mode parity.
     //
     // C++ NAMCore uses native math (std::tanh) — exact-grade.
     // Rust Standard mode uses polynomial exp-based kernels (~2.4e-7 error).
     // The caps below prevent false positives in both v1 (quick) and v2 tests.
     //
-    // S1.T01 (T1.2): non-HF Fast-mode caps removed — run_v1 / run_v2_multi_sr
-    // always use Standard activation since Tarefa β1.3. The use_hf parameter
-    // is preserved in run_render_comparison for potential future Fast-mode tests.
+    // non-HF Fast-mode caps removed — run_v1 / run_v2_multi_sr
+    // always use Standard activation since the universal default switch.
     const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 = 1.0e-10;
     const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 1.0e-5;
     const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 1.0e-4;
@@ -462,7 +461,7 @@ fn run_render_comparison(
     }
 
     if use_v2 {
-        // FiLM v2 MR-STFT floor (Tarefa 3.1 calibration, 2026-07-10):
+        // FiLM v2 MR-STFT floor (calibration, 2026-07-10):
         // FiLM models (A2-FiLM-Lite/Full) accumulate spectral drift far faster
         // than generic WaveNet over the 5-second v2 stress signal, because the
         // per-frame FiLM gamma/beta modulation diverges from C++'s generic
@@ -486,11 +485,11 @@ fn run_render_comparison(
     //
     // C++ NAMCore uses native math activations (`std::tanh`/`std::exp`) — exact-grade.
     //
-    // Non-HF (use_hf=false) → `ActivationPrecision::Fast` (S1.T04):
+    // Non-HF (use_hf=false) → `ActivationPrecision::Fast`:
     //   Rust uses Padé/minimax approximations, trading ~2.3e-3 tanh error for throughput.
     //   This deliberate asymmetry characterizes the C++↔Rust FastMath parity envelope.
     //
-    // HF (use_hf=true) → `ActivationPrecision::Standard` (S1.T05 / Tarefa β1.3):
+    // HF (use_hf=true) → `ActivationPrecision::Standard`:
     //   Both engines use native math, aligning to near-bit-exact agreement (~1e-10 ESR).
     //
     // PrecisionGuard holds the global PRECISION_MUTEX and restores original mode on Drop.
@@ -550,7 +549,7 @@ fn run_render_comparison(
 }
 
 /// Helper: run v1 comparison at 48 kHz in Standard (exact-grade) mode
-/// (universal default since Tarefa β1.3 / Sprint 1).
+/// (universal default).
 fn run_v1(
     model_filename: &str,
     golden_name: &str,
@@ -682,11 +681,11 @@ fn run_v2_multi_sr(
 // Tests — Quick Parity Subset (non-ignored, 48 kHz, v1 short signal)
 // =============================================================================
 //
-// Sprint S4, Tarefa 4.1 (F-3): representative subset of cross-validations
+// Representative subset of cross-validations
 // running in the ~3 min quick loop. BUILD_LOCK caches the C++ render tool.
 //
 // v1 tests (2048 samples, 48 kHz) — covering the three main architectures.
-// v2 tests (5-second stress signal, 48 kHz) — Sprint S5, Tarefa 5.3 (F-T5-b).
+// v2 tests (5-second stress signal, 48 kHz) — comprehensive.
 
 #[test]
 fn quick_parity_lstm_1x16() {
@@ -743,7 +742,7 @@ fn quick_parity_convnet() {
 }
 
 /// Quick v2 parity: WaveNet Standard with 5-second stress signal at 48 kHz.
-/// Promoted from `#[ignore]` in Sprint 5 / Tarefa 5.3 to ensure v2 format
+/// Promoted from `#[ignore]` to ensure v2 format
 /// coverage in the pre-commit quick suite.
 #[test]
 fn quick_parity_wavenet_standard_v2_48k() {
@@ -765,7 +764,7 @@ fn quick_parity_wavenet_standard_v2_48k() {
 }
 
 /// Quick v2 parity: A2 Full with 5-second stress signal at 48 kHz.
-/// Added per PO request (Sprint 5 / Tarefa 5.3) alongside the WaveNet Standard v2 quick test.
+/// Added per PO request alongside the WaveNet Standard v2 quick test.
 #[test]
 fn quick_parity_a2_full_v2_48k() {
     let outcome = run_render_comparison(
@@ -1128,7 +1127,7 @@ fn live_cross_validation_v2_lstm_dyn() {
     );
 }
 
-// --- A2 Dynamic Models (Tarefa T4.3) ---
+// --- A2 Dynamic Models ---
 //
 // Live C++ cross-validation for A2 dynamic geometries (FiLM, Gated, Blended)
 // that exercise the native WaveNetA2Dyn engine paths against the C++ generic
@@ -1221,7 +1220,7 @@ fn live_cross_validation_wavenet_a2_film_chaos_stress() {
 //     );
 // }
 
-// --- v2 A2 Dynamic Models (Tarefa T4.3) ---
+// --- v2 A2 Dynamic Models ---
 
 #[test]
 #[ignore]
@@ -1322,7 +1321,7 @@ fn live_cross_validation_v2_linear() {
 }
 
 // =============================================================================
-// Standard (exact-grade) mode cpp_parity tests (Tarefa β1.3)
+// Standard (exact-grade) mode cpp_parity tests
 //
 // C++ NAMCore uses native math (std::tanh) — exact-grade.
 // Rust in Standard mode uses high-fidelity polynomial exp-based kernels
@@ -1336,7 +1335,7 @@ fn live_cross_validation_v2_linear() {
 // Quick (non-ignored): representative subset for fast CI loop
 // Comprehensive (ignored): full model × SR matrix, requires C++ toolchain
 //
-// Sprint 1 (T1.2): quick_parity_hf_* tests removed — run_v1 now always uses
+// quick_parity_hf_* tests removed — run_v1 now always uses
 // Standard activation, so they were 1:1 duplicates of quick_parity_*.
 
 // --- v1 (standard-rate) HF tests, ignored ---

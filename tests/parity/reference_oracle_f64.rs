@@ -7,7 +7,7 @@
 //  reporting the absolute error floor and isolating contributions from
 //  weight quantization, activation approximation, and accumulation precision.
 //
-//  ## T5.3 — External anchoring
+//  ## External anchoring
 //
 //  The Rust f64 oracle is validated against a PyTorch/NumPy f64 reference
 //  (pre-generated anchors in `tests/fixtures/f64_anchors/`). The oracle
@@ -156,9 +156,9 @@ fn print_decomposition(result: &nam_rs::testing::reference_oracle::Decomposition
     );
 }
 
-// ── T5.3: External anchor validation ─────────────────────────────────────
+// ── External anchor validation ─────────────────────────────────────
 
-/// T5.3 anchor validation: Rust oracle vs independent NumPy f64 reference.
+/// Anchor validation: Rust oracle vs independent NumPy f64 reference.
 /// The pre-generated anchors are in tests/fixtures/f64_anchors/.
 /// Format: [u32 LE count] [f64 LE × count]
 ///
@@ -280,7 +280,7 @@ fn test_oracle_vs_python_anchor_a2() {
     );
 }
 
-// ── S10.4: FiLM A2 Python anchor validation ─────────────────────────────
+// ── FiLM A2 Python anchor validation ─────────────────────────────
 
 #[test]
 fn test_oracle_vs_python_anchor_a2_film_lite() {
@@ -393,7 +393,7 @@ fn test_oracle_vs_python_anchor_a2_blended() {
     );
 }
 
-// ── T8.3: Re-derived fidelity gates (post-T8.2, prewarm-paired) ──────────
+// ── Re-derived fidelity gates (prewarm-paired) ──────────
 // Oracle ESR limits are defined in tests/common/constants.rs as pub const
 // (WAVENET_ESR_LIMIT, LSTM_ESR_LIMIT, A2_ESR_LIMIT) and shared between
 // reference_oracle_f64.rs and threshold_calibration.rs for cross-test access.
@@ -401,7 +401,7 @@ fn test_oracle_vs_python_anchor_a2_blended() {
 // (Rules 1–5: validated reference, below placebo, provenance comment, link to
 // independent measurement, sanity-check Σ sources ≈ total).
 
-// ── T8.3: Prewarm-paired ESR gate tests ────────────────────────────────────
+// ── Prewarm-paired ESR gate tests ────────────────────────────────────
 // Measures ESR(f32 production vs f64 ideal oracle) with paired prewarm
 // (24k warmup + 256 measurement sweep @ 48 kHz) to eliminate transient-
 // mismatch from cold-start history buffers. Limits = measured × 2.
@@ -486,7 +486,7 @@ fn test_oracle_a2() {
 }
 
 // ── Decomposition tests ────────────────────────────────────────────────────
-// T8.3: Gating assertion uses prewarm-paired ESR; decomposition breakdown
+// Gating assertion uses prewarm-paired ESR; decomposition breakdown
 // is diagnostic (cold-start run_decomposition prints per-component ΔESR).
 
 #[test]
@@ -911,7 +911,7 @@ fn test_decomposition_a2() {
 }
 
 // ── Combined simulation acceptance tests ───────────────────────────────────
-// T8.2: Uses prewarm-paired measurement (24k prewarm + 256 sweep) to
+// Uses prewarm-paired measurement (24k prewarm + 256 sweep) to
 // eliminate transient-mismatch artifacts and assert ESR < 1e-2.
 
 fn combined_config() -> PrecisionConfig {
@@ -988,7 +988,7 @@ fn test_combined_simulation_a2() {
     run_combined_paired_test("wavenet_a2_lite.nam", "A2");
 }
 
-// ── S10.1: ConvNet oracle tests ────────────────────────────────────────────
+// ── ConvNet oracle tests ────────────────────────────────────────────
 
 #[test]
 fn test_oracle_convnet() {
@@ -1105,7 +1105,7 @@ fn test_oracle_vs_python_anchor_convnet() {
     );
 }
 
-// ── S10.3: FiLM A2 oracle tests ────────────────────────────────────────────
+// ── FiLM A2 oracle tests ────────────────────────────────────────────
 
 #[test]
 fn test_oracle_a2_film_lite() {
@@ -1153,7 +1153,7 @@ fn test_combined_simulation_a2_film() {
     );
 }
 
-// ── S13.2: A2 Generic oracle tests ────────────────────────────────────────
+// ── A2 Generic oracle tests ────────────────────────────────────────
 
 use common::A2_GENERIC_ESR_LIMIT;
 
@@ -1181,7 +1181,7 @@ fn test_oracle_vs_python_anchor_a2_generic() {
 }
 
 #[test]
-#[ignore = "model disabled — production blocked by guard; root cause: 3 production bugs (head1x1 per-layer, grouped convs ignored, head K=1) — oracle bugs corrected in S2.T03. See TODO-wavenet_a2_max.md Epics 2–4"]
+#[ignore = "model disabled — production blocked by guard; root cause: 3 production bugs (head1x1 per-layer, grouped convs ignored, head K=1) — oracle bugs corrected. See TODO-wavenet_a2_max.md Epics 2–4"]
 fn test_oracle_a2_generic() {
     let esr = run_oracle_esr_paired("wavenet_a2_max.nam", "A2-Generic");
     assert!(
@@ -1193,7 +1193,7 @@ fn test_oracle_a2_generic() {
 }
 
 #[test]
-#[ignore = "model disabled — production blocked by guard; unblock requires fixing Bugs A/B/C (TODO-wavenet_a2_max.md Epics 2–4). Oracle bugs corrected in S2.T03."]
+#[ignore = "model disabled — production blocked by guard; unblock requires fixing Bugs A/B/C (TODO-wavenet_a2_max.md Epics 2–4). Oracle bugs corrected."]
 fn test_decomposition_a2_generic() {
     let path = models_dir().join("wavenet_a2_max.nam");
     let md = load_and_parse(&path);
@@ -1220,14 +1220,14 @@ fn test_decomposition_a2_generic() {
 }
 
 #[test]
-#[ignore = "model disabled — production blocked by guard; unblock requires fixing Bugs A/B/C (TODO-wavenet_a2_max.md Epics 2–4). Oracle bugs corrected in S2.T03."]
+#[ignore = "model disabled — production blocked by guard; unblock requires fixing Bugs A/B/C (TODO-wavenet_a2_max.md Epics 2–4). Oracle bugs corrected."]
 fn test_combined_simulation_a2_generic() {
     run_combined_paired_test("wavenet_a2_max.nam", "A2-Generic");
 }
 
-// ── T8.1: Paired prewarm diagnostic — warmup hypothesis ────────────────────
+// ── Paired prewarm diagnostic — warmup hypothesis ────────────────────
 
-/// T8.1 Diagnostic: measures ESR(oracle vs production) with paired prewarm.
+/// Diagnostic: measures ESR(oracle vs production) with paired prewarm.
 ///
 /// Hypothesis (AC-7): the current ESR gap is dominated by **transient
 /// mismatch** — the oracle starts with zero state while production has
@@ -1350,7 +1350,7 @@ fn test_summary_table() {
     println!("{}", "-".repeat(90));
 }
 
-// ── T3.3 RCA diagnostic: recurrent state drift ───────────────────────────────
+// ── RCA diagnostic: recurrent state drift ───────────────────────────────
 
 fn print_blockwise_esr_table(esr_blocks: &[f64], block_size: usize, sample_rate: u32) {
     let block_duration = block_size as f64 / sample_rate as f64;
@@ -1425,7 +1425,7 @@ fn t33_diagnostic_recurrent_drift_lstm_1x16() {
         512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 120000, 240000,
     ];
 
-    println!("\n=== T3.3 — Recurrent State Drift Analysis ===");
+    println!("\n=== Recurrent State Drift Analysis ===");
     println!("Model:   BossLSTM-1×16");
     println!("Signal:  v2 stress, 5s @ 48 kHz (240k samples)");
     println!(
@@ -1506,7 +1506,7 @@ fn run_paired_drift_diagnostic(
     let stress_f64: Vec<f64> = stress_signal.iter().map(|&x| x as f64).collect();
 
     // Produção: SEM model.prewarm(zeros) — processa o sinal real desde t=0,
-    // igual ao oráculo, eliminando o mismatch de estado inicial (T8.2-style).
+    // igual ao oráculo, eliminando o mismatch de estado inicial.
     let mut model = nam_rs::loader::dispatcher::build_model(&md).expect("build_model");
     let mut output = vec![0.0f32; stress_signal.len()];
     let mut pos = 0;
@@ -1535,7 +1535,7 @@ fn run_paired_drift_diagnostic(
     (esr_tail, esr_blocks)
 }
 
-// ── T3.3b: paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
+// ── Paired prewarm LSTM 1x16 diagnostic ──────────────────────────────
 
 #[test]
 #[ignore]
@@ -1544,29 +1544,15 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
 
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
     set_activation_precision(ActivationPrecision::Fast);
-    let (esr_tail_fast, _) = run_paired_drift_diagnostic(
-        "BossLSTM-1x16.nam",
-        "T3.3b — LSTM 1x16 paired (Fast)",
-        48_000,
-    );
-    let _ = run_paired_drift_diagnostic(
-        "BossLSTM-1x16.nam",
-        "T3.3b — LSTM 1x16 paired (Fast)",
-        12_000,
-    );
+    let (esr_tail_fast, _) =
+        run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Fast)", 48_000);
+    let _ = run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Fast)", 12_000);
 
     // 2. Run with Standard precision (exact-grade, universal default)
     set_activation_precision(ActivationPrecision::Standard);
-    let (esr_tail_std, _) = run_paired_drift_diagnostic(
-        "BossLSTM-1x16.nam",
-        "T3.3b — LSTM 1x16 paired (Standard)",
-        48_000,
-    );
-    let _ = run_paired_drift_diagnostic(
-        "BossLSTM-1x16.nam",
-        "T3.3b — LSTM 1x16 paired (Standard)",
-        12_000,
-    );
+    let (esr_tail_std, _) =
+        run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Standard)", 48_000);
+    let _ = run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Standard)", 12_000);
 
     println!("\nLSTM 1x16 Diagnostic Comparison:");
     println!(
@@ -1597,7 +1583,7 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
     );
 }
 
-// ── T3.3c: paired prewarm LSTM 2x8 diagnostic ──────────────────────────────
+// ── Paired prewarm LSTM 2x8 diagnostic ──────────────────────────────
 
 #[test]
 #[ignore]
@@ -1607,22 +1593,14 @@ fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
     set_activation_precision(ActivationPrecision::Fast);
     let (esr_tail_fast, _) =
-        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired (Fast)", 48_000);
-    let _ =
-        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "T3.3c — LSTM 2x8 paired (Fast)", 12_000);
+        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Fast)", 48_000);
+    let _ = run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Fast)", 12_000);
 
     // 2. Run with Standard precision (exact-grade, universal default)
     set_activation_precision(ActivationPrecision::Standard);
-    let (esr_tail_std, _) = run_paired_drift_diagnostic(
-        "BossLSTM-2x8.nam",
-        "T3.3c — LSTM 2x8 paired (Standard)",
-        48_000,
-    );
-    let _ = run_paired_drift_diagnostic(
-        "BossLSTM-2x8.nam",
-        "T3.3c — LSTM 2x8 paired (Standard)",
-        12_000,
-    );
+    let (esr_tail_std, _) =
+        run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Standard)", 48_000);
+    let _ = run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Standard)", 12_000);
 
     println!("\nLSTM 2x8 Diagnostic Comparison:");
     println!(

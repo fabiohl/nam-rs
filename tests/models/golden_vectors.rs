@@ -155,7 +155,7 @@ const SR_48K_ONLY: &[u32] = &[48000];
 /// computed in single-pass fusion — see `report_dsp_fidelity` in `tests/common/mod.rs`.
 ///
 /// ## Thresholds
-/// - Thresholds auto-computed by `topology_thresholds()` (CH=16 → 105 dB post-T-HF6.6).
+/// - Thresholds auto-computed by `topology_thresholds()` (CH=16 → 105 dB).
 /// - Stress signal: 2048 samples (chirp + guitar harmonics + impulse + fade-to-silence).
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
@@ -410,7 +410,7 @@ fn test_golden_vectors_lstm_official() {
 /// Test 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
 /// ## Thresholds
-/// - Thresholds auto-computed by `topology_thresholds()` (CH=8 → 100 dB post-T-HF6.6).
+/// - Thresholds auto-computed by `topology_thresholds()` (CH=8 → 100 dB).
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
@@ -461,7 +461,7 @@ fn test_golden_vectors_wavenet_feather() {
 /// Test 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
 /// ## Thresholds
-/// - Thresholds auto-computed by `topology_thresholds()` (CH=4 → 95 dB post-T-HF6.6).
+/// - Thresholds auto-computed by `topology_thresholds()` (CH=4 → 95 dB).
 ///
 /// Run `./tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
@@ -516,7 +516,7 @@ fn test_golden_vectors_wavenet_nano() {
 /// runs prewarm + processing, and compares the output against the C++ reference
 /// (NeuralAmpModelerCore).
 ///
-/// ## Post-T2.4 thresholds (RF7 ✅ RESOLVIDO, 2026-06-21)
+/// ## Thresholds
 /// - Stress signal: 2048 samples (chirp + guitar harmonics + impulse + fade-to-silence).
 /// - Measured: SNR=122.3 dB, ESR=5.84e-13 (EVH-5150-Lite, post-migration).
 /// - Thresholds: SNR ≥ 105 dB, ESR ≤ 3.5e-11 (17.3 dB margin — honest, como Feather CH=8).
@@ -678,7 +678,7 @@ fn test_golden_vectors_wavenet_a2_lite() {
 }
 
 // =============================================================================
-// ContainerModel Golden Tests — T3.2
+// ContainerModel Golden Tests
 // =============================================================================
 
 /// Test 8i: Container Golden — A2-Full submodel matches C++ reference.
@@ -911,7 +911,7 @@ fn test_golden_vectors_wavenet_a2_container() {
     }
 }
 
-/// Test 8j: Golden Vectors SlimmableContainer A2 Example — Tarefa 5 (F6).
+/// Test 8j: Golden Vectors SlimmableContainer A2 Example.
 ///
 /// Reads `tests/fixtures/golden_a2_example.bin`, builds the `StaticModel`
 /// from `a2_example.nam` (official C++ `example_models/A2.nam` —
@@ -1014,11 +1014,11 @@ fn test_wavenet_condition_dsp_still_loads() {
     );
 }
 
-/// Test 8k-1b: `wavenet_condition_lstm.nam` fail-closed rejection — T3.1 policy.
+/// Test 8k-1b: `wavenet_condition_lstm.nam` fail-closed rejection.
 ///
 /// Validates that the dispatcher rejects WaveNet models with an LSTM
 /// condition_dsp sub-model. LSTM condition_dsp produces structurally wrong
-/// audio (ESR ≈ 1.3e-1, confirmed in T2.3). The model is rejected at load
+/// audio (ESR ≈ 1.3e-1, confirmed empirically). The model is rejected at load
 /// time with a clear diagnostic message.
 #[test]
 fn test_wavenet_condition_lstm_loads_and_runs() {
@@ -1029,7 +1029,7 @@ fn test_wavenet_condition_lstm_loads_and_runs() {
     let result = build_model(&data);
     assert!(
         result.is_err(),
-        "Expected LSTM condition_dsp to be rejected (fail-closed policy T3.1), but it loaded"
+        "Expected LSTM condition_dsp to be rejected (fail-closed policy), but it loaded"
     );
     let err_msg = format!("{}", result.err().unwrap());
     assert!(
@@ -1064,10 +1064,10 @@ fn test_loader_gap_slimmable_wavenet() {
     );
 }
 
-/// Test 8l: Golden Vectors WaveNet Condition DSP — T3.2 cross-reference C++ ↔ NAM-rs.
+/// Test 8l: Golden Vectors WaveNet Condition DSP cross-reference C++ ↔ NAM-rs.
 ///
-/// Replaces the pre-T3.2 gap test (`test_loader_gap_wavenet_condition_dsp`).
-/// With T3.1, the condition_dsp sub-model is fully functional and the dynamic engine
+/// Replaces the gap test (`test_loader_gap_wavenet_condition_dsp`).
+/// The condition_dsp sub-model is fully functional and the dynamic engine
 /// processes audio through the nested DSP. Validates Rust output against C++ reference
 /// via ESR/SNR/MSE fusion report.
 ///
@@ -1122,7 +1122,7 @@ fn test_golden_vectors_wavenet_condition_dsp() {
     );
 }
 
-/// Test 8l-2: Rejection of LSTM condition_dsp via f64 oracle path — T3.1.
+/// Test 8l-2: Rejection of LSTM condition_dsp via f64 oracle path.
 ///
 /// Validates that the dispatcher fails-closed when attempting to build a WaveNet
 /// model whose `condition_dsp` sub-model is an LSTM. The
@@ -1146,7 +1146,7 @@ fn test_policy_reject_condition_lstm() {
     let result = build_model(&model_data);
     assert!(
         result.is_err(),
-        "Expected LSTM condition_dsp to be rejected (fail-closed policy T3.1), but it loaded"
+        "Expected LSTM condition_dsp to be rejected (fail-closed policy), but it loaded"
     );
     let err_msg = format!("{}", result.err().unwrap());
     assert!(
@@ -1158,8 +1158,8 @@ fn test_policy_reject_condition_lstm() {
 
 /// Test 8m: Golden Vectors WaveNet Official (dynamic path) — cross-reference C++ ↔ NAM-rs.
 ///
-/// This replaces the pre-T3.1 gap test (`test_loader_gap_slimmable_wavenet`).
-/// With T3.1 (dispatch híbrido), free-geometry WaveNet A1 models now load via the
+/// This replaces the gap test (`test_loader_gap_slimmable_wavenet`).
+/// Free-geometry WaveNet A1 models now load via the
 /// dynamic engine. `wavenet_official.nam` (CH=3, 2 arrays, dilations [(1,2),(8)])
 /// exercises the dynamic path and is validated against a C++ reference golden.
 ///
@@ -1214,7 +1214,7 @@ fn test_golden_vectors_wavenet_official() {
 
 /// Test 8n: Loader Gap Slimmable Container — verifies robust loading with
 /// submodel topology routing (LSTM 1x3 + WaveNet free [3,2] + WaveNet free [4,2]).
-/// After Sprint 2.2 (Tarefa 2.2.2), the container with all three submodels loads
+/// The container with all three submodels loads
 /// successfully via the dynamic engine (heterogeneous channels) and LSTM fast-path.
 #[test]
 fn test_loader_gap_slimmable_container() {
@@ -1257,7 +1257,7 @@ fn test_loader_gap_slimmable_container() {
 }
 
 // =============================================================================
-// V2 Multi-SR Golden Vector Tests — T4.2
+// V2 Multi-SR Golden Vector Tests
 // =============================================================================
 //
 // Layer-2 soak gates exercising the engine at 44.1/48/88.2/96/192 kHz
@@ -1470,7 +1470,7 @@ fn test_golden_vectors_v2_wavenet_condition_lstm() {
 }
 
 // =============================================================================
-// Polynomial Activation Regression Gate — T-HF1.4
+// Polynomial Activation Regression Gate
 // =============================================================================
 
 /// Activation regression gate: WaveNet Standard golden fidelity.
@@ -1491,7 +1491,7 @@ fn test_poly_regression_gate_wavenet_standard() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP [T-HF1.4]: golden_wavenet_standard.bin not found.\n\
+            "SKIP  golden_wavenet_standard.bin not found.\n\
              Run './tests/fixtures/golden_gen_build.sh' to generate golden vectors."
         );
         return;
@@ -1502,7 +1502,7 @@ fn test_poly_regression_gate_wavenet_standard() {
 
     let nam_path = model_path("BossWN-standard.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP [T-HF1.4]: BossWN-standard.nam not found.");
+        eprintln!("SKIP  BossWN-standard.nam not found.");
         return;
     }
 
@@ -1523,7 +1523,7 @@ fn test_poly_regression_gate_wavenet_standard() {
     const POLY_SNR_MIN: f64 = 70.0;
     const POLY_MSE_MAX: f64 = 1e-5;
 
-    gv_metric("T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)");
+    gv_metric("WaveNet Standard polynomial SIMD (regression gate)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1531,7 +1531,7 @@ fn test_poly_regression_gate_wavenet_standard() {
         POLY_SNR_MIN,
         Some(POLY_ESR_MAX),
         None,
-        "T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)",
+        "WaveNet Standard polynomial SIMD (regression gate)",
         STRESS_SAMPLE_RATE,
     );
 }
@@ -1547,7 +1547,7 @@ fn test_poly_regression_gate_wavenet_a2_full() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP [T-HF1.4]: golden_wavenet_a2_full.bin not found.\n\
+            "SKIP  golden_wavenet_a2_full.bin not found.\n\
              Run './tests/fixtures/golden_gen_build.sh' to generate golden vectors."
         );
         return;
@@ -1558,7 +1558,7 @@ fn test_poly_regression_gate_wavenet_a2_full() {
 
     let nam_path = model_path("wavenet_a2_full.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP [T-HF1.4]: wavenet_a2_full.nam not found.");
+        eprintln!("SKIP  wavenet_a2_full.nam not found.");
         return;
     }
 
@@ -1571,13 +1571,13 @@ fn test_poly_regression_gate_wavenet_a2_full() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // SQ5.5: post-weight-dequantization — A2 is now near-bit-exact (ESR=1.13e-13).
+    // Post-weight-dequantization — A2 is now near-bit-exact (ESR=1.13e-13).
     // Gate matches WaveNet Standard's POLY_WAVENET_ESR_MAX.
     const POLY_A2_ESR_MAX: f64 = 1e-4;
     const POLY_A2_SNR_MIN: f64 = 65.0;
     const POLY_A2_MSE_MAX: f64 = 1e-5;
 
-    gv_metric("T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)");
+    gv_metric("WaveNet A2-Full polynomial SIMD (regression gate)");
     report_dsp_fidelity(
         &expected,
         &output,
@@ -1585,15 +1585,15 @@ fn test_poly_regression_gate_wavenet_a2_full() {
         POLY_A2_SNR_MIN,
         Some(POLY_A2_ESR_MAX),
         None,
-        "T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)",
+        "WaveNet A2-Full polynomial SIMD (regression gate)",
         STRESS_SAMPLE_RATE,
     );
 }
 
 // =============================================================================
-// WaveNet A2 Dynamic Golden Tests — Task 3.3 (Golden Vectors e C++ Parity)
+// WaveNet A2 Dynamic Golden Tests (Golden Vectors e C++ Parity)
 //
-// NOTE (RF3, 2026-06-21): v2 multi-SR goldens (`golden_a2_dynamic_*_v2_<sr>.bin`)
+// NOTE (2026-06-21): v2 multi-SR goldens (`golden_a2_dynamic_*_v2_<sr>.bin`)
 // do not exist for the A2 dynamic geometries (gated/blended/FiLM). These
 // engines are forward-compat parser surface only and not part of the v2 golden
 // pipeline. The A2 fixed fast-path models (`wavenet_a2_full`, `wavenet_a2_lite`)
@@ -1886,7 +1886,7 @@ fn test_golden_vectors_wavenet_a2_film_chaos_stress() {
 // =============================================================================
 // Sprint B.2.2: Dynamic Model Golden Vector Tests
 //
-// NOTE (RF3, 2026-06-21): v2 multi-SR goldens for `wavenet_dyn_free` and
+// NOTE (2026-06-21): v2 multi-SR goldens for `wavenet_dyn_free` and
 // `lstm_dyn_test` are intentionally limited to 48 kHz (v1 only). Dynamic
 // engines handle arbitrary free geometries — geometry variance subsumes
 // sample-rate variance. Live cross-validation (`tests/cpp_parity.rs` lines
@@ -2002,11 +2002,11 @@ fn test_golden_vectors_lstm_dyn_test() {
 }
 
 // =============================================================================
-// ConvNet Self-Golden Consistency Test (Task B.2.2)
+// ConvNet Self-Golden Consistency Test
 // =============================================================================
 //
 // C++ NAM Core v0.5.3 cannot produce golden vectors for NAM 0.5.4-style
-// multi-block ConvNet (see Task B.2.1 for details). In the absence of a
+// multi-block ConvNet. In the absence of a
 // C++ reference, this test validates ConvNet engine determinism by verifying
 // that the output is identical regardless of block size used for processing.
 // This proves phase/state determinism — a key correctness invariant.
@@ -2189,7 +2189,7 @@ fn test_golden_vectors_wavenet_a2_max() {
     );
 }
 
-/// Tarefa 3.1 (F-2): Synthetic MR-STFT regression — mild low-pass filter
+/// Synthetic MR-STFT regression — mild low-pass filter
 /// on model output must trigger the hard MR-STFT gate at 48 kHz.
 ///
 /// A 1-pole low-pass at 2 kHz applied to the Rust output induces spectral
@@ -2197,10 +2197,10 @@ fn test_golden_vectors_wavenet_a2_max() {
 /// sample rate, proving the gate is not a placebo.
 #[test]
 fn test_mrstft_hard_gate_catches_regression() {
-    // S3.T07: Suppress report output and panic messages during this
+    // Suppress report output and panic messages during this
     // controlled-panic regression test to keep the green-test suite clean.
     let _report_guard = SuppressReportGuard::new();
-    // T4.1: Label JSONL emissions as "selftest" to prevent contamination
+    // Label JSONL emissions as "selftest" to prevent contamination
     // of the quality dashboard with synthetic regression metrics.
     let _kind_guard = MetricKindGuard::selftest();
     let prev_hook = std::panic::take_hook();
@@ -2259,7 +2259,7 @@ fn test_mrstft_hard_gate_catches_regression() {
             min_snr_db,
             max_esr,
             mrstft_max,
-            "T3.1: MR-STFT regression gate (synthetic)",
+            "MR-STFT regression gate (synthetic)",
             48000,
         );
     }));

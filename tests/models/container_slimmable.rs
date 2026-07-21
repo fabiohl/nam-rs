@@ -55,7 +55,7 @@ fn signal_energy(signal: &[f32], start: usize, len: usize) -> f32 {
 }
 
 // =============================================================================
-// Slimmable Breakpoints Coverage (Tarefa 4 — F5)
+// Slimmable Breakpoints Coverage
 // =============================================================================
 
 /// Test 4.1: Single submodel — breakpoints must be empty.
@@ -211,7 +211,7 @@ fn test_breakpoints_a2_fixture() {
 }
 
 // =============================================================================
-// Container Switch RT-Safety — T3.3
+// Container Switch RT-Safety
 // =============================================================================
 
 /// Test 8k: ContainerModel switch produces finite output (RT-safety).
@@ -281,10 +281,10 @@ fn test_container_switch_rt_safety() {
 }
 
 // =============================================================================
-// Container Crossfade Continuity — T3.4
+// Container Crossfade Continuity
 // =============================================================================
 
-/// Test T3.4: Crossfade continuity — container submodel switch must be free
+/// Test crossfade continuity — container submodel switch must be free
 /// of audible clicks (discontinuity).
 ///
 /// Verifies that switching between A2-Full and A2-Lite inside a ContainerModel
@@ -451,11 +451,11 @@ fn test_container_crossfade_continuity() {
 }
 
 // =============================================================================
-// Selective Reset Verification — Tarefa 6 (F9)
+// Selective Reset Verification
 // =============================================================================
 
 /// Test T6.1: `ContainerModel::reset` resets only the active submodel,
-/// not all submodels (F9 — selective reset via `set_max_buffer_size` on all,
+/// not all submodels (selective reset via `set_max_buffer_size` on all,
 /// full `reset`+`prewarm` only on the active one).
 ///
 /// After `reset()`, the active submodel must have been prewarmed (non-zero
@@ -562,7 +562,7 @@ fn test_container_reset_only_active_submodel() {
 }
 
 /// Test T6.2: `ContainerModel::set_slimmable_size` resets the target submodel
-/// before setting it as pending (F9 — reset-before-activation).
+/// before setting it as pending (reset-before-activation).
 ///
 /// Verifies that when `set_slimmable_size(val)` triggers a submodel transition,
 /// the target submodel receives a full `reset()` (set_max_buffer_size + prewarm),

@@ -8,7 +8,7 @@
 //  array in `golden_gen_build.sh`. Prevents silent drift where a
 //  model is added to tests but forgotten in the golden generator.
 //
-//  Part of Tarefa C.1.4 (Épico C — Sprint C.1).
+//  Part of the bidirectional coherence check suite.
 
 use std::collections::HashSet;
 use std::fs;
@@ -148,7 +148,7 @@ fn scan_ignored_test_models(
 /// Parses the CATALOG array and returns the set of models that have
 /// a non-empty `skip_reason` field (6th colon-separated field).
 /// These models are intentionally excluded from golden generation
-/// and freshness gates (F-C9, Tarefa T3.2).
+/// and freshness gates.
 fn parse_skip_reason_models() -> HashSet<String> {
     let script = golden_gen_build_path();
     let content = fs::read_to_string(&script).expect("Failed to read golden_gen_build.sh");
@@ -320,7 +320,7 @@ fn test_ignored_models_are_in_catalog() {
                  \n\
                  Add '{nam_file}' to CATALOG in tests/fixtures/golden_gen_build.sh.\n\
                  \n\
-                 This is the guard against F3-class bugs: models that silently enter \
+                 This is the guard against coherence bugs: models that silently enter \
                  the test suite but never have their goldens generated because the \
                  generator script was never updated.",
             );
@@ -341,7 +341,7 @@ fn test_ignored_models_are_in_catalog() {
 /// table, and ensures no label is a prefix of another — preventing collisions
 /// like "Quick A2-Full" vs "Quick A2-Full v2".
 ///
-/// T11.3 — Sprint S11, EP-R4.
+
 #[test]
 fn test_quality_contract_uniqueness() {
     let contract_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -410,7 +410,7 @@ fn test_quality_contract_uniqueness() {
 /// contains no blocking I/O patterns (`log::`, `println!`, `eprintln!`, `format!`)
 /// outside of test modules, `#[cold]`-annotated functions, or constructor paths.
 ///
-/// This prevents regression of R5-class bugs where I/O sneaks into the
+/// This prevents regression of blocking I/O bugs where I/O sneaks into the
 /// real-time audio callback — the #1 rule of the project.
 ///
 /// ## Exemptions
@@ -648,7 +648,7 @@ fn scan_rt_logging_violations(
 }
 
 /// Statically verifies that `configure_realtime_thread` contains zero `log::`
-/// calls, enforcing RT-zero-IO compliance per Sprint S20 (R18).
+/// calls, enforcing RT-zero-IO compliance.
 ///
 /// Upon failure, the test reports the line numbers of any remaining `log::`
 /// patterns so the developer can replace them with atomic stores.
@@ -717,8 +717,8 @@ fn test_configure_realtime_thread_no_logging() {
     }
 }
 
-/// Sprint S21 — Runtime thread-check hardening. Verifies that every
-/// CLAP extension entry point listed in T21.4 contains a
+/// Runtime thread-check hardening. Verifies that every
+/// CLAP extension entry point contains a
 /// `debug_assert_main_thread` barrier as its first statement.
 ///
 /// Scans the source files and for each critical method confirms the
@@ -830,8 +830,8 @@ fn contains_thread_barrier(content: &str, fn_name: &str) -> bool {
     }
 }
 
-/// Sprint S21 — Verifies that no `PoisonError` of `Mutex` locks
-/// is silently discarded in the three files treated by T21.5.
+/// Verifies that no `PoisonError` of `Mutex` locks
+/// is silently discarded in the three target files.
 ///
 /// `if let Ok(...) = ...lock()` silently ignores poisoned locks.
 /// The fix replaces them with `.unwrap_or_else(|e| {

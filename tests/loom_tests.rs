@@ -9,7 +9,7 @@ use loom::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use loom::thread;
 
 // =============================================================================
-// T8.2 — Modelar protocolo de Handshake
+// Modelar protocolo de Handshake
 // =============================================================================
 
 #[test]
@@ -75,7 +75,7 @@ fn test_handshake_relaxed_fails() {
 }
 
 // =============================================================================
-// T8.3 — Modelar fila de GC Overflow
+// Modelar fila de GC Overflow
 // =============================================================================
 
 struct MockItem {
@@ -165,7 +165,7 @@ fn test_gc_overflow_concurrency() {
 }
 
 // =============================================================================
-// T8.4 — Modelar Double-Buffering DspBridge
+// Modelar Double-Buffering DspBridge
 // =============================================================================
 
 struct LoomBridgeBuffer {

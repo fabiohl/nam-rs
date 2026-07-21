@@ -250,7 +250,7 @@ fn test_zero_alloc_capture_pipeline() {
 /// Zero-Allocation Verification Test for `ContainerModel::set_slimmable_size()` alone.
 ///
 /// Proves that `set_slimmable_size` (which calls `reset()` on the target submodel)
-/// performs zero heap allocations — a prerequisite for RT-Safety (F9, F10).
+/// performs zero heap allocations — a prerequisite for RT-Safety.
 #[test]
 fn test_zero_alloc_set_slimmable_size() {
     use nam_rs::models::StaticModel;
@@ -355,7 +355,7 @@ fn test_zero_alloc_container_transition() {
     );
 }
 
-/// Test parallel allocation tracking isolation (T1.1.3).
+/// Test parallel allocation tracking isolation.
 ///
 /// Verifies that multiple threads running concurrently with their own `TrackingGuard`s
 /// do not corrupt each other's allocation count and correctly isolate tracking state.
@@ -447,7 +447,7 @@ fn test_zero_alloc_nondist_models() {
         let model_data = parse_nam_json(&json_data).expect("Failed to parse model JSON");
 
         // Skip free-geometry WaveNet A1 models with >2 layer arrays — the dynamic
-        // engine (T3.1) currently supports exactly 2 arrays. Models with N≠2 arrays
+        // engine currently supports exactly 2 arrays. Models with N≠2 arrays
         // (edge geometry outside standard A1) are skipped gracefully.
         if model_data.architecture == "WaveNet"
             && !model_data.is_wavenet_a2()
