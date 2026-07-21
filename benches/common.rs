@@ -18,7 +18,14 @@ use nam_rs::models::lstm::lstm_weight_count;
 use std::fs;
 use std::path::PathBuf;
 
-pub use nam_rs::testing::aliasing::generate_sine_440hz;
+pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
+    const F0: f64 = 440.0;
+    const SR: f64 = 48_000.0;
+    let omega = 2.0 * std::f64::consts::PI * F0 / SR;
+    (0..num_samples)
+        .map(|i| ((i as f64 * omega).sin()) as f32)
+        .collect()
+}
 
 pub fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
     let total_weights = lstm_weight_count(num_layers, hidden_size);

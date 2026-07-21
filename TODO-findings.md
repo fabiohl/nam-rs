@@ -395,7 +395,7 @@ quantizador de F5).
 - **Critério de aceite:** `utils/lints.sh` verde; `cargo bench --bench <X>
   -- --list` idêntico pré/pós para cada bench tocado.
 
-### Épico B — Decomposição modular de `inference_bench.rs` (F1)
+### Épico B — Decomposição modular de `inference_bench.rs` (F1) [DONE]
 
 **Risco: Médio.** Depende de A1 (helper `load_model_data`) para viabilizar
 submódulos limpos. **Crítico — maior atenção.**
