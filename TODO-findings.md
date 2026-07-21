@@ -383,7 +383,7 @@ quantizador de F5).
 
 ## Épicos (agrupamento para execução segura)
 
-### Épico A — Consolidação de helpers em `common.rs` (F2, F3)
+### Épico A — Consolidação de helpers em `common.rs` (F2, F3) [DONE]
 
 **Risco: Baixo.** Quick win de deduplicação lógica-preservante.
 

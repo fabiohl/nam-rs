@@ -34,18 +34,6 @@ use nam_rs::models::linear::{LinearMode, LinearModel};
 
 mod common;
 
-/// Generates a synthetic impulse response of `len` samples using a
-/// deterministic decaying sinusoid. This mimics a realistic cab sim IR
-/// without depending on external fixture files.
-fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
-    (0..len)
-        .map(|i| {
-            let t = i as f32 / 48000.0;
-            (2.0 * std::f32::consts::PI * freq * t).sin() * (-decay * t).exp()
-        })
-        .collect()
-}
-
 /// Receptive field sizes to benchmark.
 const RF_SIZES: &[usize] = &[128, 256, 512, 1024, 2048, 4096, 8192];
 
@@ -59,7 +47,7 @@ fn bench_direct_vs_fft_per_block(c: &mut Criterion) {
     let mut group = c.benchmark_group("Linear_Direct_vs_FFT_per_block");
 
     for &rf in RF_SIZES {
-        let ir = synth_ir(rf, 880.0, 8.0);
+        let ir = common::synth_ir(rf, 880.0, 8.0);
 
         let mut model_direct =
             LinearModel::new(ir.clone(), 0.1, LinearImplementation::Direct).unwrap();
@@ -95,7 +83,7 @@ fn bench_direct_vs_fft_per_sample(c: &mut Criterion) {
     let mut group = c.benchmark_group("Linear_Direct_vs_FFT_per_sample");
 
     for &rf in RF_SIZES {
-        let ir = synth_ir(rf, 880.0, 8.0);
+        let ir = common::synth_ir(rf, 880.0, 8.0);
 
         let mut model_direct =
             LinearModel::new(ir.clone(), 0.1, LinearImplementation::Direct).unwrap();
@@ -141,7 +129,7 @@ fn bench_fft_prewarm(c: &mut Criterion) {
     let mut group = c.benchmark_group("Linear_FFT_Prewarm");
 
     for &rf in RF_SIZES {
-        let ir = synth_ir(rf, 880.0, 8.0);
+        let ir = common::synth_ir(rf, 880.0, 8.0);
 
         group.bench_function(format!("Prewarm_RF{rf}"), |b| {
             b.iter_with_setup(
@@ -166,7 +154,7 @@ fn bench_fft_tail_block(c: &mut Criterion) {
     let mut group = c.benchmark_group(group_name);
 
     for &rf in RF_SIZES {
-        let ir = synth_ir(rf, 880.0, 8.0);
+        let ir = common::synth_ir(rf, 880.0, 8.0);
         let mut model = LinearModel::new(ir, 0.1, LinearImplementation::Fft).unwrap();
         model.prewarm(4096);
 
@@ -192,7 +180,7 @@ fn bench_large_block_4096(c: &mut Criterion) {
     let mut group = c.benchmark_group("Linear_LargeBlock_4096samp");
 
     for &rf in RF_SIZES {
-        let ir = synth_ir(rf, 880.0, 8.0);
+        let ir = common::synth_ir(rf, 880.0, 8.0);
 
         let mut model_direct =
             LinearModel::new(ir.clone(), 0.1, LinearImplementation::Direct).unwrap();

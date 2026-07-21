@@ -145,17 +145,8 @@ fn bench_a2_lite_long_run(c: &mut Criterion) {
 
 #[cfg(feature = "long_bench")]
 fn bench_cabsim_long_run(c: &mut Criterion) {
-    use std::f32::consts::PI;
-    let synth_ir = |len: usize, freq: f32, decay: f32| -> Vec<f32> {
-        (0..len)
-            .map(|i| {
-                let t = i as f32 / 48000.0;
-                (2.0 * PI * freq * t).sin() * (-decay * t).exp()
-            })
-            .collect()
-    };
     use nam_rs::dsp::cabsim::conv::ConvEngine;
-    let ir = synth_ir(16384, 440.0, 10.0);
+    let ir = common::synth_ir(16384, 440.0, 10.0);
     let mut engine = ConvEngine::new(&ir, 64).expect("bench ConvEngine allocation failed");
     let mut input = vec![0.0f32; 4096];
     let mut output = vec![0.0f32; 4096];

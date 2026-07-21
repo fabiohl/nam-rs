@@ -15,15 +15,7 @@
 
 use criterion::{criterion_group, criterion_main};
 
-fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
-    let sample_rate = 48000u32;
-    (0..len)
-        .map(|n| {
-            let t = n as f32 / sample_rate as f32;
-            (std::f32::consts::TAU * freq * t).sin() * (-decay * t).exp()
-        })
-        .collect()
-}
+mod common;
 
 fn bench_cabsim_process_block(
     c: &mut criterion::Criterion,
@@ -33,7 +25,7 @@ fn bench_cabsim_process_block(
 ) {
     use nam_rs::dsp::cabsim::conv::ConvEngine;
 
-    let ir = synth_ir(ir_len, 440.0, 10.0);
+    let ir = common::synth_ir(ir_len, 440.0, 10.0);
     let mut engine = ConvEngine::new(&ir, partition_size).expect("bench allocation failed");
 
     let mut input = vec![0.0f32; partition_size];
@@ -79,7 +71,7 @@ fn bench_cabsim_256samp_block(c: &mut criterion::Criterion) {
 fn bench_cabsim_engine_construction(c: &mut criterion::Criterion) {
     use nam_rs::dsp::cabsim::conv::ConvEngine;
 
-    let ir = synth_ir(2048, 440.0, 10.0);
+    let ir = common::synth_ir(2048, 440.0, 10.0);
 
     c.bench_function("Cabsim_Engine_Construction_2048_64", |b| {
         b.iter(|| {
@@ -92,7 +84,7 @@ fn bench_cabsim_engine_construction(c: &mut criterion::Criterion) {
 fn bench_cabsim_engine_construction_long(c: &mut criterion::Criterion) {
     use nam_rs::dsp::cabsim::conv::ConvEngine;
 
-    let ir = synth_ir(16384, 440.0, 10.0);
+    let ir = common::synth_ir(16384, 440.0, 10.0);
 
     c.bench_function("Cabsim_Engine_Construction_16384_64", |b| {
         b.iter(|| {

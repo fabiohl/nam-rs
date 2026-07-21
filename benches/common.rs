@@ -9,6 +9,7 @@
 //! This module is compiled into multiple bench binaries; individual
 //! functions may appear unused in some binaries during phased migration.
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamLayerConfig, NamModelData, parse_nam_json};
@@ -185,4 +186,14 @@ pub fn load_model_data(filename: &str) -> Option<NamModelData> {
     let path = model_path(filename);
     let json_data = fs::read_to_string(&path).ok()?;
     parse_nam_json(&json_data).ok()
+}
+
+pub fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
+    const SR: f32 = 48000.0;
+    (0..len)
+        .map(|n| {
+            let t = n as f32 / SR;
+            (std::f32::consts::TAU * freq * t).sin() * (-decay * t).exp()
+        })
+        .collect()
 }
