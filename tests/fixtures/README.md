@@ -136,8 +136,7 @@ All captures and models in `.nam` and `.json` format located under [tests/fixtur
 
 > [!NOTE]
 > **Registry completeness:** all models in `tests/fixtures/models/` are accounted for in the
-> tables above and have dedicated provenance sections below. See `TODO-findings.md`
-> F-X2 and Sprint 3 completion notes for the audit that closed the gap.
+> tables above and have dedicated provenance sections below.
 
 #### 1. High-Quality Real Models (Git Versioned)
 
@@ -809,8 +808,7 @@ needs, on a rarely-executed, mostly-unsupervised run. A dedicated audit of that 
 tracked several concrete gaps — catalog coverage,
 error-handling robustness (a `pipefail`/`errexit` interaction that can abort the whole
 regeneration on the first failing model instead of skipping it), and a `NeuralAmpModelerPlugin`
-supply-chain gap in `utils/mod-update.sh`. See **`TODO-findings.md`** at the repository root
-for the full findings and the remediation Épicos (A–F). None of these gaps invalidate the
+supply-chain gap in `utils/mod-update.sh`. None of these gaps invalidate the
 *already-committed* golden `.bin` files — they affect only the ability to safely and fully
 *regenerate* the catalog from scratch today.
 

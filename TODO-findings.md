@@ -246,7 +246,7 @@ limpeza for parcial — deve ser um sweep completo e atômico por arquivo.
 
 ---
 
-## F5 — Referências dangling a `TODO-findings.md` (auditoria não persistida) no README
+## F5 — Referências dangling a `TODO-findings.md` (auditoria não persistida) no README [DONE — Opção B]
 
 **Arquivo:** `tests/fixtures/README.md:141` e `:813-814`
 
@@ -434,7 +434,7 @@ Estas correções já foram editadas diretamente nos arquivos durante a inspeç�
 | F2      | `tests/common/signals.rs` (deletado; re-export movido p/ `mod.rs:31`) | E2.T01      | Baixo  | ✅ Aplicado |
 | F3      | `utils/tests-long.sh:526,541`                                         | E1.T02      | Nenhum | ✅ Aplicado |
 | F4      | 12 arquivos `tests/**/*.rs` (118×)                                    | E3.T03      | Baixo  | ✅ Aplicado |
-| F5      | `tests/fixtures/README.md:141,813`                                    | E3.T04      | Nenhum | Decisão PO  |
+| F5      | `tests/fixtures/README.md:141,813`                                    | E3.T04      | Nenhum | ✅ Aplicado |
 | F6      | `tests/common/{manifest,precision,metrics,constants}.rs`              | E3.T05      | Nenhum | Planejado   |
 
 > **Nota de estado (verificado neste turno):** F1 e F2 foram aplicados entre turnos por edição
