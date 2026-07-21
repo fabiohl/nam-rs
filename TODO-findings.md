@@ -407,7 +407,7 @@ submódulos limpos. **Crítico — maior atenção.**
 - B3: Validar `cargo bench --bench inference_bench -- --list` idêntico (28
   alvos, mesmos IDs); rodar `utils/lints.sh`.
 
-### Épico C — Decomposição modular de `gemv_bench.rs` (F4)
+### Épico C — Decomposição modular de `gemv_bench.rs` (F4) [DONE]
 
 **Risco: Médio.** Envolve código `unsafe`/`#[target_feature]`. **Crítico —
 atenção redobrada.**
