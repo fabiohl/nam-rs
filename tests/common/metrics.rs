@@ -3,6 +3,9 @@
 
 #![allow(dead_code)]
 
+/// Mean Squared Error between two sample buffers.
+///
+/// Panics if the vectors have different lengths.
 pub fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(a.len(), b.len(), "Vectors of different sizes for MSE");
     let n = a.len();
@@ -20,6 +23,9 @@ pub fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
     sum / (n as f64)
 }
 
+/// Maximum absolute sample-wise error between two buffers.
+///
+/// Panics if the vectors have different lengths.
 pub fn compute_max_abs_error(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(
         a.len(),

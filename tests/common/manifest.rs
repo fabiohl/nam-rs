@@ -3,6 +3,7 @@
 
 use serde::Deserialize;
 
+/// Deserialized entry from the fixture manifest (manifest.json).
 #[derive(Deserialize, Debug, Clone)]
 pub struct ManifestEntry {
     pub filename: String,
