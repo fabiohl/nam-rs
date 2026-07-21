@@ -20,7 +20,6 @@ pub mod model_builders;
 pub mod mushra_primitives;
 pub mod perceptual;
 pub mod precision;
-pub mod signals;
 pub mod validation;
 pub mod wav;
 
@@ -29,9 +28,9 @@ pub use discovery::*;
 pub use io_helpers::*;
 pub use manifest::ManifestEntry;
 pub use metrics::*;
+pub use nam_rs::testing::aliasing::generate_sine_440hz;
 pub use nam_rs::testing::stress::SUPPORTED_SAMPLE_RATES;
 pub use nam_rs::testing::stress::generate_stress_signal_v1;
 pub use nam_rs::testing::stress::generate_stress_signal_v2_default as generate_stress_signal_v2;
 pub use precision::PrecisionGuard;
-pub use signals::*;
 pub use validation::*;

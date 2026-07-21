@@ -35,9 +35,8 @@
 use super::common;
 
 use common::{
-    GOLDEN_BLOCK_SIZE, GOLDEN_NUM_SAMPLES,
+    GOLDEN_BLOCK_SIZE, GOLDEN_NUM_SAMPLES, generate_sine_440hz,
     io_helpers::{model_path, process_in_blocks},
-    signals::generate_sine_440hz,
     validation::{report_dsp_fidelity, report_dsp_fidelity_no_lufs},
 };
 use nam_rs::loader::dispatcher::build_model;

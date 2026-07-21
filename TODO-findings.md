@@ -95,7 +95,7 @@ helper de `common`.
 
 ---
 
-## F2 — `generate_stress_signal()` deprecated sem chamadores em `tests/common/signals.rs`
+## F2 — `generate_stress_signal()` deprecated sem chamadores em `tests/common/signals.rs` [DONE]
 
 **Arquivo:** `tests/common/signals.rs:4-11`
 

@@ -14,7 +14,7 @@
 
 use super::common;
 
-use common::signals::generate_sine_440hz;
+use common::generate_sine_440hz;
 use nam_rs::loader::nam_json::LinearImplementation;
 use nam_rs::models::linear::LinearModel;
 use nam_rs::models::{NamModel, StaticModel};
