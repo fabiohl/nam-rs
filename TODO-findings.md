@@ -395,7 +395,7 @@ quantizador de F5).
 - **Critério de aceite:** `utils/lints.sh` verde; `cargo bench --bench <X>
   -- --list` idêntico pré/pós para cada bench tocado.
 
-### Épico B — Decomposição modular de `inference_bench.rs` (F1) [DONE]
+### Épico B — Decomposição modular de `inference_bench.rs` (F1) [DONE] [DONE]
 
 **Risco: Médio.** Depende de A1 (helper `load_model_data`) para viabilizar
 submódulos limpos. **Crítico — maior atenção.**
@@ -419,13 +419,15 @@ atenção redobrada.**
 - C3: Validar `cargo bench --bench gemv_bench -- --list` idêntico
   (`gemv_1x4`...`gemv_8x8` + `generic_avx2`/`specialized_avx2`/`scalar_fallback`).
 
-### Épico D — Guardiões de não-regressão documentais (F5, F6)
+### Épico D — Guardiões de não-regressão documentais (F5, F6) [DONE]
 
 **Risco: Nenhum (decisão de não-agir + documentação).**
 
 - D1: Adicionar comentário em `gemv_bench.rs:43` explicando o quantizador por
-  truncagem intencional (F5).
+  truncagem intencional (F5). [DONE — incluído no Épico C]
 - D2: Registrar dívida cosmética do nome `linear` (F6) — sem ação de código.
+  [DONE — finding documentado em §F6; renomeação rejeitada por risco de quebra
+  de CI/docs]
 
 ### Épico E — Opcional: dedup de geradores e macro AVX-512 (F7, F8)
 
