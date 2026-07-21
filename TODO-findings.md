@@ -119,7 +119,7 @@ confirmar que o conjunto de IDs é byte-a-byte idêntico; rodar `utils/lints.sh`
 
 ---
 
-## F2 — Boilerplate de carregamento de modelo duplicado (~8× em `inference_bench.rs`)
+## F2 — Boilerplate de carregamento de modelo duplicado (~8× em `inference_bench.rs`) [DONE]
 
 **Localização:** Padrão recorrente em `inference_bench.rs` em
 `:52-64`, `:159-167`, `:182-190`, `:227-235`, `:250-258`, `:275-281`,

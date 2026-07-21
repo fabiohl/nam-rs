@@ -42,27 +42,18 @@ use nam_rs::models::container::ContainerModel;
 use nam_rs::models::slimmable::SlimmableModel;
 
 use common::{
-    generate_sine_440hz, make_lstm_data, make_wavenet_a2_dyn_data, make_wavenet_dyn_data,
+    generate_sine_440hz, load_and_prewarm, load_model_data, make_lstm_data,
+    make_wavenet_a2_dyn_data, make_wavenet_dyn_data,
 };
 
 /// Measures the processing time of a real WaveNet model ("Standard").
 /// This benchmark is the most representative for common guitar use,
 /// testing the effectiveness of dilated convolutions and optimized SIMD kernels.
 fn bench_wavenet_standard_process(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-
-    if !path.exists() {
-        return;
-    }
-
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-
-    let mut model = build_model(&model_data).expect("Dispatcher failed for benchmark");
-
-    model.prewarm(2048);
-
+    let mut model = match load_and_prewarm("BossWN-standard.nam") {
+        Some(m) => m,
+        None => return,
+    };
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
@@ -156,15 +147,10 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
 ///
 /// Record throughput (elem/s) and latency (ns) for each size.
 fn bench_wavenet_p10_small_block_sizes(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Dispatcher failed for P10 bench");
-    let mut model = build_model(&model_data).expect("Dispatcher failed for P10 bench");
-    model.prewarm(2048);
+    let mut model = match load_and_prewarm("BossWN-standard.nam") {
+        Some(m) => m,
+        None => return,
+    };
 
     for &size in &[1usize, 16, 64] {
         let input = generate_sine_440hz(size);
@@ -179,15 +165,10 @@ fn bench_wavenet_p10_small_block_sizes(c: &mut Criterion) {
 /// Larger buffers allow better cache utilization and prefetching,
 /// but increase the total latency perceived by the musician.
 fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed");
-    model.prewarm(2048);
+    let mut model = match load_and_prewarm("BossWN-standard.nam") {
+        Some(m) => m,
+        None => return,
+    };
 
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
@@ -224,15 +205,10 @@ fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
 /// A2-Full is the Criterion variant with 8 channels,
 /// using AVX2 T=4 broadcast-FMA convolution for maximum throughput.
 fn bench_a2_full_process(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_full.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed for A2-Full benchmark");
-    model.prewarm(2048);
+    let mut model = match load_and_prewarm("wavenet_a2_full.nam") {
+        Some(m) => m,
+        None => return,
+    };
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
@@ -247,15 +223,10 @@ fn bench_a2_full_process(c: &mut Criterion) {
 /// A2 benefit from SIMD col-major layout which keeps 8 weights
 /// contiguous per (tap, input) pair, maximizing L1 cache locality.
 fn bench_a2_full_block_sizes(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_full.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed");
-    model.prewarm(2048);
+    let mut model = match load_and_prewarm("wavenet_a2_full.nam") {
+        Some(m) => m,
+        None => return,
+    };
 
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
@@ -272,13 +243,10 @@ fn bench_a2_full_block_sizes(c: &mut Criterion) {
 /// Prewarm fills the causal history buffers — essential to measure
 /// so model switching latency is known for live performance.
 fn bench_prewarm_a2_full(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_full.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let model_data = match load_model_data("wavenet_a2_full.nam") {
+        Some(d) => d,
+        None => return,
+    };
     c.bench_function("Prewarm_A2Full_CH8_2048samp", |b| {
         b.iter_with_setup(
             || build_model(&model_data).expect("Dispatcher failed"),
@@ -295,15 +263,10 @@ fn bench_prewarm_a2_full(c: &mut Criterion) {
 /// A2-Lite is the CPU-efficient variant with 3 channels, designed
 /// for reduced computational load while preserving timbre character.
 fn bench_a2_lite_process(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed for A2-Lite benchmark");
-    model.prewarm(2048);
+    let mut model = match load_and_prewarm("wavenet_a2_lite.nam") {
+        Some(m) => m,
+        None => return,
+    };
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
@@ -318,15 +281,10 @@ fn bench_a2_lite_process(c: &mut Criterion) {
 /// With fewer channels and the u16 interleaved kernel path, A2-Lite
 /// targets minimal CPU usage for low-power / high-polyphony scenarios.
 fn bench_a2_lite_block_sizes(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed");
-    model.prewarm(2048);
+    let mut model = match load_and_prewarm("wavenet_a2_lite.nam") {
+        Some(m) => m,
+        None => return,
+    };
 
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
@@ -341,13 +299,10 @@ fn bench_a2_lite_block_sizes(c: &mut Criterion) {
 
 /// Measures A2-Lite (CH=3) prewarm cost.
 fn bench_prewarm_a2_lite(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let model_data = match load_model_data("wavenet_a2_lite.nam") {
+        Some(d) => d,
+        None => return,
+    };
     c.bench_function("Prewarm_A2Lite_CH3_2048samp", |b| {
         b.iter_with_setup(
             || build_model(&model_data).expect("Dispatcher failed"),
@@ -362,13 +317,10 @@ fn bench_prewarm_a2_lite(c: &mut Criterion) {
 /// Although prewarm runs outside the audio thread, it must be fast enough
 /// so that model switching during a live performance is imperceptible.
 fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let model_data = match load_model_data("BossWN-standard.nam") {
+        Some(d) => d,
+        None => return,
+    };
     c.bench_function("Prewarm_WaveNet_Standard_2048samp", |b| {
         b.iter_with_setup(
             || build_model(&model_data).expect("Dispatcher failed"),
@@ -511,31 +463,21 @@ fn bench_linear_model_dot_product(c: &mut Criterion) {
 /// (dual inference + SIMD blend via FMA), the worst-case per-block cost
 /// during slimmable submodel switching.
 fn bench_container_crossfade_64samp(c: &mut Criterion) {
-    let full_path = {
-        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.push("tests/fixtures/models/wavenet_a2_full.nam");
-        p
+    let full_data = match load_model_data("wavenet_a2_full.nam") {
+        Some(d) => d,
+        None => return,
     };
-    let lite_path = {
-        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.push("tests/fixtures/models/wavenet_a2_lite.nam");
-        p
-    };
-    if !full_path.exists() || !lite_path.exists() {
-        return;
-    }
-
-    let full_json = std::fs::read_to_string(&full_path).expect("Failed to read A2-Full");
-    let full_data = parse_nam_json(&full_json).expect("Failed in JSON parser");
     let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
 
-    let lite_json = std::fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
-    let lite_data = parse_nam_json(&lite_json).expect("Failed in JSON parser");
-    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+    let lite_model = match load_and_prewarm("wavenet_a2_lite.nam") {
+        Some(m) => m,
+        None => return,
+    };
 
     let sr = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
-    let mut container = ContainerModel::new(vec![(0.5, lite_model), (1.0, full_model)], sr)
-        .expect("Failed to create ContainerModel benchmark");
+    let mut container =
+        ContainerModel::new(vec![(0.5, Box::new(lite_model)), (1.0, full_model)], sr)
+            .expect("Failed to create ContainerModel benchmark");
 
     container.set_slimmable_size(0.25, None);
     assert!(container.is_crossfading());
@@ -614,18 +556,10 @@ fn bench_wavenet_a2_dyn_gated_process(c: &mut Criterion) {
 /// (CH=5, fallback) side by side. Measures the dispatch overhead and performance
 /// delta between the const-generic fast path and the dynamic free-geometry fallback.
 fn bench_wavenet_comparison(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-
     let mut group = c.benchmark_group("WaveNet_Comparison");
     group.sample_size(50);
 
-    if path.exists() {
-        let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-        let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-        let mut model = build_model(&model_data).expect("Dispatcher failed");
-        model.prewarm(2048);
-
+    if let Some(mut model) = load_and_prewarm("BossWN-standard.nam") {
         let input = generate_sine_440hz(64);
         let mut output = vec![0.0f32; 64];
 
@@ -657,29 +591,13 @@ fn bench_wavenet_comparison(c: &mut Criterion) {
 /// side by side. Validates the performance spread across the static const-generic
 /// fast paths and the dynamic free-geometry fallback of the A2 architecture.
 fn bench_a2_comparison(c: &mut Criterion) {
-    let full_path = {
-        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.push("tests/fixtures/models/wavenet_a2_full.nam");
-        p
-    };
-    let lite_path = {
-        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.push("tests/fixtures/models/wavenet_a2_lite.nam");
-        p
-    };
-
     let mut group = c.benchmark_group("A2_Comparison");
     group.sample_size(50);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
-    if full_path.exists() {
-        let json = std::fs::read_to_string(&full_path).expect("Failed to read A2-Full");
-        let data = parse_nam_json(&json).expect("Failed in JSON parser");
-        let mut model = build_model(&data).expect("Dispatcher failed for A2-Full");
-        model.prewarm(2048);
-
+    if let Some(mut model) = load_and_prewarm("wavenet_a2_full.nam") {
         group.bench_function("Full_CH8", |b| {
             b.iter(|| {
                 model.process(&input, &mut output);
@@ -687,12 +605,7 @@ fn bench_a2_comparison(c: &mut Criterion) {
         });
     }
 
-    if lite_path.exists() {
-        let json = std::fs::read_to_string(&lite_path).expect("Failed to read A2-Lite");
-        let data = parse_nam_json(&json).expect("Failed in JSON parser");
-        let mut model = build_model(&data).expect("Dispatcher failed for A2-Lite");
-        model.prewarm(2048);
-
+    if let Some(mut model) = load_and_prewarm("wavenet_a2_lite.nam") {
         group.bench_function("Lite_CH3", |b| {
             b.iter(|| {
                 model.process(&input, &mut output);
@@ -773,19 +686,12 @@ fn bench_nondist_models(c: &mut Criterion) {
 /// `convnet_test.nam` fixture, exercises the full model pipeline (multi-block chaining
 /// + head_scale), and profiles the dispatcher build_model path.
 fn bench_convnet_model_process(c: &mut Criterion) {
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/convnet_test.nam");
+    let mut model = match load_and_prewarm("convnet_test.nam") {
+        Some(m) => m,
+        None => return,
+    };
 
-    if !path.exists() {
-        return;
-    }
-
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read ConvNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data).expect("Dispatcher failed for ConvNet benchmark");
-    model.prewarm(2048);
-
-    let num_out = match model.as_ref() {
+    let num_out = match &model {
         StaticModel::ConvNet(c) => c.out_channels(),
         _ => 1,
     };

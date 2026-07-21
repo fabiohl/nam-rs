@@ -180,3 +180,9 @@ pub fn load_and_prewarm(filename: &str) -> Option<nam_rs::models::StaticModel> {
     model.prewarm(2048);
     Some(*model)
 }
+
+pub fn load_model_data(filename: &str) -> Option<NamModelData> {
+    let path = model_path(filename);
+    let json_data = fs::read_to_string(&path).ok()?;
+    parse_nam_json(&json_data).ok()
+}
