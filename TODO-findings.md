@@ -156,7 +156,7 @@ distância de versão (3.0.0).
 
 ---
 
-## F3 — Comentários com paths stale em `utils/tests-long.sh`
+## F3 — Comentários com paths stale em `utils/tests-long.sh` [DONE]
 
 **Arquivo:** `utils/tests-long.sh:526` e `:541`
 

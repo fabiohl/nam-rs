@@ -18,7 +18,7 @@
 #     fuzzing). It only runs what those two intentionally leave `#[ignore]`d
 #     or out of scope. Every phase below cross-references its quick-suite
 #     counterpart so scope drift is visible at a glance.
-#   - Does NOT repeat `tests-performance-regression.sh` (per-push baseline
+#   - Does NOT repeat `utils/tests-performance-regression.sh` (per-push baseline
 #     gate) — Phase 6 records the full Criterion suite for the nightly
 #     archive, with no baseline gating of its own.
 #
