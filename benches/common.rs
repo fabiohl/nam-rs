@@ -195,6 +195,18 @@ pub fn load_model_data(filename: &str) -> Option<NamModelData> {
     parse_nam_json(&json_data).ok()
 }
 
+/// Creates deterministic f32-only test data for a given (in_len, out_len) pair.
+/// Generates in_frames (sinusoidal input), flat weights (sinusoidal f32),
+/// and zero-initialized out_frames.
+pub fn make_f32_test_data(in_len: usize, out_len: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    let in_frames: Vec<f32> = (0..in_len).map(|i| (i as f32 * 0.17).sin()).collect();
+    let weights: Vec<f32> = (0..in_len * out_len)
+        .map(|i| (i as f32 * 0.13).sin() * 0.5)
+        .collect();
+    let out_frames = vec![0.0f32; out_len];
+    (in_frames, weights, out_frames)
+}
+
 pub fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
     const SR: f32 = 48000.0;
     (0..len)

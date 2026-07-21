@@ -429,7 +429,7 @@ atenção redobrada.**
   [DONE — finding documentado em §F6; renomeação rejeitada por risco de quebra
   de CI/docs]
 
-### Épico E — Opcional: dedup de geradores e macro AVX-512 (F7, F8)
+### Épico E — Opcional: dedup de geradores e macro AVX-512 (F7, F8) [DONE]
 
 **Risco: Baixo-médio.** Executar apenas após A–C estabilizados e se houver
 folga; ganho predominantemente estético.

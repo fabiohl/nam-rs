@@ -246,65 +246,47 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
     }
 }
 
-/// A8: Padé [5,4] tanh with single Newton-Raphson (AVX-512).
-fn bench_tanh_pade_nr1_avx512_256elem(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
-        use std::arch::x86_64::*;
-        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
-        c.bench_function("FastMath_tanh_PadeNR1_AVX512_256elem", |b| {
-            b.iter(|| {
-                let mut buf = base.clone();
-                unsafe {
-                    for chunk in buf.chunks_exact_mut(16) {
-                        let x = _mm512_loadu_ps(chunk.as_ptr());
-                        let y = nam_rs::math::activations::simd_tanh_pade_nr1_avx512(x);
-                        _mm512_storeu_ps(chunk.as_mut_ptr(), y);
-                    }
-                }
-            });
-        });
-    }
+macro_rules! bench_avx512 {
+    ($func_name:ident, $bench_name:literal, |$x:ident| $simd_call:expr) => {
+        fn $func_name(c: &mut Criterion) {
+            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl")
+            {
+                use std::arch::x86_64::*;
+                let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+                c.bench_function($bench_name, |b| {
+                    b.iter(|| {
+                        let mut buf = base.clone();
+                        unsafe {
+                            for chunk in buf.chunks_exact_mut(16) {
+                                let $x = _mm512_loadu_ps(chunk.as_ptr());
+                                let y = $simd_call;
+                                _mm512_storeu_ps(chunk.as_mut_ptr(), y);
+                            }
+                        }
+                    });
+                });
+            }
+        }
+    };
 }
 
-/// E8.T04: Padé [5,4] tanh with double Newton-Raphson (AVX-512).
-fn bench_tanh_pade_nr2_avx512_256elem(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
-        use std::arch::x86_64::*;
-        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
-        c.bench_function("FastMath_tanh_PadeNR2_AVX512_256elem", |b| {
-            b.iter(|| {
-                let mut buf = base.clone();
-                unsafe {
-                    for chunk in buf.chunks_exact_mut(16) {
-                        let x = _mm512_loadu_ps(chunk.as_ptr());
-                        let y = nam_rs::math::activations::simd_tanh_pade_nr2_avx512(x);
-                        _mm512_storeu_ps(chunk.as_mut_ptr(), y);
-                    }
-                }
-            });
-        });
-    }
-}
+bench_avx512!(
+    bench_tanh_pade_nr1_avx512_256elem,
+    "FastMath_tanh_PadeNR1_AVX512_256elem",
+    |x| nam_rs::math::activations::simd_tanh_pade_nr1_avx512(x)
+);
 
-/// E8.T04: Padé [5,4] tanh with hardware division oracle (AVX-512).
-fn bench_tanh_pade_div_avx512_256elem(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
-        use std::arch::x86_64::*;
-        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
-        c.bench_function("FastMath_tanh_PadeDiv_AVX512_256elem", |b| {
-            b.iter(|| {
-                let mut buf = base.clone();
-                unsafe {
-                    for chunk in buf.chunks_exact_mut(16) {
-                        let x = _mm512_loadu_ps(chunk.as_ptr());
-                        let y = nam_rs::math::activations::simd_tanh_avx512(x);
-                        _mm512_storeu_ps(chunk.as_mut_ptr(), y);
-                    }
-                }
-            });
-        });
-    }
-}
+bench_avx512!(
+    bench_tanh_pade_nr2_avx512_256elem,
+    "FastMath_tanh_PadeNR2_AVX512_256elem",
+    |x| nam_rs::math::activations::simd_tanh_pade_nr2_avx512(x)
+);
+
+bench_avx512!(
+    bench_tanh_pade_div_avx512_256elem,
+    "FastMath_tanh_PadeDiv_AVX512_256elem",
+    |x| nam_rs::math::activations::simd_tanh_avx512(x)
+);
 
 criterion_group! {
     name = math_benches;
