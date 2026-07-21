@@ -110,8 +110,7 @@ version must pass both Layer 1 and Layer 2 validation before committing.
 >   only implements 3 scenarios (short, medium, long) because the C++
 >   `dsp::ImpulseResponse` engine hard-caps IR length at 8192 samples (`mMaxLength`),
 >   so a genuine C++ cross-reference for a 65536-sample IR is not achievable with the
->   vendored engine — see `tests/cabsim_cpp_parity.rs` for the Rust-side rationale.
->   F5 resolved in D.1.1.
+>   vendored engine — see `tests/parity/cabsim_cpp_parity.rs` for the Rust-side rationale.
 >
 > **Nature classification:**
 >
@@ -200,7 +199,7 @@ Due to the legal redistribution restriction of the default `t3k` license in the 
 
 - The symbolic link file and the folder under `tests/fixtures/models-nondist` are explicitly ignored by `.gitignore`.
 
-- The integration test suite (`tests/nondist_validation.rs`) will automatically detect this folder and run a comprehensive verification battery (parsing, determinism, block size invariance, and denormal silence stability) on all captures found, skipping validation without failure if the directory is not present.
+- The integration test suite (`tests/models/nondist_validation.rs`) will automatically detect this folder and run a comprehensive verification battery (parsing, determinism, block size invariance, and denormal silence stability) on all captures found, skipping validation without failure if the directory is not present.
 
 ##### Catalog & Model Discovery (`manifest.json`)
 
@@ -224,7 +223,7 @@ classification validation).
 
 ##### WaveNet Lite Golden Gate (Non-Distributable)
 
-The cross-parity gate for the WaveNet Lite model in `tests/golden_vectors.rs`
+The cross-parity gate for the WaveNet Lite model in `tests/models/golden_vectors.rs`
 (`test_golden_vectors_wavenet_lite`, `test_golden_vectors_v2_wavenet_lite`) is conditioned
 on the presence of the local model `EVH-5150-Lite.nam` inside the `models-nondist` directory.
 This model is a community-real capture (CH=12, K=3, HEAD=6, 20 layers) and cannot be
@@ -248,8 +247,8 @@ To re-enable full WaveNet Lite golden coverage:
 3. Run the golden tests:
 
    ```bash
-   cargo test --test golden_vectors test_golden_vectors_wavenet_lite
-   cargo test --test golden_vectors test_golden_vectors_v2_wavenet_lite -- --ignored
+   cargo test --test models test_golden_vectors_wavenet_lite
+   cargo test --test models test_golden_vectors_v2_wavenet_lite -- --ignored
    ```
 
 ##### Model Maintenance Tool: `utils/check-model.py`
@@ -304,7 +303,7 @@ Examples:
 
 **SR coverage varies per model:** Models with an explicit `sample_rate` field in their NAM JSON (WaveNet Standard, LSTM Official, A2-Full, A2-Lite) only generate at 48 kHz due to C++ render tool constraints. All other models generate at all 5 supported rates (44100/48000/88200/96000/192000).
 
-**Layer-2 soak tests:** The corresponding tests in `tests/golden_vectors.rs` are `#[ignore]` because the 5-second v2 signals are ~200× longer than v1 (240k–960k vs 2048 samples), making them impractical for debug-mode CI (~2 min per model). Run with `cargo test -- --include-ignored` for comprehensive multi-SR validation. The committed `.bin` files serve as reproducible C++ reference artifacts for offline/CI-scheduled validation.
+**Layer-2 soak tests:** The corresponding tests in `tests/models/golden_vectors.rs` are `#[ignore]` because the 5-second v2 signals are ~200× longer than v1 (240k–960k vs 2048 samples), making them impractical for debug-mode CI (~2 min per model). Run with `cargo test -- --include-ignored` for comprehensive multi-SR validation. The committed `.bin` files serve as reproducible C++ reference artifacts for offline/CI-scheduled validation.
 
 **v1 files** (`golden_<model>.bin`): Single-stimulus goldens using Stress Signal v1 (2048 samples @ 48 kHz). Maintained for retro compatibility — v1 goldens use model-only naming without tone_id. See table below.
 
@@ -446,7 +445,7 @@ tighter calibrated gates on every WaveNet catalog row and two of the three LSTM 
 > (§7.1) — is calibrated identically via `topology_thresholds()` in `tests/common/validation.rs`,
 > which is the single source of truth. Read that file directly for the full, current, enforced
 > list rather than trusting a second hand-copied table — that is exactly how this table drifted
-> stale in the first place. `tests/threshold_calibration.rs`'s meta-tests
+> stale in the first place. `tests/models/threshold_calibration.rs`'s meta-tests
 > (`test_all_golden_models_have_calibrated_thresholds`,
 > `test_all_calibrated_entries_have_measurement_comments`, `test_all_thresholds_anti_placebo`)
 > continuously enforce that every entry in `validation.rs` stays measured, documented, and
@@ -467,7 +466,7 @@ A golden test is a **gate** — it exists to catch regressions. Three patterns d
 | **Threshold neutralizado** | SNR ≤ 0 dB, ESR ≥ 1.0, or MSE ≥ 1e29 without rigid SNR+ESR compensation. Metrics that can never fire create a false sense of confidence. |
 | **Fallback heurístico**    | Silent fallback to `topology_thresholds()` when no calibrated entry exists.                                                              |
 
-**Meta-tests enforce this principle** in `tests/threshold_calibration.rs`:
+**Meta-tests enforce this principle** in `tests/models/threshold_calibration.rs`:
 
 | Meta-tests                                              | What it catches                                                                         |
 |:------------------------------------------------------- |:--------------------------------------------------------------------------------------- |
@@ -712,7 +711,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 ### `wavenet_a2_film_chaos_stress.nam` — **Numerical Stress Fixture (Pre-Fix Snapshot)**
 
-- **Nature:** Synthetic — preserved snapshot of the **original** `wavenet_a2_film_lite.nam` from commit `b96e4c7d` (2026-06-21, blob `e107e48f`), before `generate_a2_fixtures.py` was updated to fix FiLM scale bias (commit `3faa9345`) and FiLM slot activation keys (commits `445b5cb1`, `ca8c22ee`). Preserved as `wavenet_a2_film_chaos_stress.nam` in commit `743710da` (Sprint 2: Preservação do Teste de Estresse Numérico e Documentação).
+- **Nature:** Synthetic — preserved snapshot of the **original** `wavenet_a2_film_lite.nam` from commit `b96e4c7d` (2026-06-21, blob `e107e48f`), before `generate_a2_fixtures.py` was updated to fix FiLM scale bias (commit `3faa9345`) and FiLM slot activation keys (commits `445b5cb1`, `ca8c22ee`). Preserved as `wavenet_a2_film_chaos_stress.nam` in commit `743710da`.
 
 - **Architecture:** WaveNet A2 (CH=3, bottleneck=3, condition_size=1, 23 layers), FiLM post-modulation on all 4 slots: `conv`, `input_mixin`, `activation`, `layer1x1`. Head_scale=0.02.
 
@@ -740,7 +739,7 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 ### `wavenet_condition_lstm.nam` — **WaveNet + LSTM Condition DSP (C++ Golden Blocked)**
 
-- **Nature:** Synthetic — hybrid fixture generated by `tests/fixtures/generate_a2_fixtures.py` (lines 526–648), introduced in commit `030f1cb6` (T4.1).
+- **Nature:** Synthetic — hybrid fixture generated by `tests/fixtures/generate_a2_fixtures.py` (lines 526–648), introduced in commit `030f1cb6`.
 
 - **Architecture:** Outer WaveNet (2 arrays, CH=3→2, K=3) with embedded LSTM `condition_dsp` sub-model (1 layer, hidden_size=3, input_size=1). 217 total weights (147 WaveNet + 70 LSTM).
 
@@ -796,11 +795,11 @@ Real NAM models trained by the Boss Waza Tube Amp Expander community. See
 
 ### Layer 1 — Pre-committed goldens (fast, `cargo test`)
 
-Tests in `tests/nam_infer_test.rs` load the `.golden.bin` files and compare against Rust inference. Runs on every `cargo test` without C++.
+Tests in `tests/models/nam_infer_test.rs` load the `.golden.bin` files and compare against Rust inference. Runs on every `cargo test` without C++.
 
 ### Layer 2 — Live cross-validation (slow, `utils/tests-long.sh`)
 
-`#[ignore]` tests in `tests/cpp_parity.rs` compile the `render` tool from NeuralAmpModelerCore on-demand and compare C++ vs Rust live. Detects drift if NAMCore is updated and the pre-committed goldens become stale.
+`#[ignore]` tests in `tests/parity/cpp_parity.rs` compile the `render` tool from NeuralAmpModelerCore on-demand and compare C++ vs Rust live. Detects drift if NAMCore is updated and the pre-committed goldens become stale.
 
 ### Layer 0 — The Generation Pipeline Itself (audited, gaps tracked)
 
@@ -892,10 +891,10 @@ The direct convolution reference eliminates the need for external golden vectors
 
 ### Test File
 
-Source: `tests/cabsim_golden.rs` — 6 golden parity tests covering short, medium, long, stress, bitwise determinism, and empty-IR passthrough scenarios.
+Source: `tests/models/cabsim_golden.rs` — 6 golden parity tests covering short, medium, long, stress, bitwise determinism, and empty-IR passthrough scenarios.
 
-> **C++ Cross-Validation:** C++ cross-validation golden files (`golden_cabsim_cpp_*.bin`) are generated from `AudioDSPTools/dsp/ImpulseResponse.h` (NeuralAmpModelerPlugin submodule) using a dedicated render tool (`tests/fixtures/render_ir.cpp`), enabling external cross-reference verification against the C++ `dsp::ImpulseResponse` implementation. Parity is validated in `tests/cabsim_cpp_parity.rs` (ESR < 1e-13).
+> **C++ Cross-Validation:** C++ cross-validation golden files (`golden_cabsim_cpp_*.bin`) are generated from `AudioDSPTools/dsp/ImpulseResponse.h` (NeuralAmpModelerPlugin submodule) using a dedicated render tool (`tests/fixtures/render_ir.cpp`), enabling external cross-reference verification against the C++ `dsp::ImpulseResponse` implementation. Parity is validated in `tests/parity/cabsim_cpp_parity.rs` (ESR < 1e-13).
 
 ## `.temp_live/` (Auto-Cleaned Per Run)
 
-The `tests/fixtures/.temp_live/` directory holds live-generated WAV artifacts from `tests/cpp_parity.rs` during the long-duration audit suite. It is **automatically cleaned** by `utils/tests-long.sh` before each run and is **never committed** (listed in `.gitignore`). If you run `cargo test --ignored --test cpp_parity` outside the script, stale WAVs may accumulate — delete them with `rm -rf tests/fixtures/.temp_live/`.
+The `tests/fixtures/.temp_live/` directory holds live-generated WAV artifacts from `tests/parity/cpp_parity.rs` during the long-duration audit suite. It is **automatically cleaned** by `utils/tests-long.sh` before each run and is **never committed** (listed in `.gitignore`). If you run `cargo test --ignored --test parity` outside the script, stale WAVs may accumulate — delete them with `rm -rf tests/fixtures/.temp_live/`.

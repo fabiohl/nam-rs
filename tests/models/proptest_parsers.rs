@@ -1435,6 +1435,16 @@ fn adversarial_lstm_json_strategy() -> impl Strategy<Value = String> {
         use MAX_LSTM_HIDDEN_SIZE as MHS;
         use MAX_LSTM_LAYERS as MLL;
 
+        // Each arm forges a distinct adversarial LSTM JSON to exercise a different
+        // rejection path in the loader (bounds overflow, missing fields, mismatches):
+        //   0 — hidden_size exceeds MAX_LSTM_HIDDEN_SIZE
+        //   1 — num_layers exceeds MAX_LSTM_LAYERS (weights sized to match)
+        //   2 — num_layers = 0 (empty stack)
+        //   3 — hidden_size exceeds MAX_HIDDEN_SIZE (WaveNet-bound constant)
+        //   4 — explicit `layers` array exceeds MAX_LAYERS
+        //   5 — in/out channels > 1 (weight/channel mismatch)
+        //   6 — config field removed (num_layers or hidden_size missing)
+        //   _ — both num_layers and hidden_size exceed bounds simultaneously
         match pattern % 8 {
             0 => {
                 let hs = MHS + 1 + (raw % 2048);
