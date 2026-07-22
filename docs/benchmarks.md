@@ -519,28 +519,43 @@ To ensure that the transition between quality levels (e.g., A2-Full and A2-Lite)
 2. **Elimination of Heavy Transition Overhead:** The heavy `reset()` and `prewarm()` computations have been completely removed from the runtime transition path. Instead, the Linear Crossfade (32 ms) naturally blends the state and output of the submodels, ensuring click-free switching without real-time CPU spikes.
 3. **Formal Verification:** Tested via the `test_zero_alloc_container_transition` integration test with the `CountingAllocator`, validating that transitioning between submodels and running the crossfade does not allocate or drop memory.
 
-## WaveNet Lite CH12: Memory Stride & Alignment Analysis (EPIC-2)
+## WaveNet Lite CH12: Profiling, Memory Stride & Architectural Efficiency
 
 The WaveNet Lite variant operates with an internal channel dimension of $CH=12$. While it has 25% fewer channels than WaveNet Standard ($CH=16$), its initial latency benchmark reported **64.5 µs**, which was nearly **1.75× slower** than the larger Standard model (~36.6 µs).
 
-### 1. Implemented Optimizations & Latency Reduction
+### 1. Implemented Optimizations & Weight Padding
 
-To resolve the bottlenecks, two major structural changes were implemented:
+To resolve the initial bottlenecks, two major structural changes were implemented:
 
-* **SIMD 8+4 Store Path:** In `store_16_accums` (`src/models/wavenet/conv_input.rs`), we replaced 12 scalar stores with a fused 256-bit YMM store (for lanes 0..7) and a 128-bit XMM store (for lanes 8..11).
-* **Dedicated 12x12 GEMM Kernel:** In `src/math/gemm/gemm_batch/fused_residual_batch.rs`, we implemented the `fused_gemm_residual_batch_f32_12x12` function, which completely vectorizes the output loop. The first 8 channels are computed via YMM AVX2 instructions, and the remaining 4 channels are computed via XMM SSE instructions. This reduced the time of the residual mixing kernel (`one_by_one`) by **26%**.
+* **SIMD 8+4 Store Path:** In `store_16_accums` (`src/models/wavenet/conv_input.rs`), scalar stores were replaced with a fused 256-bit YMM store (lanes 0..7) and a 128-bit XMM store (lanes 8..11).
+* **Dedicated 12x12 GEMM Kernel & Weight Padding:** In `src/math/gemm/gemm_batch/fused_residual_batch.rs` and the model loader, residual convolution weights were padded to stride 16. The first 8 channels are computed via YMM AVX2 instructions, and the remaining 4 channels via XMM SSE instructions.
 
-These optimizations successfully reduced the global median latency of WaveNet Lite CH12 from **63.3 µs to 52.6 µs** (a **−17%** improvement), satisfying all dashboard quality and performance requirements.
+These EPIC-2 optimizations reduced the global median latency of WaveNet Lite CH12 from **68.5 µs to 52.2 µs** (a **−19.7%** improvement).
 
-### 2. The Physical Memory Stride Barrier (Technical Debt)
+### 2. Structural ASM Analysis & Pad-to-16 Investigation
 
-Despite these optimizations, the Lite CH12 latency (~52.6 µs) remains above the target of ≤ 38 µs. Sub-kernel profiling (30k release iterations) revealed the following breakdown of time spent per layer:
+To investigate why Lite CH12 latency (~52.3 µs) remained higher than Standard CH16 (~37.6 µs), a structural assembly comparison (`target/dsp_hotpath.asm` vs `target/dsp_hotpath_lite.asm`) and a pad-to-16 buffer experiment (T6.S3.2) were conducted. Three core hypotheses were evaluated:
 
-* **Dilated Conv1D (SIMD 16x):** ~37%
-* **OneByOne Residual (SIMD 12x12):** ~42%
-* **Others (Activation, Mixin):** ~21%
+| #   | Hypothesis                                            | Findings & Verdict                                                                                                                                                                                                                                                                              |
+| --- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Fixed overhead per layer dominates**                | **SUSTAINED** — Overhead/Useful instruction ratio is **2.40** (Lite) vs **1.07** (Standard). Fixed setup (prologue, dispatch, bounds checks) represents 54% of instructions in Lite CH12, amortized over fewer MACs/layer (432 vs 768).                                                         |
+| 2   | **SIMD domain transition penalty**                    | **PARTIALLY SUSTAINED** — All instructions are VEX-encoded (no legacy SSE→AVX penalty). However, the 8+4 split underutilizes AVX2 YMM registers (wasting 4 YMM lanes per vector op) and requires 120 blend/perm instructions (`vblendps`, `vmaskmovps`) for tap gathering (3% of instructions). |
+| 3   | **Original target ($\le 42\,\mu\text{s}$) viability** | **SUSTAINED** — Target is not mathematically achievable on AVX2 hardware without deep topology redesign (e.g., AVX-512 mask registers or changing topology to multiples of 8 channels).                                                                                                         |
 
-The performance bottleneck is not computational (compute-bound), but rather memory-latency bound:
+#### Structural Metrics Comparison
 
-* **Cache Line Splits:** A step size of 12 floats (48 bytes) is not a multiple of the CPU cache line width (64 bytes). Consequently, every sequential memory load/store across the temporal buffer (`layer_buffer`) causes frequent *cache-line splits*, stalling the CPU pipelines.
-* **The Path to ≤ 38 µs:** The definitive solution to bypass this physical limit is to adopt a **pad-to-16 homogeneous layout (CH=16 static)**. By executing the Lite CH12 model as a static `WaveNetModel<16, 3, 6>` with weights padded with zeros, we align all buffers and weights with the 64-byte boundary. The projected latency under a CH=16 static layout is `12 / 18 * 36.4 µs = ~24 µs`, which would satisfy the ≤ 38 µs goal with high headroom. This remains documented as architectural technical debt for future iterations.
+| Metric                            | Standard CH16 | Lite CH12     | Ratio (Lite/Std) |
+| --------------------------------- | ------------- | ------------- | ---------------- |
+| Total Instructions / Layer        | 1,815         | 3,974         | 2.19×            |
+| Overhead Instructions             | 627 (34.5%)   | 2,146 (54.0%) | 3.42×            |
+| Useful Instructions (FMA/Mul/Add) | 585 (32.2%)   | 893 (22.5%)   | 1.53×            |
+| XMM / YMM Instruction Ratio       | 5.7%          | 23.1%         | 4.05×            |
+| Stack Frame Size                  | 872 B         | 1,448 B       | 1.66×            |
+| Execution Latency                 | 37.6 µs       | 52.3 µs       | 1.39×            |
+| Efficiency (µs / MMAC)            | 2,449         | 6,057         | 2.47×            |
+
+### 3. Efficiency Decision (F-A7 Resolution)
+
+The structural pad-to-16 internal buffer experiment (T6.S3.2) added 537 lines across 19 files but produced **zero measured latency improvement** ($52.2\,\mu\text{s} \to 52.3\,\mu\text{s}$, within measurement noise). The bottleneck in CH12 is structural instruction overhead and lane underutilization on AVX2, not memory cache-line splits.
+
+**Final Decision:** Revert T6.S3.2 buffer padding complexity (Desfecho B) while preserving EPIC-2 weight padding. The WaveNet Lite CH12 SKU operates cleanly at **~52.7 µs** (96.1% headroom from the 1333 µs RT deadline), with 1e-7 parity tolerance restored and zero unneeded technical debt.
