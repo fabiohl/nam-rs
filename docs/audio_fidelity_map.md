@@ -142,7 +142,7 @@ of this residual divergence was identified as the Padé activation approximation
 for $|x| > 4$ (tanh) and $|x| > 8$ (sigmoid), which is exceeded by the high weight norms and pre-activation
 magnitudes in larger hidden topologies like H=16.
 
-**Standard (exact-grade) Universal Default.** As of Sprint 2 (Tarefa 1.2), `ActivationPrecision::Standard`
+**Standard (exact-grade) Universal Default.** `ActivationPrecision::Standard`
 (polynomial exp-based exact math, max error ≈ 2.4e-7) is the **universal default** for all models —
 LSTM, WaveNet (A1/A2), ConvNet, and Linear. The former per-model override that applied `HighFidelity`
 only to the `BossLSTM` family was removed — activation precision is no longer model-specific.

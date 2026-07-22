@@ -257,7 +257,7 @@ lógica** (regra `refatora-rust`: regressões proibidas).
     `lychee` ou script equivalente) ou inspeção manual.
 - **Critério de aceite:** 0 links internos quebrados em `docs/` + `README.md`.
 
-### Epic E-04 — Remoção de referências de *sprint* em `docs/*.md`
+### Epic E-04 — Remoção de referências de *sprint* em `docs/*.md` [DONE]
 
 - **Findings:** F-05.
 - **Risco:** Baixo (Markdown).

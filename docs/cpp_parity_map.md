@@ -517,7 +517,7 @@ ConvNet 3.57e-15, A2-FiLM-Lite 1.61e-13, A2-FiLM-Full 8.75e-15.
 
 ### 3.9 `condition_dsp` specification (canonical semantics)
 
-> This section is the formal specification for T1.1 (EP-A, Sprint 1). It was derived by
+> This section is the formal specification. It was derived by
 > reading the C++ reference, the Python trainer, and the Rust production code side-by-side
 > on 2026-07-14. All file:line citations reference NAMcore v0.5.4 (tag `1f42f88`).
 

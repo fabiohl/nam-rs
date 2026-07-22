@@ -452,7 +452,7 @@ approximate paths agree, but neither may be the ground truth. With the f64 Oracl
 providing absolute precision, these are redundant as quality gates; they run in the
 long-suite for regression detection only.
 
-### Consolidated Approx-vs-Approx Tests (Tier 3 → Long-Suite, via Tarefa 4.4)
+### Consolidated Approx-vs-Approx Tests (Tier 3 → Long-Suite)
 
 After the f64 Oracle became structurally complete for WaveNet/A2 (T-CR2), the following
 tests were migrated to `#[ignore]` with the reason

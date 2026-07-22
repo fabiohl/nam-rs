@@ -730,12 +730,12 @@ but the scale (ε for feed-forward, far below ε for LSTM) will remain preserved
 
 ---
 
-## LSTM Recurrent State Drift (post-Sprint 2 RCA: Padé Activation)
+## LSTM Recurrent State Drift (Root-Cause Analysis: Padé Activation)
 
 LSTM models (`BossLSTM-1×16`, `BossLSTM-2×8`, `LSTM Official H=3`) exhibit
 ESR significantly above the WaveNet A1-Std baseline (6.23e-3), even at native
-sample rates. Sprint 2 (2026-07-08) completed the root-cause investigation
-initiated by TODO-findings.md Achado A1. The dominant cause is **Padé tanh +
+sample rates. The root-cause investigation (2026-07-08) established that
+the dominant cause is **Padé tanh +
 minimax sigmoid activation approximation error** amplified by the recurrent
 loop — *not* f16c weight quantization (eliminated in SQ5.5). The severity is
 model-dependent and highest for `BossLSTM-1×16` (H=16 gives larger weight
@@ -760,7 +760,7 @@ hits p99.9 = 9.86 (beyond the minimax validity range of 8.0). Each step injects
 local approximation error into cₜ, which the forget gate fₜ (0.9–0.99) partially
 decays, limiting accumulation to a steady-state: `⟨ESR⟩ ∝ σ²ε/(1−⟨f⟩²)`.
 
-The Sprint 2 investigation (Tarefa 2.3) confirmed:
+The investigation confirmed:
 
 - `BossLSTM-1×16` (H=16): weight norm L2 = 2.82, pre-activations exceed Padé/
   minimax calibration range → 28–60× more Padé error than other LSTM models
