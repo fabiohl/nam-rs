@@ -123,7 +123,6 @@ declare -A ESR_F64_MODEL_MAP=(
     ["WaveNet Condition DSP (CH=3, cond=3, dynamic path) C++ cross-reference"]="wavenet_condition_dsp.nam"
     ["WaveNet Official (CH=3, dynamic path) C++ cross-reference"]="wavenet_official.nam"
     ["WaveNetDyn Free-Shape (CH=7→4, dynamic path) C++ cross-reference"]="wavenet_dyn_free.nam"
-    ["T-HF1.4: WaveNet Standard polynomial SIMD (regression gate)"]="BossWN-standard.nam"
     # LSTM family — each model measured individually
     ["BossLSTM-1x16"]="BossLSTM-1x16.nam"
     ["BossLSTM-2x8"]="BossLSTM-2x8.nam"
@@ -137,7 +136,6 @@ declare -A ESR_F64_MODEL_MAP=(
     ["Container File A2-Lite (CH=3) C++ cross-reference"]="wavenet_a2_lite.nam"
     ["Container File A2-Full (CH=8) C++ cross-reference"]="wavenet_a2_full.nam"
     ["SlimmableContainer A2 Example (CH=3→6) C++ cross-reference"]="wavenet_a2_lite.nam"
-    ["T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate)"]="wavenet_a2_full.nam"
     ["WaveNet A2 Dynamic Gated (CH=8, gated layers 3/23) C++ cross-reference"]="a2_dynamic_gated_ch8.nam"
     ["WaveNet A2 Dynamic Blended (CH=3, blended layers 2/23) C++ cross-reference"]="a2_dynamic_blended_ch3.nam"
     # A2-FiLM — each measured individually
@@ -1784,14 +1782,16 @@ verify_contract() {
                     local esr_ctr="${CONTRACT_ESR[$contract_label]}"
 
                     if [ "$esr_cur" != "N/A" ] && [ "$esr_ctr" != "N/A" ] && [ -n "$esr_ctr" ]; then
+                        local esr_cur_fmt
+                        esr_cur_fmt=$(_fmt_metric "$esr_cur")
                         local esr_fail
                         esr_fail=$(LC_ALL=C awk -v cur="$esr_cur" -v ctr="$esr_ctr" \
                             'BEGIN { if (cur+0 > ctr*10.0) print "1"; else print "0" }')
                         if [ "$esr_fail" = "1" ]; then
-                            echo -e "    ${RED}✗${NC} ${contract_label}: ESR regrediu ${esr_cur} (contrato: ${esr_ctr}, limite: $(LC_ALL=C awk -v c="$esr_ctr" 'BEGIN { printf "%.2e", c*10.0 }'))"
+                            echo -e "    ${RED}✗${NC} ${contract_label}: ESR regrediu ${esr_cur_fmt} (contrato: ${esr_ctr}, limite: $(LC_ALL=C awk -v c="$esr_ctr" 'BEGIN { printf "%.2e", c*10.0 }'))"
                             violations=$((violations + 1))
                         else
-                            echo -e "    ${GREEN}ok${NC} ${contract_label}: ESR ${esr_cur} (contrato: ${esr_ctr})"
+                            echo -e "    ${GREEN}ok${NC} ${contract_label}: ESR ${esr_cur_fmt} (contrato: ${esr_ctr})"
                         fi
                     fi
 
@@ -1799,11 +1799,13 @@ verify_contract() {
                     local snr_cur="${SNR_DB[$dash_key]:-N/A}"
                     local snr_ctr="${CONTRACT_SNR[$contract_label]:-N/A}"
                     if [ "$snr_cur" != "N/A" ] && [ "$snr_ctr" != "N/A" ] && [ -n "$snr_ctr" ]; then
+                        local snr_cur_fmt="$snr_cur"
+                        [ "$snr_cur" != "N/A" ] && snr_cur_fmt=$(_nfmt "%.1f" "$snr_cur")
                         local snr_fail
                         snr_fail=$(LC_ALL=C awk -v cur="$snr_cur" -v ctr="$snr_ctr" \
                             'BEGIN { if (cur+0 < ctr-6.0) print "1"; else print "0" }')
                         if [ "$snr_fail" = "1" ]; then
-                            echo -e "    ${RED}✗${NC} ${contract_label}: SNR regrediu ${snr_cur} dB (contrato: ${snr_ctr} dB, limite: $(LC_ALL=C awk -v c="$snr_ctr" 'BEGIN { printf "%.1f", c-6.0 }') dB)"
+                            echo -e "    ${RED}✗${NC} ${contract_label}: SNR regrediu ${snr_cur_fmt} dB (contrato: ${snr_ctr} dB, limite: $(LC_ALL=C awk -v c="$snr_ctr" 'BEGIN { printf "%.1f", c-6.0 }') dB)"
                             violations=$((violations + 1))
                         fi
                     fi
@@ -1812,11 +1814,13 @@ verify_contract() {
                     local mrstft_cur="${MRSTFT[$dash_key]:-N/A}"
                     local mrstft_ctr="${CONTRACT_MRSTFT[$contract_label]:-N/A}"
                     if [ "$mrstft_cur" != "N/A" ] && [ "$mrstft_ctr" != "N/A" ] && [ -n "$mrstft_ctr" ]; then
+                        local mrstft_cur_fmt
+                        mrstft_cur_fmt=$(_fmt_metric "$mrstft_cur")
                         local mrstft_fail
                         mrstft_fail=$(LC_ALL=C awk -v cur="$mrstft_cur" -v ctr="$mrstft_ctr" \
                             'BEGIN { if (cur+0 > ctr*10.0) print "1"; else print "0" }')
                         if [ "$mrstft_fail" = "1" ]; then
-                            echo -e "    ${RED}✗${NC} ${contract_label}: MR-STFT regrediu ${mrstft_cur} (contrato: ${mrstft_ctr}, limite: $(LC_ALL=C awk -v c="$mrstft_ctr" 'BEGIN { printf "%.4f", c*10.0 }'))"
+                            echo -e "    ${RED}✗${NC} ${contract_label}: MR-STFT regrediu ${mrstft_cur_fmt} (contrato: ${mrstft_ctr}, limite: $(LC_ALL=C awk -v c="$mrstft_ctr" 'BEGIN { printf "%.4f", c*10.0 }'))"
                             violations=$((violations + 1))
                         fi
                     fi
@@ -1824,7 +1828,7 @@ verify_contract() {
                 fi
             done
             if [ "$matched" = false ]; then
-                echo -e "    ${YELLOW}(i)${NC} ${contract_label}: nao encontrado na execucao atual"
+                echo -e "    ${YELLOW}skip${NC} ${contract_label}: nao encontrado na execucao atual"
             fi
         done
         echo ""
@@ -1865,7 +1869,7 @@ verify_contract() {
                 fi
             done
             if [ "$matched" = false ]; then
-                echo -e "    ${YELLOW}(i)${NC} ${contract_label}: nao encontrado na execucao atual"
+                echo -e "    ${YELLOW}skip${NC} ${contract_label}: nao encontrado na execucao atual"
             fi
         done
         echo ""

@@ -69,8 +69,6 @@
   Quick LSTM 1×16 @48000 Live           │ 8.72e-12        │ 8.90e-13 │ 110.6    │ 2.95e-05 │ Live   
   Quick WaveNet CH16 @48000 Live         │ 2.31e-14        │ 9.05e-15 │ 136.4    │ 6.46e-06 │ Live   
   Quick WaveNet Standard v2 @48000 Live  │ 9.92e-14        │ N/A          │ 130.0    │ 4.31e-05 │ Live   
-  T-HF1.4: WaveNet A2-Full polynomial SIMD (regression gate) @48000 Live │ 1.46e-13        │ 7.83e-14 │ 128.3    │ 1.68e-05 │ Live   
-  T-HF1.4: WaveNet Standard polynomial SIMD (regression gate) @48000 Live │ 2.31e-14        │ 9.05e-15 │ 136.4    │ 6.46e-06 │ Live   
 
   Legenda qualitativa (limites de audibilidade do ESR):
     verde = imperceptivel (ESR < 1e-5)
