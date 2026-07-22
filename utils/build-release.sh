@@ -78,7 +78,7 @@ CLAP_TARGET="$CLAP_INSTALL_DIR/nam-rs.clap"
 # -----------------------------------------------------------------------------
 # PHASE 1: Environment & Dependency Verification
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[Phase 1/5] Verifying dependencies and environment...${NC}"
+echo -e "\n${BLUE}${BOLD}[Phase 1/6] Verifying dependencies and environment...${NC}"
 
 # Verify core dependencies
 for cmd in rustc cargo python3; do
@@ -192,7 +192,7 @@ fi
     # -----------------------------------------------------------------------------
     # PHASE 2: Profile-Guided Optimization (PGO) - Profiling Workload
     # -----------------------------------------------------------------------------
-    echo -e "\n${BLUE}${BOLD}[Phase 2/5] Generating PGO profiles through benchmarks...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 2/6] Generating PGO profiles through benchmarks...${NC}"
 
     # Compile and run with profile-generation (incorporating config.toml flags)
     export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-generate=$PROFRAW_DIR"
@@ -217,7 +217,7 @@ fi
     # -----------------------------------------------------------------------------
     # PHASE 3: Compile PGO-Optimized Standalone and CLAP plugin
     # -----------------------------------------------------------------------------
-    echo -e "\n${BLUE}${BOLD}[Phase 3/5] Compiling PGO-optimized binaries...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 3/6] Compiling PGO-optimized binaries...${NC}"
 
     export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-use=$MERGED_PROFILE"
     echo -e "  Using RUSTFLAGS: ${BOLD}$RUSTFLAGS${NC}"
@@ -249,7 +249,7 @@ BOLT_APPLIED=false
 
 # --- BOLT Instrumentation (creates instrumented binaries for workload-based profiling) ---
 if [ -n "$LLVM_BOLT" ]; then
-    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Creating BOLT-instrumented binaries...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 4/6] Creating BOLT-instrumented binaries...${NC}"
 
     # Instrument standalone
     echo -e "  Instrumenting standalone binary with llvm-bolt..."
@@ -286,7 +286,7 @@ fi
 
 # --- BOLT Instrumentation Workload Collection & Profile Merging ---
 if [ -n "$LLVM_BOLT" ]; then
-    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Collecting BOLT instrumentation profiles...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 4/6] Collecting BOLT instrumentation profiles...${NC}"
 
     # Check PipeWire availability for audio-based profiling
     PW_RUNNING=false
@@ -420,7 +420,7 @@ fi
 BOLT_INSTR_APPLIED=false
 CLAP_BOLT_APPLIED=false
 if [ -n "$LLVM_BOLT" ]; then
-    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT optimization using instrumentation profiles...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 4/6] Applying BOLT optimization using instrumentation profiles...${NC}"
 
     # Optimize standalone
     if [ -f "$BOLT_DIR/nam-rs.merged.fdata" ] && [ -s "$BOLT_DIR/nam-rs.merged.fdata" ]; then
@@ -489,7 +489,7 @@ fi
 
 # --- BOLT Perf-based Optimization (legacy path for standalone, requires perf) ---
 if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
-    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT post-link optimization to standalone binary...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 4/6] Applying BOLT post-link optimization to standalone binary...${NC}"
 
     # Verify if PipeWire is active for real-time profiling
     PW_RUNNING=false
@@ -626,13 +626,13 @@ with wave.open('$TEST_WAV', 'w') as w:
         echo -e "${YELLOW}  Warning: PipeWire is not running or no .nam model was found. Reverting to standard PGO binary (no BOLT).${NC}"
     fi
 else
-    echo -e "\n${YELLOW}[Phase 4/5] Skipping BOLT (llvm-bolt or perf not available/configured).${NC}"
+    echo -e "\n${YELLOW}[Phase 4/6] Skipping BOLT (llvm-bolt or perf not available/configured).${NC}"
 fi
 
 # -----------------------------------------------------------------------------
 # PHASE 5: Deliverables Installation & Verification
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[Phase 5/5] Installing and validating artifacts...${NC}"
+echo -e "\n${BLUE}${BOLD}[Phase 5/6] Installing and validating artifacts...${NC}"
 
 # Target directories creation
 mkdir -p "$BIN_INSTALL_DIR"
@@ -690,6 +690,45 @@ echo -e "${GREEN}  CLAP artifact validation passed.${NC}"
 # Cleanup temp files
 rm -rf "$PGO_DIR" "$BOLT_DIR"
 
+# -----------------------------------------------------------------------------
+# PHASE 6: Release Packaging (.tar.zst)
+# -----------------------------------------------------------------------------
+echo -e "\n${BLUE}${BOLD}[Phase 6/6] Generating distribution tarball...${NC}"
+
+VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys, json; print(json.load(sys.stdin)['packages'][0]['version'])")
+ARCHIVE_NAME="nam-rs-v${VERSION}-linux-x86_64-v3"
+PKG_DIR="/tmp/${ARCHIVE_NAME}"
+
+rm -rf "$PKG_DIR"
+mkdir -p "$PKG_DIR"
+
+cp "$BIN_TARGET" "$PKG_DIR/nam-rs"
+cp "$CLAP_TARGET" "$PKG_DIR/nam-rs.clap"
+cp README.md LICENSE "$PKG_DIR/" 2>/dev/null || true
+
+# Generate 1-click install script for end-users
+cat << 'EOF' > "$PKG_DIR/install.sh"
+#!/bin/bash
+set -e
+BIN_DIR="$HOME/.local/bin"
+CLAP_DIR="$HOME/.clap"
+
+mkdir -p "$BIN_DIR" "$CLAP_DIR"
+cp nam-rs "$BIN_DIR/"
+cp nam-rs.clap "$CLAP_DIR/"
+chmod +x "$BIN_DIR/nam-rs"
+
+echo "✅ Installed nam-rs to $BIN_DIR/nam-rs"
+echo "✅ Installed nam-rs.clap to $CLAP_DIR/nam-rs.clap"
+EOF
+chmod +x "$PKG_DIR/install.sh"
+
+TARBALL="$HOME/${ARCHIVE_NAME}.tar.zst"
+tar -C /tmp -caf "$TARBALL" "$ARCHIVE_NAME"
+rm -rf "$PKG_DIR"
+
+echo -e "  ${GREEN}✓${NC} Distribution package generated at: ${BOLD}$TARBALL${NC}"
+
 if [ -f "target/dsp_hotpath.asm" ]; then
     echo -e "\n${YELLOW}${BOLD}💡 AI-Ready Assembly Hotspots generated at:${NC} ${BOLD}target/dsp_hotpath.asm${NC}"
     echo -e "   You can feed this file directly into an AI along with the following prompt suggestion:"
@@ -704,8 +743,5 @@ fi
 echo -e "${GREEN}${BOLD}==============================================================${NC}"
 echo -e "${GREEN}${BOLD}   Pipeline completed! Artifacts ready for distribution.   ${NC}"
 echo -e "${GREEN}${BOLD}==============================================================${NC}"
-ls -lath "$BIN_TARGET" "$CLAP_TARGET"
-if [ -f "target/dsp_hotpath.asm" ]; then
-    ls -lath "target/dsp_hotpath.asm"
-fi
+    ls -lath "$BIN_TARGET" "$CLAP_TARGET" "$TARBALL" "target/dsp_hotpath.asm"
 echo -e "${GREEN}${BOLD}================================================================${NC}"
