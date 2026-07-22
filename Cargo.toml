@@ -12,9 +12,9 @@ authors = ["Fábio Henrique de Lima Silva <fabio.henrique.lima.silva@gmail.com>"
 include = [
     "src/**/*",
     "Cargo.toml",
-    "README.md",
-    "LICENSE.txt",
-    "NOTICE.txt",
+    "/README.md",
+    "/LICENSE.txt",
+    "/NOTICE.txt",
 ]
 keywords = ["audio", "dsp", "nam", "neural-amp-modeler", "guitar"]
 categories = [
