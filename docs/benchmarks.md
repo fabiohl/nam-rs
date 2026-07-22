@@ -5,14 +5,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # Performance Benchmarks (Criterion)
 
-The NAM-rs project uses **Criterion.rs** as its official performance benchmarking suite. Given the latency-sensitive nature of a real-time audio engine (DSP), conducting measurements with statistical rigor is essential to avoid being misled by operating system variations (noise, context switches, clock fluctuations).
+The `nam-rs` project uses **Criterion.rs** as its official performance benchmarking suite. Given the latency-sensitive nature of a real-time audio engine (DSP), conducting measurements with statistical rigor is essential to avoid being misled by operating system variations (noise, context switches, clock fluctuations).
 
 > [!NOTE]
 > **Document scope.** This is the authoritative reference for Criterion benchmarking in
-> nam-rs: how to run/interpret benches, and the full rationale, workflow, and
-> troubleshooting for the performance regression gate (`utils/tests-performance-regression.sh`).
-> The functional/correctness `cargo test` suites (`utils/tests-quick.sh`, `utils/tests-long.sh`)
-> and their feature/phase architecture are documented separately in [testing.md];
+> `nam-rs`: how to run/interpret benches, and the full rationale, workflow, and
+> troubleshooting for the performance regression gate ([`utils/tests-performance-regression.sh`](../utils/tests-performance-regression.sh)).
+> The functional/correctness `cargo test` suites ([`utils/tests-quick.sh`](../utils/tests-quick.sh), [`utils/tests-long.sh`](../utils/tests-long.sh))
+> and their feature/phase architecture are documented separately in [`testing.md`](testing.md);
 > that document only cross-references benchmarks, it does not duplicate this one.
 
 ## How to Run the Benchmarks
@@ -66,7 +66,7 @@ WaveNet_Standard_CH16_64samp_48kHz
    * **Performance has improved / regressed**: The p-value confirmed that the source code change caused a measurable statistical difference (positive or negative).
    * **Change within noise threshold**: The p-value is high, the error margins overlap, or the variation is negligible. The detected change is noise.
 4. **Outliers (Jitter)**
-   Samples are run hundreds of times, and anomalies are reported. In a critical real-time system like NAM-rs, occurrences of `high severe` are usually linked to *jitter* (processing glitches, audio thread preemption by the OS kernel, cache misses, etc.). Running benchmarks in shielded environments (SCHED_FIFO and CPU affinity enabled) mitigates outliers.
+   Samples are run hundreds of times, and anomalies are reported. In a critical real-time system like `nam-rs`, occurrences of `high severe` are usually linked to *jitter* (processing glitches, audio thread preemption by the OS kernel, cache misses, etc.). Running benchmarks in shielded environments (SCHED_FIFO and CPU affinity enabled) mitigates outliers.
 
 ## Temporal History (Baselines)
 
@@ -77,33 +77,34 @@ All historical tracking metrics are recorded in local files within your project 
 > [!IMPORTANT]
 > **Current vs. historical numbers.** The authoritative *current* per-model latency
 > figures come from a fresh `regression_gate` run — most conveniently via
-> `utils/quality-dashboard.sh` (PERFORMANCE section, median per 64-sample block).
-> Reference snapshot (2026-07-13, Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 42.3 µs
-> (3.2%), Lite CH12 ≈ 64.5 µs, Feather CH8 ≈ 26.4 µs, Nano CH4 ≈ 21.6 µs,
-> A2-Full ≈ 28.9 µs, A2-Lite ≈ 18.1 µs, LSTM 1×16 ≈ 7.7 µs, LSTM 2×8 ≈ 7.5 µs,
-> ConvNet ≈ 10.3 µs, Linear RF=2048 ≈ 0.3 µs. All ≤ 4.8% of the 1333 µs RT budget
-> (64 samples @ 48 kHz). The "Experiment Report" sections further down are
-> **historical point-in-time studies** documenting engineering decisions; their
-> absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate later optimizations and are
-> retained only to justify the decisions, not as current performance claims.
+> [`utils/quality-dashboard.sh`](../utils/quality-dashboard.sh) (PERFORMANCE section, median per 64-sample block).
+> Reference snapshot (Ryzen 7 5700U, AVX2): WaveNet Std CH16 ≈ 37.6 µs
+> (2.8%, 2447 µs/MMAC), Feather CH8 ≈ 19.5 µs (1.5%), Lite CH12 ≈ 52.4 µs (3.9%),
+> Nano CH4 ≈ 17.4 µs (1.3%, 18156 µs/MMAC outlier due to layer overhead),
+> A2-Full CH8 ≈ 27.4 µs (2.1%), A2-Lite CH3 ≈ 18.4 µs (1.4%), LSTM 1×16 ≈ 7.7 µs (0.6%),
+> LSTM 2×8 ≈ 7.6 µs (0.6%), ConvNet ≈ 10.3 µs (0.8%), Linear RF=2048 ≈ 0.3 µs (0.0%).
+> All ≤ 3.9% of the 1333 µs RT budget (64 samples @ 48 kHz). The "Experiment Report"
+> sections further down are **historical point-in-time studies** documenting engineering
+> decisions; their absolute numbers (e.g. WaveNet Std ≈ 92.6 µs) predate later optimizations
+> and are retained only to justify the decisions, not as current performance claims.
 
-*(Note: NAM-rs intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
+*(Note: `nam-rs` intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
 
 ## Regression Gate — Catching Latency Degradation Before It Ships
 
-`utils/tests-performance-regression.sh` is the **canonical home of benchmark-based
-performance defense** in nam-rs: the one script whose entire job is to stand as a
+[`utils/tests-performance-regression.sh`](../utils/tests-performance-regression.sh) is the **canonical home of benchmark-based
+performance defense** in `nam-rs`: the one script whose entire job is to stand as a
 statistical wall against DSP hot-path decay. It acts as a CI guard — it compares the
 current build against a persisted statistical baseline and fails the pipeline if a
 slowdown is detected. This is your primary tool to ensure that no commit silently pushes
 latency toward the 1.33 ms real-time deadline. It is deliberately narrow in scope (unlike
-`utils/tests-quick.sh` and `utils/tests-long.sh`, which cover functional/correctness
+[`utils/tests-quick.sh`](../utils/tests-quick.sh) and [`utils/tests-long.sh`](../utils/tests-long.sh), which cover functional/correctness
 regressions): its only mandate is baseline-gated performance.
 
 ### How It Works
 
 1. **Core pinning** — The script uses `taskset -c <core>` (dynamically defaulting to `nproc / 2` to avoid OS/IRQ noise; configurable via `NAM_BENCH_CORE`) to lock the benchmark to a single CPU core, eliminating scheduler noise and cache-line bouncing between cores.
-2. **Statistical rigor** — The `regression_gate` bench suite runs each model (WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM 1x16/2x8, Linear, ConvNet) with `sample_size=100, measurement_time=5s, noise_threshold=0.02`, replacing the old weak parameters (`--sample-size 10 --measurement-time 0.5`).
+2. **Statistical rigor** — The `regression_gate` bench suite runs each model (WaveNet Std/Feather/Nano/Lite, A2-Full/Lite, LSTM 1x16/2x8, Linear, ConvNet) with `sample_size=100, measurement_time=5s, noise_threshold=0.02`.
 3. **Baseline comparison** — Criterion performs a two-sample t-test between the current run and the stored baseline. If it detects a statistically significant regression (p < 0.05), the script exits with code 1.
 4. **Baseline storage** — Snapshots live under `target/criterion/<baseline-name>/` (default: `ci-baseline`). Multiple baselines can coexist for different machines or CPU generations.
 
@@ -148,12 +149,12 @@ On the first `--check` invocation (or if the baseline directory is missing), the
 
 ### Relationship to Other QA Tools
 
-| Tool                                    | Role                                                                                                                                                                                              |
-|:--------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/rt_deadline.rs`                  | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                                                                    |
-| `utils/tests-performance-regression.sh` | **Relative guard, baseline-gated** — the canonical home for perf-regression benchmarking. Catches degradations *within* the safe zone (e.g., 100 μs → 150 μs, still under 1.33 ms but 50% worse). |
-| `utils/tests-long.sh` Phase 6           | Runs the full bench suite (including `regression_gate`) as part of the nightly audit, purely **for the record** — no baseline comparison, no pass/fail on slowdown.                               |
-| `utils/tests-quick.sh`                  | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use `tests-performance-regression.sh` directly for perf checks.                                              |
+| Tool                                                                                | Role                                                                                                                                                                                              |
+|:----------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rt_constraints/rt_deadline.rs`                                               | **Absolute hard gate** — `assert!(p99 < 1330 μs)` for all SKUs. This is the pass/fail ceiling.                                                                                                    |
+| [`utils/tests-performance-regression.sh`](../utils/tests-performance-regression.sh) | **Relative guard, baseline-gated** — the canonical home for perf-regression benchmarking. Catches degradations *within* the safe zone (e.g., 100 μs → 150 μs, still under 1.33 ms but 50% worse). |
+| [`utils/tests-long.sh`](../utils/tests-long.sh) Phase 6                             | Runs the full bench suite (including `regression_gate`) as part of the nightly audit, purely **for the record** — no baseline comparison, no pass/fail on slowdown.                               |
+| [`utils/tests-quick.sh`](../utils/tests-quick.sh)                                   | Fast path (~3 min) — does **not** include benchmarks (would exceed the time budget). Use `tests-performance-regression.sh` directly for perf checks.                                              |
 
 > [!IMPORTANT]
 > **Always run `--check` before pushing.** A passing `tests-quick.sh` and `tests-long.sh` does
@@ -172,16 +173,16 @@ If the script exits with `❌ PERFORMANCE REGRESSION DETECTED`:
 
 ## Quality Contract — Performance Lens
 
-The **Quality Contract** ([docs/quality-contract.txt](quality-contract.txt)) extends the
+The **Quality Contract** ([`quality-contract.txt`](quality-contract.txt)) extends the
 regression defense with a dashboard-integrated second line of defense that freezes
 both fidelity and performance metrics into a versioned, machine-readable baseline.
 
 ### How It Fits with the Regression Gate
 
-| Tool                                    | Statistical Rigor                    | Speed    | Scope                                                                                     |
-|:--------------------------------------- |:------------------------------------ |:-------- |:----------------------------------------------------------------------------------------- |
-| `utils/tests-performance-regression.sh` | Criterion two-sample t-test (p<0.05) | ~5-8 min | **Primary authority** — catches slow regressions within the safe zone (e.g., 100→150 µs). |
-| `quality-dashboard.sh --check`          | Conservative relative margin         | ~3-5 min | **Second line** — integrated with fidelity checks; +10% latency tolerance.                |
+| Tool                                                                                | Statistical Rigor                    | Speed    | Scope                                                                                     |
+|:----------------------------------------------------------------------------------- |:------------------------------------ |:-------- |:----------------------------------------------------------------------------------------- |
+| [`utils/tests-performance-regression.sh`](../utils/tests-performance-regression.sh) | Criterion two-sample t-test (p<0.05) | ~5-8 min | **Primary authority** — catches slow regressions within the safe zone (e.g., 100→150 µs). |
+| [`utils/quality-dashboard.sh`](../utils/quality-dashboard.sh) `--check`             | Conservative relative margin         | ~3-5 min | **Second line** — integrated with fidelity checks; +10% latency tolerance.                |
 
 The two tools serve complementary roles:
 
@@ -212,10 +213,10 @@ degradations large enough to matter (e.g., 56 µs → 62 µs is within margin;
 
 ### Baselines and Renewal
 
-The official performance baseline lives in `docs/quality-contract.txt` alongside
+The official performance baseline lives in [`quality-contract.txt`](quality-contract.txt) alongside
 fidelity metrics. The **full renewal procedure** — including prerequisites, the
 `--save` / `--check` cycle, and the mandatory commit-message justification — is
-documented in [testing.md §9.4](testing.md#94-procedimento-de-renovação-deliberada-do-baseline).
+documented in [`testing.md`](testing.md#94-procedimento-de-renovação-deliberada-do-baseline).
 
 > [!CAUTION]
 > The Criterion `ci-baseline` (managed by `tests-performance-regression.sh
@@ -223,6 +224,8 @@ documented in [testing.md §9.4](testing.md#94-procedimento-de-renovação-delib
 > **independent artifacts** with different purposes. Updating one does not
 > automatically update the other. Both must be regenerated and committed when
 > a deliberate performance characteristic changes.
+
+---
 
 ## Comparative Results: Scalar LSTM vs. SIMD (Fused Gates)
 
@@ -239,9 +242,11 @@ Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into th
 
 The performance gain exceeding **4x** on complex models (2x16) and nearly **20x** on simple models (1x8) validates the kernel fusion strategy. By processing the 4 LSTM gates simultaneously via SIMD vectors and keeping data in registers between the Sigmoid and Tanh activations, we drastically reduce CPU cycles wasted on redundant loads/stores and memory latency.
 
+---
+
 ## Cycle Budget (WaveNet Hot-Path)
 
-To guide future optimizations, we performed granular instrumentation of the WaveNet hot-path (`WaveNetLayer::process_block_internal`) using hardware cycle counters (**RDTSC**). This measurement identifies where the CPU spends most of its time during audio block processing.
+To guide future optimizations, granular instrumentation of the WaveNet hot-path (`WaveNetLayer::process_block_internal`) was performed using hardware cycle counters (**RDTSC**). This measurement identifies where the CPU spends most of its time during audio block processing.
 
 ### Cycle Distribution per Stage (Per Layer)
 
@@ -256,10 +261,12 @@ Below is the average percentage distribution of cycles on an x86-64-v3 (AVX2) ar
 
 ### Data Flow Analysis (Array Level)
 
-At the `WaveNetLayerArray` level, the layer cascade dominates processing (**>90% of total time**). Interface stages (input **Rechannel** and output **Head Rechannel**) represent a negligible fixed overhead as the number of layers increases, validating the scalability of the NAM-rs architecture for complex models.
+At the `WaveNetLayerArray` level, the layer cascade dominates processing (**>90% of total time**). Interface stages (input **Rechannel** and output **Head Rechannel**) represent a negligible fixed overhead as the number of layers increases, validating the scalability of the `nam-rs` architecture for complex models.
 
 > [!TIP]
 > Fusing **Tanh** with **Head Accumulation** was the most impactful optimization, reducing the activation stage budget from ~30% to ~15% by eliminating redundant passes through L1 Cache memory.
+
+---
 
 ## Experiment Report: Temporal Tiling (Dual-Frame) on Conv1D
 
@@ -279,7 +286,9 @@ To process two frames in parallel:
 2. Instruction overhead in the frontend (e.g., broadcasts and blends) outweighed the savings on loads.
 3. The compiler was forced to use register spilling or hit execution port bottlenecks for blend/shuffle instructions (Port 5).
 
-**Conclusion:** The primary bottleneck of `Conv1D` in NAM-rs is not tied to L1 Cache bandwidth, but rather to computational throughput and register contention in the backend (FMA). Because of this, while the kernel implementation has been kept in the `SimdMath` trait for portability and testing on architectures with more registers (e.g., AVX-512 or ARM NEON), the main loop in `WaveNetLayer` continues to use **Single-Frame processing** to ensure the lowest latency and highest real-time stability.
+**Conclusion:** The primary bottleneck of `Conv1D` in `nam-rs` is not tied to L1 Cache bandwidth, but rather to computational throughput and register contention in the backend (FMA). Because of this, while the kernel implementation has been kept in the `SimdMath` trait for portability and testing on architectures with more registers (e.g., AVX-512 or ARM NEON), the main loop in `WaveNetLayer` continues to use **Single-Frame processing** to ensure the lowest latency and highest real-time stability.
+
+---
 
 ## Experiment Report: Stereo Fusion in the Output Stage
 
@@ -295,6 +304,8 @@ The goal was to eliminate redundant memory passes in the final output stage by f
 ### Conclusion
 
 Stereo fusion reduces memory traffic in the L1 Cache by reading the L and R channels simultaneously and applying the gain/ramp weights in a single loop. The gain is more pronounced in smaller blocks (e.g., 32 samples, where a **~8.5%** improvement was measured), where dispatch overhead and partial cache misses have a higher relative weight.
+
+---
 
 ## Criterion A2 Architecture
 
@@ -312,7 +323,7 @@ A2-Full uses the `A2Conv1dCh8` fast path with f32 weights in col-major layout (`
 
 ### A2-Lite (CH=3) — f32 Native GEMV Path
 
-A2-Lite uses the dedicated `A2Conv1dCh3` fast path (`src/models/a2/conv1d_ch3.rs`), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2. Despite having ~6.5x fewer weights (1,871 vs 12,146), the smaller CH=3 vector width (needing only 128-bit XMM registers vs 256-bit YMM for CH=8) results in a latency profile significantly faster than the CH=8 SIMD path (about ~47% faster / half the latency).
+A2-Lite uses the dedicated `A2Conv1dCh3` fast path ([`src/models/a2/conv1d_ch3.rs`](../src/models/a2/conv1d_ch3.rs)), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2.
 
 | Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
 |:------------ |:------------ |:--------------- |:-------------- |
@@ -327,14 +338,7 @@ A2-Lite uses the dedicated `A2Conv1dCh3` fast path (`src/models/a2/conv1d_ch3.rs
 | A2-Full | 12,146  | 8        | f32 col-major SIMD          | **~30.7 µs**    |
 | A2-Lite | 1,871   | 3        | f32 col-major unrolled GEMV | **~16.3 µs**    |
 
-The CH=3 path is ~47% faster than CH=8, which is expected due to processing ~6.5x fewer weights, but the CH=8 SIMD path scales extremely well thanks to its dedicated col-major YMM SIMD implementation. The CH=3 kernel operates on 128-bit XMM registers (3 channels + 1 zero pad) versus 256-bit YMM for CH=8, but since it is fully unrolled it avoids loop overhead and achieves peak efficiency.
-
-### Key Findings
-
-1. **Near-constant per-block latency** across block sizes (64-256) indicates that fixed overhead (function dispatch, buffer management) is minimal; the engine scales almost perfectly with block size.
-2. **A2-Full at 30.7 µs for 64 samples** is ~3x faster than WaveNet Standard CH=16 (~92.6 µs), despite A2-Full having twice the layers (23 vs 10+10).
-3. **Both variants stay well under the 1.33 ms real-time deadline** at 48 kHz with a 64-sample buffer, leaving ample headroom for other DSP processing.
-4. **Golden tests confirm zero regression** in A1 models (WaveNet Standard, Feather, Nano, LSTM) — all 34 integration tests pass.
+---
 
 ## Gate FSM (Dynamic Hysteresis)
 
@@ -348,30 +352,19 @@ The gate FSM (`DynamicHysteresis`) runs in the DSP hot-path on every audio callb
 | **Closed**           | ~1.64 ns | ~1.73 ns | ~1.73 ns | Gate already closed, volume stays below      |
 | **FadingOut (ramp)** | ~1.21 µs | ~1.14 µs | ~1.09 µs | Gate actively ramping multiplier toward zero |
 
-### Analysis
-
-* The gate FSM overhead is negligible — even the most expensive path (FadingOut at ~1.21 µs) represents **~0.09%** of the 1.33 ms audio deadline at 48 kHz with 64-sample blocks.
-* Open and Closed steady states are essentially single-branch operations (~1.6–2.2 ns), confirming that the gate imposes no measurable latency in the hot-path.
-* FadingOut includes the ramp step arithmetic (`fade_counter -= n_samples`, `current_multiplier = fade_counter * inv_fade_frames`, `ramp_samples = n_samples`) and remains relatively constant across block sizes because only the numeric subtraction and multiplication are block-size-independent.
-* The gate's actual computational cost is in `apply_gain_rt` / `apply_gain_rt_stereo` (SIMD gain application), not in the FSM decision logic measured here.
-
 ### Running Gate_FSM bench
 
 ```sh
 cargo bench --bench dsp_bench -- "Gate_FSM"
 ```
 
+---
+
 ## IR Cabsim Convolution
 
 The cabsim engine uses UPOLS (Uniform-Partitioned Overlap-Save) frequency-domain convolution. All FFTs of the kernel partitions are pre-computed at construction time; the `ConvEngine::process()` hot-path performs zero allocations and operates on pre-allocated buffers exclusively.
 
 ### Benchmarks (64-sample blocks at 48 kHz)
-
-IR lengths correspond to realistic cabinet impulse response durations:
-
-* **Short** (64 samples, 1.3 ms): 1 partition, minimal overhead
-* **Medium** (2048 samples, 42.7 ms): 32 partitions — typical medium-length guitar cabinet IR
-* **Long** (16384 samples, 341.3 ms): 256 partitions — full-length ambient/reverb IR
 
 | Benchmark                 | IR Samples | Partitions | Latency (µs) | CPU % at 48kHz |
 |:------------------------- |:---------- |:---------- |:------------ |:-------------- |
@@ -382,142 +375,30 @@ IR lengths correspond to realistic cabinet impulse response durations:
 | Engine_Construction_2048  | 2,048      | 32         | ~19.65       | — (load-time)  |
 | Engine_Construction_16384 | 16,384     | 256        | ~133.27      | — (load-time)  |
 
-> [!NOTE]
-> Values measured on x86-64-v3 (AVX2/FMA). For comparison, neural inference (WaveNet Standard CH=16) consumes ~92.6 µs per 64-sample block.
-> The cabsim convolution overhead is additive to the neural inference cost.
-> The `LongRun` group (`features = "long_bench"`) exercises 4096-sample blocks continuously for 35s+ to detect jitter and cache degradation under sustained load.
-
 ### RT-Safety Validation
 
-* **Heap-audit tests** (`tests/cabsim_heap_audit.rs`) confirm zero allocations on the `ConvEngine::process()` hot-path for short (64), medium (512), long (4096) IRs and passthrough mode.
-* **Golden convolution tests** (`tests/cabsim_golden.rs`) verify UPOLS output against direct convolution reference using deterministic synthetic IRs (ESR < 1e-5), with `#[ignore]`-gated long-run (8k–32k sample IR) stress tests.
-* **Conv engine construction** (including all FFT pre-computation) is performed outside the audio thread; its cost is measurable but irrelevant to RT deadlines.
+* **Heap-audit tests** ([`tests/rt_constraints.rs`](../tests/rt_constraints.rs)) confirm zero allocations on the `ConvEngine::process()` hot-path.
+* **Golden convolution tests** ([`tests/models/cabsim_golden.rs`](../tests/models/cabsim_golden.rs)) verify UPOLS output against direct convolution reference using deterministic synthetic IRs.
 
-### Running
-
-```sh
-# Standard benchmarks (Short, Medium, Long IR at 64-sample blocks)
-cargo bench --bench cabsim_bench -- "Cabsim"
-
-# 256-sample block variant
-cargo bench --bench cabsim_bench -- "Cabsim_MediumIR_2048_256"
-
-# Construction cost benchmarks
-cargo bench --bench cabsim_bench -- "Cabsim_Engine_Construction"
-```
+---
 
 ## Kahan Per-Tap Cost in Conv1d (Removed)
 
-### Contexto
+### Context
 
-A implementação estática do conv1d (`src/models/wavenet/conv1d.rs` e `conv1d_dual.rs`)
-executava Kahan compensated summation **dentro** do laço per-tap, serializando a redução SIMD→escalar
-a cada tap. Para K ≤ 3 (todos os modelos A1 WaveNet), o erro de soma simples é O(3·ε) — desprezível
-para áudio — tornando o Kahan por-tap superdimensionado.
+The static implementation of conv1d ([`src/models/wavenet/conv1d.rs`](../src/models/wavenet/conv1d.rs) and [`src/models/wavenet/conv1d_dual.rs`](../src/models/wavenet/conv1d_dual.rs)) previously executed Kahan compensated summation inside the per-tap loop. For K ≤ 3 (all A1 WaveNet models), simple summation error is O(3·ε) — negligible for audio — making per-tap Kahan unnecessary.
 
-O próprio módulo `kahan.rs` documenta K ≤ 3 como um caso de "Quando NÃO usar".
+Benchmark file: [`benches/kahan_conv1d_bench.rs`](../benches/kahan_conv1d_bench.rs).
 
-### Metodologia
+### Decision & Impact
 
-**Benchmark 1: Loop interno isolado** (`kahan_inner_loop_isolated`)
+Kahan compensated summation was removed from the static hot-path:
 
-Isola o padrão exato do laço per-tap: `dot_product_4x_interleaved` + acumulação Kahan vs plain `+=`.
-Testa K ∈ {1, 2, 3, 6, 15, 32} com IN=16 para medir o custo marginal por tap.
+* [`src/models/wavenet/conv1d.rs`](../src/models/wavenet/conv1d.rs): `kahan_add` → `+=`
+* [`src/models/wavenet/conv1d_dual.rs`](../src/models/wavenet/conv1d_dual.rs): `kahan_add` → `+=`
+* [`src/models/wavenet/conv_input.rs`](../src/models/wavenet/conv_input.rs): `store_kahan_4_accums` → `store_4_accums`
 
-**Benchmark 2: Conv1d completo** (`conv1d_kahan_full`)
-
-Compara `Conv1d` estático (agora sem Kahan, const-generics) vs `Conv1dDyn` (sem Kahan, dimensões runtime)
-para configurações típicas de WaveNet A1 (K=3, IN/OUT ∈ {8, 12, 16}), processando 64 frames.
-
-Arquivo: `benches/kahan_conv1d_bench.rs`.
-
-### Results (post-removal)
-
-#### Loop interno isolado (custo por tap)
-
-| K   | Kahan (ns) | Plain (ns) | Overhead | Overhead % |
-|:--- | ----------:| ----------:| --------:| ----------:|
-| 1   | 8.43       | 8.00       | 0.43 ns  | +5.4%      |
-| 2   | 16.35      | 14.93      | 1.42 ns  | +9.5%      |
-| 3   | 23.54      | 22.08      | 1.47 ns  | +6.6%      |
-| 6   | 46.29      | 43.50      | 2.80 ns  | +6.4%      |
-| 15  | 113.94     | 106.72     | 7.22 ns  | +6.8%      |
-| 32  | 242.20     | 229.57     | 12.63 ns | +5.5%      |
-
-**Custo marginal por kahan_add:** ~0.4–0.6 ns por chamada.
-O overhead relativo estabiliza em ~5–10% independente de K — a maior parte do tempo
-é dominada pelo `dot_product_4x_interleaved` SIMD.
-
-#### Conv1d completo (64 frames, sem Kahan)
-
-| Config             | Static No-Kahan (µs) | Dyn No-Kahan (µs) | Ratio |
-|:------------------ | --------------------:| -----------------:| -----:|
-| IN=8,  OUT=8,  K=3 | 1.09                 | 2.46              | 2.24× |
-| IN=8,  OUT=16, K=3 | 2.22                 | 4.16              | 1.87× |
-| IN=16, OUT=16, K=3 | 4.74                 | 6.46              | 1.36× |
-| IN=12, OUT=12, K=3 | 1.86                 | 4.06              | 2.18× |
-
-### Análise numérica
-
-**Para K = 3 taps com f32 (ε ≈ 1.19×10⁻⁷):**
-
-* Erro worst-case por canal: 3 × ε ≈ 3.6×10⁻⁷ absoluto
-* Em dBFS (sinal de magnitude 1.0): 20×log₁₀(3.6×10⁻⁷) ≈ **−129 dB**
-* Limiar de percepção humana: ~0.1 dB a −80 dBFS
-* Ruído de quantização 16-bit: −96 dBFS
-* **Conclusão:** O erro de soma simples para K=3 está 33 dB abaixo do ruído de 16-bit
-  e 49 dB abaixo do limiar perceptivo.
-
-**Cadeia completa de 10 camadas WaveNet A1 (IN=16, K=3, 300 adições sequenciais):**
-
-* Erro worst-case sem Kahan: 300 × ε ≈ 3.6×10⁻⁵
-* Em dBFS: 20×log₁₀(3.6×10⁻⁵) ≈ **−89 dB**
-* **Ainda abaixo do ruído de 16-bit (−96 dB)**, mas com margem reduzida (7 dB).
-
-> [!NOTE]
-> O worst-case acima assume acumulação monotônica (todos os termos com mesmo sinal),
-> que nunca ocorre em sinais de áudio reais (alternam polaridade). Na prática, o erro
-> real é ordens de grandeza menor por cancelamento parcial.
-
-### Decision
-
-**Kahan removido do caminho estático (conv1d.rs, conv1d_dual.rs).** Justificativa:
-
-1. **Numérica:** O erro de soma simples para K=3 é −129 dBFS por camada — irrisório mesmo
-   após 10 camadas (−89 dB worst-case teórico).
-2. **Performance:** O ganho no loop interno é ~5–9% conforme benchmarks isolados. A
-   simplificação do hot-path reduz pressão de registrador e melhora previsibilidade.
-3. **Consistência:** O caminho dinâmico (`conv1d_dyn_kernels.rs`) já usava plain `+=`.
-   Alinhar os caminhos elimina um delta de precisão entre modos de compilação.
-4. **Documentação:** O próprio módulo `kahan.rs` já lista "Single-digit additions
-   (K ≤ 3 taps)" como caso de não-uso.
-
-The removal was applied to:
-
-* `src/models/wavenet/conv1d.rs`: `kahan_add` → `+=`, compensação removida
-* `src/models/wavenet/conv1d_dual.rs`: idem
-* `src/models/wavenet/conv_input.rs`: `store_kahan_4_accums` renomeada para `store_4_accums`
-* Goldens mantidos verdes.
-
-### Como executar o benchmark
-
-```sh
-cargo bench --bench kahan_conv1d_bench
-```
-
-## Long-duration soak (35s+ measurement, 4096-sample blocks)
-
-```sh
-cargo bench --features long_bench --bench long_inference_bench -- "Cabsim_LongRun"
-```
-
-## RT-Safety on Adaptive Degradation Transition
-
-To ensure that the transition between quality levels (e.g., A2-Full and A2-Lite) under CPU pressure does not trigger buffer underruns, the transition path has been optimized:
-
-1. **Zero Heap Allocations/Drops:** The `ContainerModel` transition (`set_slimmable_size`) uses pre-allocated buffers (scratch buffer size pre-reserved via `set_max_buffer_size`) and performs absolutely zero memory allocations or deallocations.
-2. **Elimination of Heavy Transition Overhead:** The heavy `reset()` and `prewarm()` computations have been completely removed from the runtime transition path. Instead, the Linear Crossfade (32 ms) naturally blends the state and output of the submodels, ensuring click-free switching without real-time CPU spikes.
-3. **Formal Verification:** Tested via the `test_zero_alloc_container_transition` integration test with the `CountingAllocator`, validating that transitioning between submodels and running the crossfade does not allocate or drop memory.
+---
 
 ## WaveNet Lite CH12: Profiling, Memory Stride & Architectural Efficiency
 
@@ -525,37 +406,15 @@ The WaveNet Lite variant operates with an internal channel dimension of $CH=12$.
 
 ### 1. Implemented Optimizations & Weight Padding
 
-To resolve the initial bottlenecks, two major structural changes were implemented:
+To resolve the initial bottlenecks, structural changes were implemented:
 
-* **SIMD 8+4 Store Path:** In `store_16_accums` (`src/models/wavenet/conv_input.rs`), scalar stores were replaced with a fused 256-bit YMM store (lanes 0..7) and a 128-bit XMM store (lanes 8..11).
-* **Dedicated 12x12 GEMM Kernel & Weight Padding:** In `src/math/gemm/gemm_batch/fused_residual_batch.rs` and the model loader, residual convolution weights were padded to stride 16. The first 8 channels are computed via YMM AVX2 instructions, and the remaining 4 channels via XMM SSE instructions.
+* **SIMD 8+4 Store Path:** In `store_16_accums` ([`src/models/wavenet/conv_input.rs`](../src/models/wavenet/conv_input.rs)), scalar stores were replaced with a fused 256-bit YMM store (lanes 0..7) and a 128-bit XMM store (lanes 8..11).
+* **Dedicated 12x12 GEMM Kernel & Weight Padding:** In [`src/math/gemm/gemm_batch/fused_residual_batch.rs`](../src/math/gemm/gemm_batch/fused_residual_batch.rs) and the model loader, residual convolution weights were padded to stride 16.
 
-These EPIC-2 optimizations reduced the global median latency of WaveNet Lite CH12 from **68.5 µs to 52.2 µs** (a **−19.7%** improvement).
+These optimizations reduced the global median latency of WaveNet Lite CH12 from **68.5 µs to 52.2 µs** (a **−19.7%** improvement).
 
-### 2. Structural ASM Analysis & Pad-to-16 Investigation
+### 2. Structural ASM Analysis
 
-To investigate why Lite CH12 latency (~52.3 µs) remained higher than Standard CH16 (~37.6 µs), a structural assembly comparison (`target/dsp_hotpath.asm` vs `target/dsp_hotpath_lite.asm`) and a pad-to-16 buffer experiment (T6.S3.2) were conducted. Three core hypotheses were evaluated:
+Assembly comparison and stride analysis revealed that fixed setup overhead (prologue, dispatch, bounds checks) accounts for 54% of instructions in Lite CH12 versus 34.5% in Standard CH16. On AVX2, the 8+4 channel split operates with 128-bit XMM instructions for the upper 4 lanes, yielding higher instruction counts per layer than standard 16-channel YMM operations.
 
-| #   | Hypothesis                                            | Findings & Verdict                                                                                                                                                                                                                                                                              |
-| --- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Fixed overhead per layer dominates**                | **SUSTAINED** — Overhead/Useful instruction ratio is **2.40** (Lite) vs **1.07** (Standard). Fixed setup (prologue, dispatch, bounds checks) represents 54% of instructions in Lite CH12, amortized over fewer MACs/layer (432 vs 768).                                                         |
-| 2   | **SIMD domain transition penalty**                    | **PARTIALLY SUSTAINED** — All instructions are VEX-encoded (no legacy SSE→AVX penalty). However, the 8+4 split underutilizes AVX2 YMM registers (wasting 4 YMM lanes per vector op) and requires 120 blend/perm instructions (`vblendps`, `vmaskmovps`) for tap gathering (3% of instructions). |
-| 3   | **Original target ($\le 42\,\mu\text{s}$) viability** | **SUSTAINED** — Target is not mathematically achievable on AVX2 hardware without deep topology redesign (e.g., AVX-512 mask registers or changing topology to multiples of 8 channels).                                                                                                         |
-
-#### Structural Metrics Comparison
-
-| Metric                            | Standard CH16 | Lite CH12     | Ratio (Lite/Std) |
-| --------------------------------- | ------------- | ------------- | ---------------- |
-| Total Instructions / Layer        | 1,815         | 3,974         | 2.19×            |
-| Overhead Instructions             | 627 (34.5%)   | 2,146 (54.0%) | 3.42×            |
-| Useful Instructions (FMA/Mul/Add) | 585 (32.2%)   | 893 (22.5%)   | 1.53×            |
-| XMM / YMM Instruction Ratio       | 5.7%          | 23.1%         | 4.05×            |
-| Stack Frame Size                  | 872 B         | 1,448 B       | 1.66×            |
-| Execution Latency                 | 37.6 µs       | 52.3 µs       | 1.39×            |
-| Efficiency (µs / MMAC)            | 2,449         | 6,057         | 2.47×            |
-
-### 3. Efficiency Decision (F-A7 Resolution)
-
-The structural pad-to-16 internal buffer experiment (T6.S3.2) added 537 lines across 19 files but produced **zero measured latency improvement** ($52.2\,\mu\text{s} \to 52.3\,\mu\text{s}$, within measurement noise). The bottleneck in CH12 is structural instruction overhead and lane underutilization on AVX2, not memory cache-line splits.
-
-**Final Decision:** Revert T6.S3.2 buffer padding complexity (Desfecho B) while preserving EPIC-2 weight padding. The WaveNet Lite CH12 SKU operates cleanly at **~52.7 µs** (96.1% headroom from the 1333 µs RT deadline), with 1e-7 parity tolerance restored and zero unneeded technical debt.
+**Final Decision:** The WaveNet Lite CH12 SKU operates cleanly at **~52.7 µs** (96.1% headroom from the 1333 µs RT deadline), with 1e-7 parity tolerance restored and zero unneeded technical debt.
