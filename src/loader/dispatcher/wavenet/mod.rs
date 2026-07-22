@@ -176,7 +176,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     MAX_A2_DYN_BOTTLENECK, MAX_A2_DYN_CHANNELS,
                 };
 
-                // S14.1 (PM-15): multi-array A2 cascade support.
+                // Multi-array A2 cascade support.
                 let num_arrays = data.config.layers.len();
                 let total_weights = data.weights.len();
                 let mut weight_pos: usize = 0;
@@ -221,7 +221,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                     let channels = layer_cfg.channels.unwrap_or(0);
                     let bottleneck = layer_cfg.bottleneck.unwrap_or(channels);
                     let head_size = layer_cfg.head_size.unwrap_or(1);
-                    // S14.1 (PM-15): For cascade arrays, input_channels is 1 for the
+                    // For cascade arrays, input_channels is 1 for the
                     // first array, and the previous array's channels for subsequent.
                     let input_channels = if ai == 0 {
                         layer_cfg.input_size.unwrap_or(1)
@@ -327,7 +327,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticMod
                 }
 
                 if weight_pos != total_weights {
-                    // S14.1 (PM-15): Hybrid condition_dsp sub-models may have
+                    // Hybrid condition_dsp sub-models may have
                     // residual weights (A1-style head post-processing, etc.)
                     // that the A2 cascade engine does not consume. These are
                     // non-critical for sub-model operation.

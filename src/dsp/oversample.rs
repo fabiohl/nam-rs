@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Half-Band Oversampling Engine for the neural stage (Tarefa 5.2).
+//! Half-Band Oversampling Engine for the neural stage.
 //!
 //! Implements optional 2×/4× oversampling around the neural model to reduce
 //! aliasing from non-linear activations, following the half-band filter design

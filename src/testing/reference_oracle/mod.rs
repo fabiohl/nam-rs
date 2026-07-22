@@ -313,7 +313,7 @@ fn is_a2_model(model_data: &NamModelData) -> bool {
     if layers.is_empty() {
         return false;
     }
-    // S14.2 (PM-15): A2 detection requires:
+    // A2 detection requires:
     // 1. At least one layer array with dilations+channels.
     // 2. head_scale is present (standard WaveNets don't have it).
     // 3. No post-stack head.

@@ -101,7 +101,7 @@ pub struct NamClapProcessor<'a> {
     /// Modulation offsets (CLAP Parameter Modulation).
     pub(crate) mod_gate_thresh: f32,
     /// Pre-computed thresholds (linear²) — invalidated only when
-    /// gate_threshold_db or mod_gate_thresh changes (see S6.T04).
+    /// gate_threshold_db or mod_gate_thresh changes.
     /// SHARED ALGORITHM: Any change to the cache/invalidation logic
     /// here must be mirrored in src/standalone/pw_host.rs (threshold_open_sq
     /// and threshold_close_sq), and vice-versa. Both pre-calculate thresholds in

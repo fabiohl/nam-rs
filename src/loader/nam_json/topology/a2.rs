@@ -41,9 +41,9 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<A2TopologyResult> {
     }
 
     // 2. At least one layer array (a2_fast.cpp:876-879).
-    // S14.1 (PM-15): Relaxed from != 1 to < 1 to support multi-array
+    // Relaxed from != 1 to < 1 to support multi-array
     // cascade topologies (including hybrid condition_dsp sub-models
-    // with FiLM features). S14.2 (PM-15): Multi-array models must have
+    // with FiLM features). Multi-array models must have
     // at least one A2-specific feature (head1x1, FiLM, or array/object
     // activation) to avoid misclassifying standard WaveNet models.
     let layers = &data.config.layers;

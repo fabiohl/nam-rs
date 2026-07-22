@@ -589,7 +589,7 @@ fn apply_biquad(samples: &[f32], b0: f64, b1: f64, b2: f64, a1: f64, a2: f64) ->
 // =============================================================================
 // True-peak (dBTP) — ITU-R BS.1770-4 Annex 2 — 4× oversampling FIR
 //
-// RT-SAFETY DECISION (Tarefa 2.4, 2026-06-26):
+// RT-SAFETY DECISION (2026-06-26):
 //   - RT hot-path (src/dsp/pipeline/stages/output.rs): keeps sample-peak
 //     detection for `RT_STATUS_HAS_CLIPPED`. True-peak with 48-tap FIR × 4×
 //     oversampling adds ~48 MAC/sample (12 per phase × 4) — prohibitive in the

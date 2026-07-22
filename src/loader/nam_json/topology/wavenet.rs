@@ -208,7 +208,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> WavenetTopologyResult {
                 if c > MAX_WAVENET_FREE_CHANNELS {
                     return WavenetTopologyResult::Rejected(format!(
                         "Layer {} channels ({}) exceeds maximum {} — \
-                         OOM/DoS protection (Task 5.2).",
+                         OOM/DoS protection.",
                         i, c, MAX_WAVENET_FREE_CHANNELS
                     ));
                 }

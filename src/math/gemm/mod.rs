@@ -11,7 +11,7 @@
 //! - **Interleaved Layout**: Weights organized to maximize data reuse in registers.
 //! - **Tiling**: Block processing to optimize data locality.
 //!
-//! Extracted from `simd/avx2.rs` and `simd/avx512.rs` during Task 3.2.
+//! Extracted from `simd/avx2.rs` and `simd/avx512.rs`.
 //! Contains AVX2 and AVX-512 implementations side by side, organized by operation.
 
 pub mod dot_16x;

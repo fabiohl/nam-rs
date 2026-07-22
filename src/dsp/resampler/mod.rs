@@ -20,7 +20,7 @@
 //! Instead of using discrete L/M phases (impractical for L=160 at ratio 44.1→48),
 //! the resampler uses an overabundant bank of 256 phases with linear interpolation
 //! between adjacent phases. This yields arbitrary conversion ratios with
-//! measured passband ripple < 0.05 dB and stopband ≥ 100 dB (Task 5.4).
+//! measured passband ripple < 0.05 dB and stopband ≥ 100 dB.
 //!
 //! ## Quality Mode
 //!

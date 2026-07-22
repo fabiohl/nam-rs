@@ -12,8 +12,7 @@
 //! - **State Persistence**: Optimized management of `cell_state` and `hidden_state`.
 //! - **Parallelism**: Simultaneous processing of 8 (AVX2) or 16 (AVX-512) cells at once.
 //!
-//! Extracted from `activations/fused.rs` and `simd/avx2.rs`/`simd/avx512.rs`
-//! during Task 3.3.
+//! Extracted from `activations/fused.rs` and `simd/avx2.rs`/`simd/avx512.rs`.
 
 pub mod gates;
 

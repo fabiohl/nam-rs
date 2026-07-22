@@ -519,7 +519,7 @@ fn test_grouped_conv1d_no_bias() {
 }
 
 // =============================================================================
-// #[should_panic] tests — SIMD contract validation (Tarefa 3.2)
+// #[should_panic] tests — SIMD contract validation
 // =============================================================================
 // These tests ensure that broken shapes / misaligned dims passed to unsafe
 // SIMD kernel functions trigger debug_assert! panics instead of producing

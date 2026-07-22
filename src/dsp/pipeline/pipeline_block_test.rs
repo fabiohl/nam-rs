@@ -215,7 +215,7 @@ mod block_tests {
         run_block_size_test(Some("BossWN-nano.nam"), MAX_BRIDGE_BUF);
     }
 
-    /// TEST: Zero-Allocation Stress for edge cases (Task 3.2.3).
+    /// TEST: Zero-Allocation Stress for edge cases.
     /// Validates that 1-sample blocks and max-size blocks do not allocate on the hot-path under stress.
     #[test]
     fn test_zero_alloc_stress_edge_cases() {

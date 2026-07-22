@@ -227,7 +227,7 @@ lógica** (regra `refatora-rust`: regressões proibidas).
 
 - **Findings:** F-01. **Status:** Resolvido no commit `f86086f8`.
 
-### Epic E-02 — Limpeza de referências de *tracker* em `src/*.rs`
+### Epic E-02 — Limpeza de referências de *tracker* em `src/*.rs` [DONE]
 
 - **Findings:** F-02.
 - **Risco:** Baixo (apenas texto de comentário/mensagem; preservar *substrings*

@@ -12,7 +12,7 @@
 //!    with cutoff at 0.95×min(f₁,f₂) / (f₁×NUM_PHASES), normalized to the prototype Nyquist.
 //! 2. **Minimum-Phase Transform (Real Cepstrum)** — eliminates pre-ringing by concentrating
 //!    energy into the shortest possible delay, using f64 FFT for numerical precision.
-//!    Magnitude-preserving; measured ripple added < 1e-3 dB (Task 5.4 QA).
+//!    Magnitude-preserving; measured ripple added < 1e-3 dB.
 //! 3. **Polyphase Partition** — decomposes the prototype into 256 sub-filters,
 //!    each with TAPS_PER_PHASE taps aligned to 64 bytes for AVX2/AVX-512 convolution.
 //!
@@ -22,7 +22,7 @@
 //! linear-phase filter bank suitable for offline/mixdown use where zero pre-ringing
 //! is not critical and perfect phase linearity is preferred.
 //!
-//! ## Measured Performance (Task 5.4, TAPS_PER_PHASE=64)
+//! ## Measured Performance (TAPS_PER_PHASE=64)
 //!
 //! Stopband attenuation is a *filter-design* property (alias-image rejection); the end-to-end
 //! multitone SNR vs. soxr is *bank-dependent* and far lower for the production minimum-phase
@@ -69,7 +69,7 @@ pub const NUM_PHASES: usize = 256;
 /// for AVX2/AVX-512 alignment (8 SIMD loads of 8 floats for AVX2, 4 of 16
 /// for AVX-512).
 ///
-/// Prior to Task 5.4 this was 32 taps (~24 dB end-to-end multitone SNR).
+/// Previously this was 32 taps (~24 dB end-to-end multitone SNR).
 /// Doubling to 64 taps raised the stopband attenuation to ≥ 110 dB (filter
 /// design) and the end-to-end multitone SNR vs. soxr to ~31 dB (min-phase,
 /// per-phase-dispersion limited). The earlier ">120 dB" figure was an
@@ -335,7 +335,7 @@ fn partition_polyphase(proto: &[f32]) -> Result<PolyphaseBank, NamErrorCode> {
     // is essential despite introducing small ripple (~0.01-0.1 dB) because
     // the alternative (no normalization) creates massive gain variation
     // (>40 dB) across phases, which linear interpolation cannot smooth.
-    // See Task 5.4 QA report for detailed analysis.
+    // See QA report for detailed analysis.
     for phase in 0..NUM_PHASES {
         let start = phase * taps;
         let mut sum = 0.0f32;

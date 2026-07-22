@@ -162,7 +162,7 @@ fn test_kahan_deep_convolution_drift() {
 /// the magnitude of 1.0 (precision floor ≈ 1.2e-7). Kahan captures
 /// the lost bits in the compensation register.
 ///
-/// This is the S5.T03 acceptance criterion: drift reduction ≥ 100×.
+/// Acceptance criterion: drift reduction ≥ 100×.
 #[test]
 fn test_horizontal_sum_drift_reduction() {
     let n: usize = 1_000_000;

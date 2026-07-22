@@ -262,7 +262,7 @@ mod tests {
     }
 
     // =====================================================================
-    // Dynamic layer kernel tests (Task 2.1.2)
+    // Dynamic layer kernel tests
     // =====================================================================
 
     use crate::models::lstm::layer_dyn::LstmLayerDyn;

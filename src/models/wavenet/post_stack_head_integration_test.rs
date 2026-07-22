@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Integration tests for Post-stack Head flow (Task 1.2.5).
+//! Integration tests for Post-stack Head flow.
 //!
 //! Validates the full flow of PostStackHead within WaveNetModelDyn:
 //! arrays → PostStackHead → head_scale.

@@ -198,7 +198,7 @@ mod tests {
         let mut data = vec![0u8; header_size];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
-        header.magic = 0x424D414E; // "BMAN" — no longer accepted (S5.T09)
+        header.magic = 0x424D414E; // "BMAN" — no longer accepted
         header.version = 1;
         header.weights_offset = header_size as u32;
 

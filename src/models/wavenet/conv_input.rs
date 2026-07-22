@@ -62,7 +62,7 @@ pub(crate) unsafe fn store_8_accums(out: &mut [f32], out_c: usize, r: [f32; 8], 
 /// | `out_c + 11 < out_n`            | `ymm` + `xmm`  | CH=12 pad-to-16      |
 /// | otherwise                       | scalar tail     | other partial widths |
 ///
-/// The 8+4 path (ymm + xmm) was added in T2.S3.3 to complete the EPIC-2
+/// The 8+4 path (ymm + xmm) completes the
 /// pad-to-16 strategy: `select_interleave_width(12) = 16` routes CH=12 through
 /// the 16-wide dot-product kernel, but the stores must also be SIMD to realize
 /// the speedup. Lanes 12–15 (zero-padding) are never written.

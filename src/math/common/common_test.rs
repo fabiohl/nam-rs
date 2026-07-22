@@ -515,7 +515,7 @@ fn test_convolve_mono_dual_parity() {
     }
 }
 
-// ── S7.T08 Regression Tests ──────────────────────────────────────────────────
+// ── Regression Tests ────────────────────────────────────────────────────────
 
 /// Converts an f32 slice to BF16 using the correct method (shift right by 16).
 fn f32_to_bf16_ref(src: &[f32]) -> Vec<u16> {

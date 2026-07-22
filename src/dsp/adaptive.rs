@@ -6,7 +6,7 @@
 //! Monitors DSP block latency and gracefully reduces model complexity
 //! when CPU pressure is detected, preventing audible xruns.
 //!
-//! ## Cohesion justification (S6.T12)
+//! ## Cohesion justification
 //!
 //! This file is intentionally kept as a single module (not split) because:
 //!

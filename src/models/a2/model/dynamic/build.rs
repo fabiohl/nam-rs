@@ -233,7 +233,7 @@ impl WaveNetA2Dyn {
     /// Loads head conv weights (K=16), bias, and head scale from the stream.
     ///
     /// For head_size == 1, builds a mono `A2HeadConv`.
-    /// S14.1 (PM-15): for head_size > 1 (multi-array cascade arrays with
+    /// For head_size > 1 (multi-array cascade arrays with
     /// multi-channel output), loads a full Conv1D per output channel:
     /// `head_size × K × head_accum_size` weights + `head_size` bias + `head_size` scale.
     fn load_head_conv_and_scale(

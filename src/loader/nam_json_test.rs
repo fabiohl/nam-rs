@@ -784,7 +784,7 @@ fn test_parse_semver() {
 }
 
 // =========================================================================
-// SemVer Version Validation — Tarefa 4.2 / F-P2
+// SemVer Version Validation
 // =========================================================================
 
 /// Helper: creates minimal JSON with the given version string.
@@ -1211,7 +1211,7 @@ fn test_topology_accepts_null_head() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tarefa 5.2 — OOM/DoS protection: topology bounds tests
+// OOM/DoS protection: topology bounds tests
 // ══════════════════════════════════════════════════════════════════════════════
 
 use crate::loader::nam_json::validation::{
@@ -1619,7 +1619,7 @@ fn test_a2_dyn_accepts_max_channels_and_bottleneck() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tarefa 3 — Metadados e Parser Case-Insensitive (F11, F12)
+// Metadados e Parser Case-Insensitive
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── F11: LoadedModelPair metadata methods ──

@@ -6,7 +6,7 @@
 //! Extension of `Conv1d` with methods that process two frames simultaneously
 //! (Temporal Tiling), maximizing weight reuse in registers.
 //!
-//! ## Coesion justification (S2.T07 — no split)
+//! ## Cohesion justification (no split)
 //!
 //! This file is a cohesive unit: a single `impl Conv1d` block extending the
 //! static convolution with dual-frame (Temporal Tiling) processing.

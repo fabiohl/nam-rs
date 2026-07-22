@@ -471,7 +471,7 @@ unsafe fn process_frame_dyn<M: SimdMath>(
     // 4. Head accumulator.
     let head_off = (head_wp + f) * head_accum_size;
     if head1x1_active {
-        // S14.2 (PM-15): Correct grouped head1x1 accumulation.
+        // Correct grouped head1x1 accumulation.
         // head1x1_w is [head_accum_size][h1_in] (transposed in build.rs).
         // For grouped models, each group uses a subset of z_scratch.
         let h1_in = if head1x1_w.is_empty() {

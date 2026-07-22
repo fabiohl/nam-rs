@@ -305,7 +305,7 @@ pub(crate) fn oracle_a2_forward(
         return vec![0.0; num_frames];
     }
 
-    // S14.2 (PM-15): Process condition_dsp sub-model to obtain per-frame condition
+    // Process condition_dsp sub-model to obtain per-frame condition
     // vectors. The sub-model processes the raw input and produces condition_size
     // samples per frame (the head_size of the condition_dsp's last array).
     // T1.2: Use oracle_condition_dsp_channels to get ALL head output channels
@@ -652,7 +652,7 @@ pub(crate) fn oracle_a2_forward(
 
             // Condition vector: from condition_dsp or raw input.
             let condition: &[f64] = if cond_size == 1 {
-                // S14.2 (PM-15): For cascade arrays after the first, the
+                // For cascade arrays after the first, the
                 // condition may be per-frame from the cascade residual — but
                 // for condition_size==1 we use the raw audio directly.
                 std::slice::from_ref(&x)

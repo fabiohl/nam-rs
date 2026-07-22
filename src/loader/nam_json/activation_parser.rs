@@ -54,7 +54,7 @@ pub fn parse_layer_activations(
 /// Returns `None` if the array is missing, has the wrong length, or
 /// contains entries that cannot be deserialized as valid `ActivationType`.
 ///
-/// S14.2 (PM-15): Also handles single-object activations (e.g. `{"type":"Softsign"}`)
+/// Also handles single-object activations (e.g. `{"type":"Softsign"}`)
 /// used by A2 generic topologies and condition_dsp sub-models, replicating the
 /// single activation across all layers.
 pub fn parse_activations_from_json(
@@ -85,7 +85,7 @@ pub fn parse_activations_from_json(
 /// If the field is absent or null, returns a vector of `GatingMode::None`
 /// with length `num_layers`.
 ///
-/// S14.2 (PM-15): Also handles single-string gating mode (e.g. `"gated"`)
+/// Also handles single-string gating mode (e.g. `"gated"`)
 /// used by A2 generic topologies, replicating the value across all layers.
 pub fn parse_gating_modes_from_json(raw: &serde_json::Value, num_layers: usize) -> Vec<GatingMode> {
     // Single-string gating mode: replicate across all layers (A2 generic).
@@ -124,7 +124,7 @@ pub fn parse_gating_modes_from_json(raw: &serde_json::Value, num_layers: usize) 
 /// If the field is absent or null, returns a vector of `None` with length
 /// `num_layers`. Individual null entries are mapped to `None`.
 ///
-/// S14.2 (PM-15): Also handles single-object/single-string secondary activation
+/// Also handles single-object/single-string secondary activation
 /// (e.g. `"Hardswish"`), replicating across all layers.
 pub fn parse_secondary_activations_from_json(
     raw: &serde_json::Value,
