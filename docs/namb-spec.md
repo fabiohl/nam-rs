@@ -391,4 +391,3 @@ Global limit: `MAX_MODEL_BYTES = 256 MiB`. Files larger than this limit are reje
 - Error Codes: `src/common/diagnostics/error_codes.rs` (`NamErrorCode`)
 - Round-trip Tests: `tests/namb_v2_roundtrip.rs`, `tests/namb_v2_validation.rs`
 - Architecture: `docs/architecture.md`
-- Planning: `TODO-sprints.md` (S3.T03, S3.T04, S5.T02, S5.T03)

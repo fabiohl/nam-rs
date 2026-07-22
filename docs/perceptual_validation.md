@@ -1003,11 +1003,9 @@ numerical noise, not training error.
 ## Gate Calibration Policy
 
 This policy governs how every threshold and gate in the project is derived, maintained,
-and reviewed. It formalizes the methodology from [AC-5](TODO-findings.md)
-("Methodology 'calibrate until it passes' inverts the purpose of the test") and
-[AC-9](TODO-findings.md) ("The 'calibrate until it passes +
-declare done' pattern recurred at the oracle level") of the project's correctness
-audit. All gates in `tests/models/threshold_calibration.rs`, `tests/parity/cpp_parity.rs`,
+and reviewed. It formalizes two principles from the project's correctness audit:
+methodology "calibrate until it passes" inverts the purpose of the test, and
+the "calibrate until it passes + declare done" pattern recurred at the oracle level. All gates in `tests/models/threshold_calibration.rs`, `tests/parity/cpp_parity.rs`,
 `tests/parity/reference_oracle_f64.rs`, and `tests/common/validation.rs` must comply.
 
 ### Rule 1 — Derivation from Validated Reference

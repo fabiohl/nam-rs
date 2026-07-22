@@ -886,8 +886,7 @@ production×oracle test (`test_summary_table`) already passes within the
 acceptance criterion **before** regeneration; **or**
 
 **(b)** no C++ golden exists and the regeneration is accompanied by explicit
-human review, documented in the commit message and in `TODO-sprints.md`, with
-before/after numbers.
+human review, documented in the commit message with before/after numbers.
 
 Regenerating an anchor from the very oracle it is meant to validate constitutes
 a circular comparison and does **not** constitute evidence of correctness —

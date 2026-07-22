@@ -38,7 +38,7 @@
 //!
 //! The `PRIORITY_DRIVER = 2000` on the capture node further ensures it leads the
 //! group. This architecture was validated via `pw_stream::time()` instrumentation
-//! and documented in [`docs/latency_sprint1_analysis.md`].
+//! and documented in [`docs/pw_dual_stream_architecture.md`].
 //!
 //! Ref: [PipeWire Graph Scheduling](https://docs.pipewire.org/page_scheduling.html)
 //!

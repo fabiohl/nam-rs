@@ -3,11 +3,10 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Relatório T5.S1.2 — Decisão GO/NO-GO para protótipo `pw_filter`
+# PipeWire Dual-Stream Architecture — Decisão GO/NO-GO para protótipo `pw_filter`
 
 **Data:** 2026-07-19
 **Responsável:** Arquiteto de Sistemas
-**Ref:** [F-S1](../TODO-findings.md#L400), [Sprint S1](../TODO-sprints.md#L1455)
 
 ## 1. Resumo Executivo
 
@@ -157,5 +156,3 @@ cópias extras no DspBridge (write + read de ~128-512 amostras × 2 canais =
   propriedades `priority.driver`, `node.group`, `node.link-group`
 - [`src/standalone/pw_host/mod.rs`](../src/standalone/pw_host/mod.rs) —
   documentação da arquitetura dual-stream no código
-- [`TODO-findings.md#L400`](../TODO-findings.md#L400) — finding F-S1 original
-- [`TODO-sprints.md#L1455`](../TODO-sprints.md#L1455) — Sprint S1 completa

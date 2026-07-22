@@ -475,8 +475,6 @@ janela flutuante via `is_finished()` polling. Se o event loop não responder
 fds extras). O sistema operacional recolhe todos os recursos no exit do processo.
 Preferível a congelar a main thread do host (freeze do DAW).
 
-Referência: [TODO-findings.md §R13](../TODO-findings.md#r13).
-
 ## Comportamento de shutdown (SIGINT / SIGTERM)
 
 ### Standalone (src/main.rs)

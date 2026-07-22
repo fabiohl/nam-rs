@@ -244,7 +244,7 @@ lógica** (regra `refatora-rust`: regressões proibidas).
 - **Critério de aceite:** 0 ocorrências de `\b(Sn\.Tnn|PM-nn|EPIC-n|Sprint n)\b`
   em `src/*.rs`; testes verdes.
 
-### Epic E-03 — Reparo de links Markdown quebrados em `docs/`
+### Epic E-03 — Reparo de links Markdown quebrados em `docs/` [DONE]
 
 - **Findings:** F-03, F-04.
 - **Risco:** Baixo (apenas Markdown; sem impacto em compilação/testes).

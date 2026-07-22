@@ -82,8 +82,7 @@ than in WaveNet feedforward paths (where ΔESR Padé ≈ −134 dB, inaudible). 
 CPU saving (~10–15%) is negligible relative to the fidelity loss; LSTM inference is dominated by
 GEMV operations, not activation evaluation. The CLI emits a `log::warn` advisory when
 `--activation fast` is combined with an LSTM architecture model. Users are strongly encouraged to
-keep the default `Standard` mode for all LSTM models. See F-I3 in [`TODO-findings.md`](../TODO-findings.md#L332)
-for measured data.
+keep the default `Standard` mode for all LSTM models.
 
 ### 2.2 Standard mode — universal default
 

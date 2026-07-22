@@ -5,8 +5,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # Postmortem: ELF symbol-interposition hang (BUG-3)
 
-This document replaces the working files `known-bugs.md` and
-`TODO-sprints.md` used during the investigation and fix of a real,
+This document replaces the working notes used during the investigation and fix of a real,
 indefinite hang in `--release` builds (also confirmed in the standalone
 binary and the CLAP `cdylib`). It intentionally does **not** preserve the
 investigation's chronology, dead ends, or every experiment run — that
