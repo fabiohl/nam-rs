@@ -29,8 +29,11 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 ### Achado 01: Higiene de Pacote no crates.io (Payload Control Estrito para `/src`)
 
 * **Severidade**: Crítica (Tamanho de pacote e higiene de repositório)
+
 * **Contexto**: Sem a instrução `include` no manifesto `Cargo.toml`, o comando `cargo publish` empacota todos os arquivos rastreados no Git. Isso inclui modelos de pesos de teste (`.namb`), WAVs de validação perceptual, scripts internos em `utils/`, `docs/`, `benches/`, `tests/` e `.agents/`, o que pode aproximar ou superar o limite de 10 MB do `crates.io`.
+
 * **Diretriz de Design**: Somente o código-fonte em `src/`, as licenças e o arquivo `README.md` devem ser incluídos no pacote publicado. Ativos de teste e scripts pertencem exclusivamente ao repositório Git para garantia de qualidade interna do `nam-rs`.
+
 * **Especificação da Solução**:
   Adicionar a cláusula `include` no bloco `[package]` do `Cargo.toml`:
 
@@ -51,12 +54,16 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 ### Achado 02: Foco Exclusivo da Documentação no docs.rs para Consumidores da Crate
 
 * **Severidade**: Alta (Ergonomia, clareza e usabilidade pública)
+
 * **Contexto**: A documentação no `docs.rs` é a principal referência para desenvolvedores que utilizam a biblioteca. Ela não deve expor guias internos de desenvolvimento do repositório, mas sim focar na API pública reutilizável.
+
 * **Diretriz Confirmada**: O `docs.rs` não deve poluir o leitor com detalhes internos (scripts de benchmark, oráculos de teste ou guias de manutenção), mas sim focar nos seguintes pilares:
+
   1. **Quickstart & Modular Import**: Como adicionar `nam-rs` ao `Cargo.toml` (`default-features = false` para builds leves sem PipeWire/GUI).
   2. **Submódulo `nam_rs::loader`**: Como chamar `load_and_build_model` para carregar arquivos `.nam` (JSON) e contêineres `.namb` (com checagem CRC32). O tipo retornado é `LoadedModelPair`.
   3. **Submódulo `nam_rs::math::activations`**: Como usar as funções `tanh` e `sigmoid` do sub-módulo `nam_rs::math::activations` (re-exportadas via `pub use tanh::*` e `pub use sigmoid::*`).
   4. **Submódulo `nam_rs::dsp`**: Como integrar os blocos de pipeline DSP (gate, oversampling, cabsim) em um pipeline de áudio customizado.
+
 * **Configuração de Metadados TOML**:
   No [Cargo.toml](file:///home/fabio/nam-rs/Cargo.toml), o bloco `[package.metadata.docs.rs]` já existe e deve ser mantido, **porém** com atenção crítica:
 
@@ -84,10 +91,15 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 ### Achado 03: Arquitetura de Feature Flags Finas para Zero Overhead
 
 * **Severidade**: Alta (Manutenibilidade, compilação limpa e zero dependências indesejadas)
+
 * **Contexto**: Projetos que consomem apenas o parser ou as ativações matemáticas não devem compilar dependências como PipeWire, CLAP, egui ou baseview.
+
 * **Especificação da Solução**:
+
   * `default = ["standalone"]`: Permite a instalação direta da aplicação executável via `cargo install nam-rs`.
+
   * `default-features = false`: Habilita o modo biblioteca pura (somente `src/`, sem dependências de sistema).
+
   * Exemplo de consumo mínimo no `Cargo.toml` de um projeto cliente:
 
     ```toml
@@ -130,6 +142,7 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 #### Checklist Oficial de Publicação (`cargo publish`)
 
 1. **Validação do Estado do Repositório**:
+
    * Certificar-se de que a árvore Git está limpa e sincronizada no branch `main`:
 
      ```bash
@@ -144,6 +157,7 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
      ```
 
 2. **Inspeção do Pacote Gerado (`cargo package`)**:
+
    * Gerar o tarball localmente e verificar a lista de arquivos incluídos (garantir que apenas `src/` e licenças estão presentes):
 
      ```bash
@@ -157,7 +171,9 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
      ```
 
 3. **Autenticação e Upload para o crates.io**:
+
    * Obter a chave API Token de publicação na conta do mantenedor em `https://crates.io/settings/tokens`.
+
    * Autenticar o Cargo localmente (necessário apenas uma vez por máquina):
 
      ```bash
@@ -171,6 +187,7 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
      ```
 
 4. **Registro de Release e Tagging no Git**:
+
    * Criar e enviar a tag Git correspondente (deve ser feito **após** a publicação bem-sucedida no `crates.io`):
 
      ```bash
@@ -187,8 +204,11 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 #### Tarefa E1.1: Configuração do Restritor `include` ✅ CONCLUÍDO
 
 * **Arquivo Alvo**: [Cargo.toml](file:///home/fabio/nam-rs/Cargo.toml) — bloco `[package]`.
+
 * **Descrição**: Inserir o campo `include` para restringir os arquivos empacotados pelo Cargo ao estritamente necessário para compilar a crate.
+
 * **Posicionamento**: Logo após o campo `authors` no bloco `[package]`.
+
 * **Snippet TOML**:
 
   ```toml
@@ -208,7 +228,9 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 #### Tarefa E1.2: Decisão e Configuração de `[package.metadata.docs.rs]` ✅ CONCLUÍDO
 
 * **Arquivo Alvo**: [Cargo.toml](file:///home/fabio/nam-rs/Cargo.toml) — seção já existente `[package.metadata.docs.rs]`.
+
 * **Descrição**: Avaliar se `all-features = true` é seguro para o ambiente de build do `docs.rs` (que não possui `libpipewire`). Se a compilação com `all-features` falhar no `docs.rs`, substituir pela opção abaixo.
+
 * **Opção Segura Alternativa** (evita dependência de `libpipewire`):
 
   ```toml
@@ -223,7 +245,14 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 
 ### Épico E2: Estruturação da Documentação Rustdoc Focada no Consumidor (`src/lib.rs`)
 
-#### Tarefa E2.1: Atualização da Documentação de Nível Crate no `src/lib.rs`
+#### Tarefa E2.1: Atualização da Documentação de Nível Crate no `src/lib.rs` ✅ CONCLUÍDO
+
+> **Concluído em 2026-07-22**: A documentação de nível crate foi expandida em `src/lib.rs` com:
+>
+> * Guia "Quick Start — Loading a Model" com doc-test executável do `load_and_build_model` usando `linear_test.nam` como fixture.
+> * Guia "Activation Functions" com doc-test executável de `tanh` e `sigmoid`.
+> * Tabela "Module Map" com links para os módulos principais.
+> * `cargo test --doc` passa com 2 novos doc-tests executáveis (0 falhas).
 
 * **Arquivo Alvo**: [src/lib.rs](file:///home/fabio/nam-rs/src/lib.rs)
 * **Descrição**: Expandir a documentação inicial do módulo para incluir o guia de consumo da biblioteca com exemplos de código executáveis (`doc-tests`) utilizando os símbolos públicos corretos.
