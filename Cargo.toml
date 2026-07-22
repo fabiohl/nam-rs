@@ -10,7 +10,16 @@ description = "An opinionated, high-performance Neural Amp Modeler (NAM) client 
 readme = "README.md"
 authors = ["Fábio Henrique de Lima Silva <fabio.henrique.lima.silva@gmail.com>"]
 include = [
-    "src/**/*",
+    "src/clap/",
+    "src/common/",
+    "src/dsp/",
+    "src/loader/",
+    "src/math/",
+    "src/models/",
+    "src/standalone/",
+    "src/testing/",
+    "src/lib.rs",
+    "src/main.rs",
     "Cargo.toml",
     "/README.md",
     "/LICENSE.txt",
