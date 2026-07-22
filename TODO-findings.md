@@ -266,6 +266,16 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 
 #### Tarefa E2.2: Seção de RT-Safety e Garantias de Desempenho
 
+> **Concluído em 2026-07-22**: Adicionada seção "Real-Time Safety & Performance Guarantees" em `src/lib.rs` cobrindo:
+>
+> * Zero Heap Allocations no hot-path (SPSC GC cascade, `alloc_audit`)
+> * Zero Blocking I/O (`RtStatusFlags` atomic bitmask)
+> * Denormal Protection (FTZ + DAZ via MXCSR, `set_daz_ftz`, reaplicação periódica)
+> * Panic-Free Processing (sem `unwrap`/`expect` no hot-path)
+> * Lock-Free Concurrency (`#[repr(align(128))]`, `Acquire`/`Release`)
+> * Seção de licenciamento Apache-2.0 com requisitos para consumidores.
+> * `cargo doc --no-deps`: 0 warnings, 0 erros. `cargo test --doc`: 2 passed, 0 failed.
+
 * **Arquivo Alvo**: [src/lib.rs](file:///home/fabio/nam-rs/src/lib.rs)
 * **Descrição**: Adicionar seção formal no Rustdoc explicando as garantias de tempo real (zero heap allocations no hot-path, zero blocking I/O, FTZ+DAZ) e os requisitos de licença Apache-2.0 para consumidores da biblioteca.
 * **Critério de Aceite**: A seção é visível e renderizada corretamente em `cargo doc --no-deps`.

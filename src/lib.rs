@@ -94,6 +94,59 @@
 //! | [`models`] | Neural network architectures and topologies        |
 //! | [`dsp`]    | Digital signal processing engine                   |
 //! | [`common`] | Diagnostics, SPSC communication, parameters        |
+//!
+//! # Real-Time Safety & Performance Guarantees
+//!
+//! NAM-rs is engineered for **absolute real-time safety** on the audio
+//! processing thread. The following guarantees are enforced at the
+//! architecture level — violations trigger compile-time or runtime
+//! diagnostics:
+//!
+//! ## Zero Heap Allocations on the Hot-Path
+//!
+//! Heap objects (`Box`, `Vec`, `Arc`, `String`) must **never** be allocated
+//! or dropped on the real-time audio thread. All heap-managed resources are
+//! created off-RT and transferred via the lock-free SPSC GC cascade
+//! ([`common::spsc`]). The [`common::alloc_audit`] module provides
+//! compile-time auditing of allocation behavior in hot-path functions.
+//!
+//! ## Zero Blocking I/O
+//!
+//! No `println!`, `eprintln!`, `format!`, file I/O, or blocking
+//! synchronization primitives are permitted on the RT thread. Instead, the
+//! system uses [`common::RtStatusFlags`] — an atomic bitmask — to signal
+//! state transitions. The main (non-RT) thread polls these flags and
+//! performs any necessary logging or I/O.
+//!
+//! ## Denormal Protection (FTZ + DAZ)
+//!
+//! Subnormal (denormal) floating-point numbers cause extreme performance
+//! degradation on x86-64 — up to 100× slowdown per operation. NAM-rs
+//! configures **Flush-To-Zero (FTZ)** and **Denormals-Are-Zero (DAZ)** in
+//! the MXCSR register at startup and periodically reasserts them on the
+//! hot-path (every 1024 blocks) to guard against DAW hosts that may reset
+//! the register between callbacks. See [`math::common::set_daz_ftz`].
+//!
+//! ## Panic-Free Processing
+//!
+//! Stack unwinding (panics) allocates memory and breaks real-time
+//! determinism. The processing pipeline avoids `unwrap()`/`expect()` in
+//! favor of explicit fallback paths, and loop structures are designed for
+//! static elimination of bounds checks.
+//!
+//! ## Lock-Free Concurrency
+//!
+//! Shared structures between the RT and main threads use
+//! `#[repr(align(128))]` to prevent false sharing on cache lines. The SPSC
+//! ring buffer (via [`rtrb`]) uses `Acquire`/`Release` ordering on the
+//! hot-path — never `SeqCst`.
+//!
+//! # License
+//!
+//! This library is licensed under the **Apache License, Version 2.0**.
+//! Consumers of this library must comply with the terms of the Apache-2.0
+//! license, including proper attribution and inclusion of the license
+//! notice in derivative works. See the `LICENSE` file for the full text.
 
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("NAM-rs requires x86_64 architecture");
