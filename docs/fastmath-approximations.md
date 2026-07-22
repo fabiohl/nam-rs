@@ -2,446 +2,171 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
-# FastMath: Transcendental Function Approximations
 
-Architectural decisions, experiment results, and normative guidelines for approximating `tanh`, `sigmoid`, and related functions in the NAM-rs DSP hot-path.
+# FastMath Approximations & Activation Precision Modes
+
+Architectural decisions, performance benchmarks, and normative guidelines for transcendental activation functions (`tanh`, `sigmoid`) and precision modes in the NAM-rs DSP hot-path.
 
 > [!IMPORTANT]
-> This document records **definitive decisions** validated by benchmarks. Do not alter production choices without running `cargo bench` and confirming there is no statistically significant regression (p < 0.05).
+> This document records **definitive decisions** validated by benchmarks. Do not alter production choices without running `cargo bench` and confirming there is no statistically significant regression ($p < 0.05$).
 
 ---
 
-## 1. Production Decision: Tanh — Padé [5,4] with Hardware Division
+## 1. Activation Precision Architecture
 
-### Production Function
+NAM-rs provides a runtime-selectable activation precision switch via the `ActivationPrecision` enum in [`src/math/activations/mod.rs`](../src/math/activations/mod.rs). The mode is set at initialization (or during a hot-swap rebuild) via an atomic flag — the CPU branch predictor specializes to whichever path is active during steady-state inference.
 
-```text
-tanh(x) ≈ x · (x² + 105) · (x² + 945) / ((15x² + 420) · x² + 945)
-```
+| Precision Mode | Tanh Strategy                      | Sigmoid Strategy                   | Max Error (vs `f32` ref)      | Throughput (256 elem, AVX2) | Default Status           |
+|:-------------- |:---------------------------------- |:---------------------------------- |:----------------------------- |:--------------------------- |:------------------------ |
+| **`Standard`** | Degree-6 Taylor minimax ($e^{2x}$) | Degree-6 Taylor minimax ($e^{-x}$) | $\le 2.4 \times 10^{-7}$      | ~110 ns                     | **Universal Default**    |
+| **`Fast`**     | Padé [5,4] rational approx.        | Degree-17 Lawson minimax           | $\approx 2.32 \times 10^{-3}$ | **~54 ns**                  | Opt-in (CPU-constrained) |
 
-Implemented in `src/math/activations/tanh/production.rs`:
+### 1.1 Standard Mode (`ActivationPrecision::Standard`, Production Default)
 
-- `simd_tanh_avx2(x: __m256)` — 8 floats, AVX2 + FMA
-- `simd_tanh_dual_avx2(x1, x2: __m256)` — 16 floats, coefficients broadcast once
-- `simd_tanh_avx512(x: __m512)` — 16 floats, AVX-512
+Uses polynomial $\exp$-based kernels with degree-6 Taylor minimax and integer range reduction ($k = \text{round}(x \cdot \log_2 e)$, $r = x - k \cdot \ln 2$). Implemented in [`src/math/activations/tanh/high_fidelity.rs`](../src/math/activations/tanh/high_fidelity.rs) and [`src/math/activations/sigmoid/high_fidelity.rs`](../src/math/activations/sigmoid/high_fidelity.rs):
 
-### Solution Characteristics
+- **Tanh formula:** $\text{tanh}(x) = \frac{e^{2x} - 1}{e^{2x} + 1}$
+- **Sigmoid formula:** $\sigma(x) = \frac{1}{1 + e^{-x}}$
+- **Precision:** Precision is ~10,000× higher than `Fast` mode. Hardware division (`_mm256_div_ps`) incurs a throughput cost (~110 ns for 256 elements vs ~54 ns in `Fast` mode), but guarantees exact-grade outputs across all model topologies.
 
-| Property                                      | Value                                    |
-|:--------------------------------------------- |:---------------------------------------- |
-| Maximum absolute error in [-4, 4]             | ~2.32e-3                                 |
-| Equivalence in mantissa bits                  | ~8.7 bits                                |
-| SIMD operations (AVX2, 8 elem)                | ~9 ops                                   |
-| Throughput `tanh_slice` (256 elem, AVX2)      | **~54 ns**                               |
-| Throughput `tanh_slice` (256 elem, piecewise) | ~~163 ns~~                               |
-| Gain vs. 7-segment piecewise                  | **−66.6%**                               |
-| Coefficients                                  | `PADE_TANH_*` in `src/math/constants.rs` |
+### 1.2 Fast Mode (`ActivationPrecision::Fast`, Performance Opt-in)
 
-### Why `_mm256_div_ps` and not Newton-Raphson Iteration (NR2)?
+Designed for ultra-low latency or CPU-constrained setups:
 
-Empirical experiment (10M samples in [-4, 4]):
-
-| Variant                    | Max Abs Err | RMS Error   | Throughput (256 elem) |
-|:-------------------------- |:----------- |:----------- |:--------------------- |
-| 7-seg Piecewise            | 4.90e-3     | —           | ~163 ns               |
-| Padé NR2 (rcp + 2× Newton) | 2.32e-3     | ≈ Div       | ~104 ns               |
-| **Padé Div (hw div)**      | **2.32e-3** | **minimum** | **~63 ns**            |
-
-The error ratio between NR2 and Division is **1.000×** — the double Newton-Raphson iteration **fully saturates** the f32 mantissa (24 bits). The reciprocal contributes no measurable drift. Therefore, `_mm256_div_ps` is the correct choice: simpler, faster, and technically equivalent in precision to NR2.
-
-> [!NOTE]
-> The intuition that `div_ps` is "slow" comes from older architectures. In modern microarchitectures (Intel Ice Lake, AMD Zen 3+), `_mm256_div_ps` has a latency of 10-14 cycles and a throughput of 1 per 5 cycles — lower than a cascade of 6 `blendv_ps` required by the piecewise alternative.
-
----
-
-## 2. Failed Experiment: Piecewise 7-Segment for Tanh
-
-### What was tried
-
-Replacing the Padé [5,4] with 7 polynomials of degree 5 with branchless blending via `_mm256_blendv_ps`, covering the [-4, 4] domain with variable-width segments.
-
-### Original Motivation
-
-Hypothesis: short segments allow coefficients with lower Chebyshev error per segment, improving global precision.
-
-### Measured Results
-
-| Metric                       | Padé [5,4] (baseline) | 7-seg Piecewise              |
-|:---------------------------- |:--------------------- |:---------------------------- |
-| SIMD operations              | ~9                    | **~28** (7 polys + 6 blends) |
-| Max error [-4, 4]            | 2.32e-3               | **4.90e-3** (worse!)         |
-| Throughput (256 elem)        | 63 ns                 | **163 ns** (+159%)           |
-| `Prewarm_LSTM_2x16_2048samp` | baseline              | **+16%** regression          |
-
-### Why it failed
-
-1. **All 7 polynomials are evaluated unconditionally** (branchless). The cost does not depend on the input value — it is always 7× the cost of a single polynomial.
-2. **Cascade of 6 `blendv_ps`** serializes Port 5 (shuffle unit), creating a sequential dependency bottleneck.
-3. **Tanh has maximum curvature in [0, 1]** — smaller segments in this region improve local error, but coefficients obtained without `fpminimax` (Sollya) are not optimal.
-4. **Conclusion:** Piecewise only outperforms Padé if it has ≤3 segments AND coefficients are recomputed via `fpminimax`. For f32, the cost of 7 segments never pays off.
-
-> [!CAUTION]
-> **Never replace the production `simd_tanh_avx2` path with a piecewise variant without benchmarking the LSTM prewarm (2048 samples).** The LSTM evaluates tanh 4x per cell per timestep — throughput errors scale linearly with depth and block size.
-
-### Current Status
-
-The piecewise implementation is preserved as `simd_tanh_piecewise_avx2` (`#[allow(dead_code)]`) for future research. If resumed, coefficients should be recomputed via:
-
-```text
-sollya> fpminimax(tanh(x), [|1,3,5|], [|SG...|], [a, b], floating, absolute);
-```
-
-for each segment, where `[a, b]` is the segment interval.
-
----
-
-## 3. Production Decision: Sigmoid — Direct Minimax (Degree 17)
-
-### Foundation
-
-The previous implementation used the identity `σ(x) = 0.5 + 0.5 · tanh(x/2)`, propagating the tanh error and adding scaling operations.
-
-### Adopted Solution
-
-Odd polynomial of degree 17 (9 terms) for the [-8, 8] domain, coefficients obtained via **Lawson's algorithm** (weighted minimax).
-
-| Property                 | Tanh identity (baseline) | Direct Minimax              |
-|:------------------------ |:------------------------ |:--------------------------- |
-| Max absolute error       | ~6.8e-4                  | **~4.09e-4** (1.67× better) |
-| SIMD operations          | 16                       | **15**                      |
-| Scalar throughput (LSTM) | baseline                 | **−20.25%**                 |
-
-### Lesson Learned
-
-Smooth symmetric functions on a compact domain (sigmoid in [-8, 8]) are better approximated by a single polynomial of suitable degree than by segments. Segmentation only pays off when there are sharp curvature changes or discontinuities.
-
----
-
-## 4. Discovery: Newton-Raphson Reciprocal Adds No Drift in f32
-
-Empirical experiment proved that **the double Newton-Raphson iteration (NR2) in the Padé division fully saturates the 24-bit f32 mantissa**. The maximum absolute error of NR2 vs. hardware division is a 1.000× ratio — indistinguishable within representable precision.
-
-**Normative implication:** Wherever `rcp_ps + 2× Newton-Raphson` is used in the codebase to approximate a rational Padé division, it can be replaced with `div_ps` with no precision penalty and a potential throughput gain (fewer dependencies, lower register pressure).
-
-A follow-up experiment tested whether a single NR iteration (`rcp_ps + 1×NR`, ~23 bits) could beat `div_ps` given the Padé intrinsic error of ~2.3e-3.  NR1 passed the −80 dB precision gate with ~64 dB margin but was **1.77× slower** than `div_ps` (110 ns vs 62 ns, 256-elem AVX2).  The hypothesis that manual NR saves latency was disproven: modern CPUs pipeline `div_ps` more efficiently than serial NR chains.  `div_ps` remains the optimal choice for both precision and throughput.
-
----
-
-## 5. On WaveNet vs. C++ and BF16 Drift
-
-Parity comparison with NeuralAmpModelerCore revealed that WaveNet Standard SNR remains at **~9.5 dB** regardless of precision improvements in activations. This is because:
-
-1. **The dominant drift is BF16 weight quantization** — u16 weights are converted to bf16 upon loading, introducing a rounding error of ~3.9e-3 per weight.
-2. Improvements in tanh/sigmoid reduce **activation** drift (background), but **weight** drift is structurally larger.
-
-### Hierarchy of Drift Sources (largest to smallest)
-
-```text
-1. BF16/F16 weight quantization                      (~3.9e-3 per element)
-2. Tanh/Sigmoid activation approximation error      (~2.3e-3 Padé, ~4.9e-3 piecewise)
-3. Floating-point accumulation (deep conv)           (O(N·ε), mitigated by Kahan)
-4. Reciprocal in Padé division                       (≈0, saturated in 24 bits)
-```
-
-### Measured: Drift Source Decomposition
-
-Using a self-contained scalar reference engine (f32 weights + exact `f32::tanh`) for WaveNet Standard (CH=16, K=3, HEAD=8, 10+2 layers) with synthetic weights 0.01 and conv1d biases 0.001:
-
-| Source                            | ESR (linear) | ESR (dB)  | Dominance |
-|:--------------------------------- |:------------ |:--------- |:--------- |
-| (a) F16 weight quantization       | 3.01e-7      | −65.2     | **100%**  |
-| (b) tanh Padé [5,4] approximation | 5.01e-16     | −153.0    | ~0%       |
-| (c) f32 accumulation (residual)   | 9.98e-14     | −130.0    | ~0%       |
-| **Total (a+b+c)**                 | **3.01e-7**  | **−65.2** | —         |
-
-**Key findings:**
-
-1. **Weight quantization dominates entirely** — F16 rounding (3.01e-7, −65.2 dB) accounts for essentially 100% of the ESR against the full-precision reference.
-2. **Tanh Padé contribution is negligible** for this topology (5.01e-16, −153.0 dB). The small synthetic weights (0.01) keep internal activations in the linear region of tanh where `tanh(x) ≈ x` with negligible error. This does NOT imply Padé is harmless for real NAM models — real weights are larger and produce activations with `|x| > 1` where Padé error (~2.32e-3 max) becomes significant.
-3. **f32 accumulation error is below measurement noise** — the residual after subtracting quantization and tanh components is effectively zero, confirming that the existing Kahan-compensated primitives are sufficient.
-
-**Recommendation (P2):** Exact mode should prioritize higher-precision weight storage (f32 or compensated F16) over improving the tanh approximation, since the measured weight-quantization ESR dominates by >8 orders of magnitude for this topology. However, a follow-up measurement with real model weights (which produce larger activation ranges) is needed to quantify the tanh contribution under realistic conditions.
-
-### Path to Improving SNR
-
-Bias-tuning for BF16 compensates at model load. The expected gain is ≥1.5 dB SNR on BF16-capable hardware (Intel Sapphire Rapids, AMD Zen 5+). To validate, a CI runner with a compatible CPU is required.
-
----
-
-## 6. Anti-Subnormal Prevention with DC Dither
-
-### Problem
-
-During fade-out/silence, near-zero values in LSTM/WaveNet activations enter the subnormal territory (< 1.175e-38 for f32). Subnormals have a high processing cost (hardware soft emulation) and can introduce "digital click" artifacts during fades.
-
-### Adopted Solution - Anti-Subnormal Prevention with DC Dither
-
-The constant `DENORMAL_DITHER_OFFSET = 1.0e-11` (-220 dBFS) is injected in `apply_input_stage` and removed in `apply_output_stage`.
-
-- **76 dB below** the noise floor of a 24-bit DAC — completely inaudible.
-- **Zero performance overhead** (2 trivial loops per frame, eclipsed by GEMV).
-- Guarantee: no subnormal reaches activations during decay.
-
-> [!TIP]
-> If a future model exhibits "clicks" or "pops" at the output during prolonged silence, first verify that `DENORMAL_DITHER_OFFSET` is being applied correctly to the affected channel.
-
----
-
-## 8. WaveNet Non-Zero Silence Policy
-
-### Phenomenon
-
-With silence input, WaveNet produces a residual output of ~3.58e-5 (−89 dBFS).
-The A2 architecture produces absolute zero under the same conditions.
-
-### Root Cause (confirmed by decomposition test)
-
-The residue is **not a bug**. It originates from the **conv1d bias** terms
-(bias = 0.001 for each layer, 12 layers across both arrays):
-
-1. `tanh(bias) ≈ tanh(0.001) ≈ 0.001` — bias passes through gated activation
-2. These non-zero activations accumulate across layers via `one_by_one` dense projections
-3. The final `head_scale` (0.1) scales the accumulated value to the output
-
-Decomposition test (`tests/soak_test.rs:test_wavenet_silence_decomposition`):
-
-- **Total residue:** 3.58e-5 (−89 dBFS)
-- **Conv1D bias contribution:** 3.58e-5 (**100%** of total)
-- **F16 quantization drift:** 0.0 (zero — 0 × weight = 0 regardless of rounding)
-
-The A2 architecture only zeroes because it uses LeakyReLU(0)=0 with synthetic
-weights — not the case for real WaveNet A1 models.
-
-### Parity with C++ NAMCore
-
-This is **faithful behavior** to NeuralAmpModelerCore v0.5.3:
-
-> "Important: don't expect the model to be outputting zeroes after this. Neural
-> networks don't know that there's anything special about 'zero', and forcing
-> this gets rid of some possibilities (e.g. models that 'are noisy')."
-> — `NAM/dsp.h:67` (tests/fixtures/NeuralAmpModelerCore/)
-
-### Policy Decision
-
-**Do NOT force the output to zero.** Forcing zero would:
-
-1. Diverge from the C++ "bible" (NAMCore) — breaking parity
-2. Eliminate legitimate noisy/saturated model behaviors
-
-The interaction with noise-gate and true-bypass is the responsibility of the
-gate layer (`src/dsp/gate.rs`), not the model inference path.
-
-### DAZ/FTZ Coverage
-
-Denormals-Are-Zero / Flush-To-Zero is active at all entry points to the
-hot-path:
-
-| Location                               | Mechanism                    |
-|:-------------------------------------- |:---------------------------- |
-| `src/math/common/ops.rs:163`           | `set_daz_ftz()` helper       |
-| `src/clap/processor/mod.rs:268`        | Reasserted every 1024 blocks |
-| `src/standalone/rt_setup/thread.rs:72` | Set at RT thread init        |
-
-No denormal penalty is observed in the WaveNet hot-path. The 3.58e-5 residue
-is a normal normalized f32 value.
-
-### References
-
-- `tests/soak_test.rs:53` — `test_wavenet_silence_soak` (`#[ignore]`, 10M frames)
-- `tests/soak_test.rs:117` — `test_wavenet_silence_decomposition` (source isolation)
-- See `fastmath-approximations.md` §6 (anti-subnormal companion) and `docs/audio_fidelity_map.md`.
-
----
-
-## 7. Summary of Normative Rules (Checklist)
-
-For any future modification in `src/math/activations/`:
-
-- [ ] **Benchmark `Prewarm_LSTM_2x16_2048samp`** — sensitive to tanh throughput. A regression > 5% is unacceptable.
-- [ ] **Benchmark `FastMath_tanh_AVX2_256elem`** — validates the slice path micro-benchmark.
-- [ ] **Do not use piecewise > 3 segments** without recomputing coefficients via Sollya `fpminimax`.
-- [ ] **Do not replace `div_ps` with NR2** — both have the same precision in f32; NR2 is slower.
-- [ ] **Maintain the `single` / `dual` separation** — dual must use shared coefficient broadcasts.
-- [ ] **Verify symmetry** — tanh is an odd function. Any implementation must satisfy `f(-x) == -f(x)`.
-- [ ] **Maximum error tolerance:** ≤ 5e-3 (tanh/sigmoid in LSTM inference), ≤ 1e-4 (sigmoid in initialization).
-- [ ] **Run `cargo test --lib`** — all tests must pass without failure after any modification.
-
----
-
-## 9. Product Fidelity Policy — WaveNet Family
-
-### 9.1 Current State: Single Mode (f32 + Poly Tanh)
-
-After the elimination of BF16/F16 dual-mode paths, WaveNet A1 operates
-exclusively in a **single mode**:
-
-- **Weights**: `f32` native — no quantization, no dual storage, no
-  `AlignedVec<u16>` or BF16/F16 paths in WaveNet inference
-- **Tanh activation**: Padé [5,4] polynomial (SIMD AVX2/AVX-512, ~2.32e-3
-  max error, ~54 ns throughput)
-- **Feature flag `high-fidelity`**: **removed** from `Cargo.toml`
-- **No cfg gates**: zero `#[cfg(feature = "high-fidelity")]` in WaveNet code
-- **No `AlignedVec<u16>`** in any WaveNet model, layer, or conv1d component
-
-This single-mode architecture eliminates the entire low-fidelity/high-fidelity
-duality that existed prior to these changes. The ESR vs C++ reference improved
-by ~10 orders of magnitude:
-
-| Architecture         | ESR (linear) | ESR (dB) | SNR (dB) | Precision class |
-|:-------------------- |:------------ |:-------- |:-------- |:--------------- |
-| LSTM 1x16 (BossLSTM) | 0.00e0       | −inf     | inf      | **Bit-exact**   |
-| LSTM 2x8 (BossLSTM)  | 2.68e-3      | −25.7    | 25.7     | f32 + poly tanh |
-| WaveNet A1-Std CH=16 | 2.46e-14     | −136.1   | 136.1    | f32 + poly tanh |
-| WaveNet A1-Std (v2)  | *varies*     | *varies* | 101.8*   | f32 + poly tanh |
-| WaveNet Feather CH=8 | 4.82e-14     | −133.2   | 133.2    | f32 + poly tanh |
-| WaveNet Nano CH=4    | 6.20e-14     | −132.1   | 132.1    | f32 + poly tanh |
-
-> \* Worst-case across multi-SR v2 goldens @ 192 kHz.
-> ESR measured against NeuralAmpModelerCore v0.5.3 reference (commit `9c7b185`).
-> All non-Lite WaveNet models now achieve SNR ≫ 100 dB — comparable to LSTM/Linear.
-
-### 9.2 What Changed
-
-| Prior state (pre-HF6)               | Current state (post-HF6)                            |
-|:----------------------------------- |:--------------------------------------------------- |
-| Dual weight storage (u16 + f32)     | Single f32 storage, no `AlignedVec<u16>` in WaveNet |
-| `#[cfg(feature = "high-fidelity")]` | No cfg gates in WaveNet — removed                   |
-| `high-fidelity = []` in Cargo.toml  | Feature flag removed                                |
-| ESR ~3e-3 to 1e-2 (−25 to −20 dB)   | ESR ~1e-13 (−123 dB) — ~10 orders improvement       |
-| Golden thresholds SNR ≥ 7 dB        | Thresholds SNR 85–105 dB (16-37 dB margin)          |
-| BF16/F16 weight quantization        | Eliminated for WaveNet (zero u16 in hot-path)       |
-
-### 9.3 Tanh Poly Approximation — Remaining Divergence from C++
-
-The Padé [5,4] tanh approximation is the **sole remaining** divergence from the
-IEEE-754 `std::tanh` used by C++ NAMCore. Its contribution to total ESR was
-measured at 8.49e-15 ESR (−140.7 dB) for synthetic weights — negligible. With
-real model weights, the Padé error (< 2.32e-3 max) is the only remaining
-non-exact component, but still yields SNR ≫ 100 dB across all non-Lite models.
-
-> The decision to retain Padé [5,4] tanh (vs fully exact `f32::tanh`) is
-> performance-driven: Padé achieves ~54 ns vs ~163 ns for exact tanh, with
-> the trade-off being < 2.32e-3 local error — well below the 24-bit DAC
-> quantization floor in practice.
-
-### 9.4 Lite Architectures — Resolved (PM-02)
-
-WaveNet **Lite (CH=12)** historical 🔴 "SNR ≈ 0.9 dB" divergence vs C++ has been fully **resolved** (122.3 dB).
-
-> [!NOTE]
-> **RCA (Root Cause Analysis):** The divergence was caused by a buffer wrap alignment bug in the `MirroredBuffer` delay lines. The buffer was rounded to memory page boundaries (4096 bytes = 1024 `f32`) without ensuring alignment to the channel count/stride. For non-power-of-two channel counts (CH=12 in Lite array1, CH=6 in Lite array2), `1024 % 12 = 4` and `1024 % 6 = 4`, causing the wrap pointer to shift by +4 elements per wrap cycle, leading to rapid decorrelation. Other standard topologies (CH=16/8/4) are divisible by 1024 and were never affected.
->
-> **Resolution:** Solved via `MirroredBuffer::new_aligned(req, elem_multiple)` which ensures `size_elements % channels == 0`. The golden vector was also updated to use the real model `EVH-5150-Lite.nam`. Three active regression tests guard this implementation.
-
-| Model                   | Status                                | SNR (vs C++) |
-|:----------------------- |:------------------------------------- |:------------ |
-| BossWN-lite (synthetic) | Obsolete — replaced by real CH=12     | ~0.9 dB      |
-| EVH-5150-Lite (real)    | ✅ Golden parity resolved             | 122.3 dB     |
-
-### 9.5 Historical Context: The Lo-Fi/Hi-Fi Duality (Removed)
-
-The dual-mode architecture (low-fidelity default + high-fidelity opt-in) existed
-from earlier iterations. It was eliminated
-because:
-
-1. The quantitative performance advantage of low-fidelity over exact f32 was
-   **never rigorously measured** with real-world models on modern x86-64-v3
-   hardware (see §9.5, historical lo-fi mode decision)
-2. A2 architecture demonstrated that quality and efficiency are **not**
-   mutually exclusive — A2 uses native f32 + LeakyReLU and is simultaneously
-   more efficient and more faithful than WaveNet A1
-3. The dual path introduced complexity (dual `AlignedVec<u16/f32>` storage,
-   compile-time cfg gates, dual weight dispatch) for unquantified benefit
-4. The simplification resulted in a single f32 path, and the
-   resulting ESR improvement (~10 orders of magnitude) validated the decision
-
-> [!NOTE]
-> Sections 2–8 of this document remain current and authoritative for tanh
-> (Padé [5,4]), sigmoid (minimax degree-17), anti-subnormal dither, and
-> WaveNet non-zero silence policy. Sections §5 (BF16 quantization drift) is
-> historical data — BF16/F16 paths no longer exist in WaveNet A1 inference,
-> though they remain active in LSTM state quantization and A2 rechannel weights.
-
-### 9.6 Cross-References
-
-| Item | Location                          | Topic                                  |
-|:---- |:--------------------------------- |:-------------------------------------- |
-| PM-02| §9.4 (this document)              | Lite resolved (aligned MirroredBuffer) |
-
----
-
-## Reference
-
-- Kahan, W. "Further remarks on reducing truncation errors." *CACM*, 1965. (Kahan summation)
-- Muller, J.-M. *Elementary Functions: Algorithms and Implementation*. 3rd ed. Birkhäuser, 2016. (Padé approximants)
-- Intel® Intrinsics Guide — `_mm256_div_ps` latency/throughput per microarchitecture.
-- [Sollya](https://www.sollya.org/) — tool for computing optimal `fpminimax` coefficients.
-
-## 10. Activation Precision Modes — Fast (Padé) vs. Standard (exact-grade)
-
-NAM-rs provides a runtime-selectable activation precision switch via the `ActivationPrecision`
-enum in [`src/math/activations/mod.rs`](../src/math/activations/mod.rs). The mode is set once at
-initialisation (or during a hot-swap rebuild) via an atomic flag — the CPU branch predictor
-specialises to whichever path is stable during steady-state inference.
-
-### 10.1 Fast Mode (`ActivationPrecision::Fast`)
-
-Uses the Padé [5,4] rational approximant for tanh and the direct minimax
-degree-17 polynomial for sigmoid — both documented in §§1–3 above. Opt-in for CPU-constrained
-setups: fastest path, ~54 ns for 256-element slice (AVX2), error well below the 16-bit PCM
-quantization floor. `Standard` (exact-grade polynomial) is the universal production default.
+- Uses Padé [5,4] rational approximation for `tanh` (~54 ns for 256 elements, AVX2).
+- Uses direct minimax degree-17 polynomial for `sigmoid`.
 
 > [!WARNING]
-> **Calibration Limits under Fast Mode:** The FastMath approximations are optimized for speed over compact domains: tanh is calibrated on $[-4, 4]$ (max absolute error $\approx 2.32\times 10^{-3}$) and sigmoid on $[-8, 8]$ (max absolute error $\approx 4.09\times 10^{-4}$). In models with large hidden layers (such as `BossLSTM-1x16` where weight norms and pre-activation gate values exceed these ranges—e.g., tanh inputs $|g_g| > 4$ and sigmoid inputs $|g_{sig}| > 8$), the approximations lose calibration. In recurrent architectures (LSTM), this leads to cumulative recurrent state drift over time in `Fast` mode, which is resolved by using the `Standard` (exact-grade) precision mode.
+> **Calibration Limits under Fast Mode:** `Fast` mode approximations are optimized over compact domains: `tanh` on $[-4, 4]$ (max absolute error $\approx 2.32 \times 10^{-3}$) and `sigmoid` on $[-8, 8]$ (max absolute error $\approx 4.09 \times 10^{-4}$). In recurrent architectures (LSTM) with large hidden states where gate inputs $|g| > 4$, approximation errors accumulate over time, creating recurrent state drift. Standard mode avoids this drift and is recommended for recurrent models.
 
-### 10.2 Standard Mode (`ActivationPrecision::Standard`, universal default)
+### 1.3 Interaction with Oversampling & Full Topology Coverage
 
-Uses polynomial exp-based kernels with degree-6 Taylor minimax and integer range reduction
-(`k = round(x·log₂e)`, `r = x − k·ln 2`). Implemented in
-[`src/math/activations/tanh/high_fidelity.rs`](../src/math/activations/tanh/high_fidelity.rs):
+- **Oversampling Interaction:** In HQ mode (4× oversampling, see [`docs/architecture.md`](architecture.md)), half-band filtering eliminates high-frequency aliasing. Residual distortion is then bounded by activation precision, where `Standard` mode achieves SNR $> 120\text{ dB}$.
+- **Full Model Coverage:** Activation precision dispatch is supported across all model families (WaveNet A1/A2, LSTM 1×N / 2×N, ConvNet, and Dynamic models), including fused 4-gate LSTM GEMV kernels ([`src/math/lstm/gates.rs`](../src/math/lstm/gates.rs)).
 
-| Function  | Formula                                            | Max Error (vs. f32 ref) |
-|:--------- |:-------------------------------------------------- |:----------------------- |
-| tanh      | `(e²ˣ − 1) / (e²ˣ + 1)` with exp polynomial        | ≤ 2.4e-7                |
-| sigmoid   | `1 / (1 + e⁻ˣ)` with exp polynomial                | ≤ 2.1e-7                |
+---
 
-Error is ~10,000× lower than `Fast` mode. The exp-based formulation requires one hardware
-division per activation — throughput is dominated by the `_mm256_div_ps` instruction (~10–14
-cycles latency on modern microarchitectures) rather than the polynomial evaluation.
+## 2. Production FastMath Approximations (`Fast` Mode)
 
-### 10.3 Interaction with Oversampling
+### 2.1 Tanh — Padé [5,4] with Hardware Division
 
-Activation precision improvements are most effective when **combined with oversampling** (HQ mode,
-see [`docs/architecture.md §5.0O`](architecture.md)). The rationale:
+#### Approximating Function
 
-1. Without oversampling, non-linear activation distortion products (harmonics above Nyquist) fold
-   back into the baseband — this aliasing dominates the error floor regardless of activation precision.
-2. With 4× oversampling, half-band filtering removes the majority of folded harmonics. The
-   **residual aliasing** is then dominated by tanh/sigmoid approximation error — this is where
-   Standard (exact-grade) mode provides measurable improvement.
-3. In practice, Fast + 4× oversampling already achieves **>100 dB SNR** for most use cases.
-   Standard provides a further margin for offline rendering and critical listening.
+$$\text{tanh}(x) \approx \frac{x \cdot (x^2 + 105) \cdot (x^2 + 945)}{(15x^2 + 420) \cdot x^2 + 945}$$
 
-### 10.4 Full Topology Coverage (including LSTM Fused Gates)
+Implemented in [`src/math/activations/tanh/production.rs`](../src/math/activations/tanh/production.rs):
 
-All model families fully support the `ActivationPrecision` dispatch. During Épico β, coverage was extended to the LSTM fused 4-gate GEMV kernels across all paths:
+- `simd_tanh_avx2(x: __m256)` — 8 floats, AVX2 + FMA.
+- `simd_tanh_dual_avx2(x1, x2: __m256)` — 16 floats, broadcast coefficients shared once.
+- `simd_tanh_avx512(x: __m512)` — 16 floats, AVX-512.
+- `scalar_pade_tanh(x: f32)` — Scalar fallback with `mul_add`.
 
-- Scalar fallback (`process_sample_scalar`)
-- AVX2 SIMD (`fused_lstm_gates_avx2`)
-- AVX-512 SIMD (`fused_lstm_gates_avx512`)
+#### Solution Characteristics
 
-The dispatch is performed via a branch-direct hoisted flag check before entering the loops, maintaining zero allocations and full real-time safety. Coverage now extends to:
+| Property                                 | Value                                                                |
+|:---------------------------------------- |:-------------------------------------------------------------------- |
+| Maximum absolute error in $[-4, 4]$      | $\approx 2.32 \times 10^{-3}$                                        |
+| SIMD operations (AVX2, 8 elem)           | ~9 ops                                                               |
+| Throughput `tanh_slice` (256 elem, AVX2) | **~54 ns**                                                           |
+| Coefficients                             | `PADE_TANH_*` in [`src/math/constants.rs`](../src/math/constants.rs) |
 
-- WaveNet A1 (all profiles: Standard, Lite, Feather, Nano, Dyn)
-- WaveNet A2 (Full + Lite + Dyn)
-- LSTM (all configurations: 1×8, 1×12, 1×16, 1×24, 1×40, 2×8, 2×12, 2×16, 2×24, and Dyn)
-- ConvNet
-- Linear (FIR models — no activations, unaffected)
+#### Rationale for Hardware Division (`_mm256_div_ps`) vs Newton-Raphson
 
-### 10.5 Cross-References
+Empirical evaluation (10M samples in $[-4, 4]$):
 
-| Item | Location                                     | Topic                                  |
-|:---- |:-------------------------------------------- |:-------------------------------------- |
-| Test | `tests/activation_precision.rs`              | ESR via oracle, functional validation  |
-| Code | `src/math/activations/tanh/high_fidelity.rs` | Polynomial exp-based kernels           |
-| Code | `src/math/activations/tanh/production.rs`    | Padé [5,4] production kernels          |
+| Variant                        | Max Abs Error             | RMS Error     | Throughput (256 elem) |
+|:------------------------------ |:------------------------- |:------------- |:--------------------- |
+| 7-Segment Piecewise            | $4.90 \times 10^{-3}$     | —             | ~163 ns               |
+| Padé NR2 (`rcp` + 2× Newton)   | $2.32 \times 10^{-3}$     | $\approx$ Div | ~104 ns               |
+| **Padé Div (`_mm256_div_ps`)** | **$2.32 \times 10^{-3}$** | **Minimum**   | **~63 ns**            |
+
+Double Newton-Raphson iteration (NR2) fully saturates the 24-bit `f32` mantissa, yielding an error ratio of 1.000× relative to hardware division. On modern x86 microarchitectures, `_mm256_div_ps` has low latency (10–14 cycles) and high throughput, making hardware division simpler, faster (~63 ns vs ~104 ns), and more accurate than manual NR pipelines.
+
+---
+
+### 2.2 Sigmoid — Direct Minimax (Degree 17)
+
+Instead of propagating `tanh` error via $\sigma(x) = 0.5 + 0.5 \cdot \text{tanh}(x/2)$, `Fast` mode uses a direct odd polynomial of degree 17 (9 terms) for $[-8, 8]$, generated via Lawson's weighted minimax algorithm.
+
+Implemented in [`src/math/activations/sigmoid/production.rs`](../src/math/activations/sigmoid/production.rs):
+
+| Metric             | Tanh Identity Baseline       | Direct Minimax (Degree 17)                       |
+|:------------------ |:---------------------------- |:------------------------------------------------ |
+| Max Absolute Error | $\approx 6.8 \times 10^{-4}$ | **$\approx 4.09 \times 10^{-4}$** (1.67× better) |
+| SIMD Operations    | 16 ops                       | **15 ops**                                       |
+
+---
+
+## 3. Micro-Architectural Experiments & Findings
+
+### 3.1 Failed Experiment: Piecewise 7-Segment Tanh
+
+Replacing Padé [5,4] with 7 polynomials of degree 5 blended branchlessly via `_mm256_blendv_ps` was evaluated and rejected:
+
+| Metric                 | Padé [5,4] (Baseline) | 7-Segment Piecewise               |
+|:---------------------- |:--------------------- |:--------------------------------- |
+| SIMD Operations        | ~9                    | **~28** (7 polys + 6 blends)      |
+| Max Error in $[-4, 4]$ | $2.32 \times 10^{-3}$ | **$4.90 \times 10^{-3}$** (worse) |
+| Throughput (256 elem)  | 63 ns                 | **163 ns** (+159% latency)        |
+
+**Root Cause of Failure:**
+
+1. Branchless blending evaluates all 7 polynomials unconditionally.
+2. Cascaded `blendv_ps` instructions bottleneck Port 5 (shuffle unit).
+3. The implementation was removed from production code.
+
+### 3.2 Single-Mode `f32` WaveNet & Model Fidelity
+
+WaveNet A1 models operate exclusively with native `f32` weights and buffers (no `u16` BF16/F16 paths in the hot-path).
+
+- **Weights:** Native `f32` arrays.
+- **Activations:** Standard mode achieves SNR $\gg 100\text{ dB}$ (ESR $\sim 10^{-13}$ to $10^{-14}$) vs C++ NAMCore reference across standard models (Standard, Feather, Nano).
+- **Lite Array Alignment:** Historical divergence in WaveNet Lite (CH=12) was resolved by aligning `MirroredBuffer` delay line boundaries (`MirroredBuffer::new_aligned`), guaranteeing channel stride divisibility.
+
+---
+
+## 4. Real-Time Audio Policies (Silence & Subnormals)
+
+### 4.1 WaveNet Non-Zero Silence Policy
+
+Under silent input, WaveNet models produce a residual output of $\approx 3.58 \times 10^{-5}$ ($-89\text{ dBFS}$).
+
+- **Root Cause:** Accumulation of Conv1D bias terms ($0.001$ per layer across 12 layers) through dense $1\times 1$ projections and `head_scale` ($0.1$).
+- **Policy:** Faithful to C++ NAMCore (`NAM/dsp.h`). The inference hot-path does **not** force zero output, preserving authentic model characteristics (e.g. noise floor / saturation). Gating is handled by the dedicated noise gate layer ([`src/dsp/gate.rs`](../src/dsp/gate.rs)).
+
+### 4.2 Anti-Subnormal Prevention with DC Dither
+
+To prevent CPU soft-emulation penalties when processing near-zero values during quiet signals:
+
+- Constant `DENORMAL_DITHER_OFFSET = 1.0e-11` ($-220\text{ dBFS}$) is added during `apply_input_stage` and subtracted during `apply_output_stage`.
+- Completely inaudible ($76\text{ dB}$ below 24-bit DAC floor) with zero runtime performance cost.
+
+### 4.3 DAZ / FTZ Enforcement
+
+Denormals-Are-Zero (DAZ) and Flush-To-Zero (FTZ) flags are active at all hot-path entry points:
+
+- Helper function `set_daz_ftz()` in [`src/math/common/ops.rs`](../src/math/common/ops.rs#L166).
+- Reasserted in CLAP audio processor loops ([`src/clap/processor/mod.rs`](../src/clap/processor/mod.rs)) and standalone RT thread setup.
+
+---
+
+## 5. Summary of Normative Guidelines & Checklist
+
+When modifying or adding activation functions in [`src/math/activations/`](../src/math/activations/):
+
+- [ ] **Benchmark LSTM Prewarm:** Run `cargo bench` to verify LSTM prewarm (`Prewarm_LSTM_2x16_2048samp`). Regressions $> 5\%$ are unacceptable.
+- [ ] **Validate Vector Alignment:** Ensure AVX2 and AVX-512 kernels process aligned chunks and handle remainders cleanly.
+- [ ] **Check Function Symmetry:** Verify odd symmetry for `tanh` ($f(-x) == -f(x)$).
+- [ ] **Maintain Single/Dual Lanes:** Keep shared broadcast structure in `simd_tanh_dual_avx2` to amortize coefficient loading cost.
+- [ ] **Hardware Division Preference:** Prefer `_mm256_div_ps` over manual Newton-Raphson reciprocal chains when target precision is `f32`.
+- [ ] **Validate Parity & Lints:** Run `utils/lints.sh` and `cargo test` to ensure zero broken assertions across standard and fast precision modes.
+
+---
+
+## References
+
+- Muller, J.-M. *Elementary Functions: Algorithms and Implementation*. 3rd ed. Birkhäuser, 2016. (Padé approximants)
+- Intel® Intrinsics Guide — `_mm256_div_ps` instruction latency and throughput specifications.
+- [Sollya](https://www.sollya.org/) — Software tool for computing optimal `fpminimax` polynomial coefficients.
+- [docs/architecture.md](architecture.md) — System Architecture & Quality Modes.
+- [docs/audio_fidelity_map.md](audio_fidelity_map.md) — Audio Fidelity and Parity Map.
