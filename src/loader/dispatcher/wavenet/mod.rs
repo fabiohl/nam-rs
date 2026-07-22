@@ -54,11 +54,11 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
 
 /// Rejects WaveNet models whose `condition_dsp` sub-model is an LSTM.
 ///
-/// **Postura fail-closed (T3.1):** LSTM `condition_dsp` models produce structurally
+/// **Fail-closed stance:** LSTM `condition_dsp` models produce structurally
 /// wrong audio (ESR ≈ 1.3e-1, -8.9 dB — plainly audible). The root cause is a
-/// state-update divergence between the production LSTM and the f64 oracle, confirmed
-/// in T2.3 investigation. The upstream C++ NAMcore does not process these files
-/// correctly either (parity-first). The fix is tracked for Sprint 4.
+/// state-update divergence between the production LSTM and the f64 oracle. The
+/// upstream C++ NAMcore does not process these files correctly either
+/// (parity-first). This is a known limitation, not yet implemented.
 ///
 /// **Scope:** Applies to any LSTM architecture embedded as `condition_dsp` inside a
 /// WaveNet model. Standalone LSTM models (`.nam` with `architecture: "LSTM"`) are
@@ -70,9 +70,9 @@ fn reject_condition_dsp_lstm(cond_dsp_data: &NamModelData) -> anyhow::Result<()>
         bail!(
             "LSTM condition_dsp is not supported — the sub-model embedded in this \
              WaveNet model uses an LSTM architecture which produces structurally \
-             incorrect audio (ESR ≈ 1.3e-1, confirmed in T2.3 investigation). \
-             Upstream NAMcore also does not support this combination. Tracking: \
-             Sprint 4. Use a standalone WaveNet or LSTM model instead."
+             incorrect audio (ESR ≈ 1.3e-1). Upstream NAMcore also does not \
+             support this combination. Use a standalone WaveNet or LSTM model \
+             instead."
         );
     }
     Ok(())

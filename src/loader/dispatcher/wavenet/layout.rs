@@ -152,6 +152,9 @@ pub fn transpose_conv1d_interleaved_4wide(
         weights.len() >= padded_total,
         "weights slice too short for interleaved output"
     );
+    // Target layout: [block][kernel][in_ch][lane], 4 lanes per block. Each block
+    // holds 4 output channels, zero-padded past `out_ch` so an SIMD dot over the
+    // lane dimension never strides beyond the block boundary.
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -190,6 +193,8 @@ pub fn transpose_conv1d_interleaved_8wide(
         weights.len() >= padded_total,
         "weights slice too short for interleaved output"
     );
+    // Target layout: [block][kernel][in_ch][lane], 8 lanes per block (analogue to
+    // the 4-wide variant, grouping 8 output channels per block for wider SIMD).
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -228,6 +233,8 @@ pub fn transpose_conv1d_interleaved_16wide(
         weights.len() >= padded_total,
         "weights slice too short for interleaved output"
     );
+    // Target layout: [block][kernel][in_ch][lane], 16 lanes per block, feeding
+    // `dot_product_16x_f32` (AVX-512). Lanes ≥ out_ch are zero-padded.
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -257,6 +264,9 @@ pub(crate) fn transpose_4wide_to_8wide(
     kernel: usize,
 ) {
     let num_blocks_4 = out_ch.div_ceil(4);
+    // Merge pairs of consecutive 4-wide blocks into one 8-wide block: lanes 0..4
+    // come from src_b = 2*b and lanes 4..8 from src_b = 2*b+1, zero-filling when
+    // the source block index exceeds `num_blocks_4`.
     for b in 0..out_ch.div_ceil(8) {
         for k in 0..kernel {
             for in_c in 0..in_ch {
@@ -294,6 +304,9 @@ pub(crate) fn transpose_4wide_to_16wide(
     kernel: usize,
 ) {
     let num_blocks_4 = out_ch.div_ceil(4);
+    // Merge groups of four consecutive 4-wide blocks into one 16-wide block: lane
+    // groups 0..4, 4..8, 8..12, 12..16 come from src_b = 4*b, 4*b+1, 4*b+2, 4*b+3,
+    // zero-filling any source block beyond `num_blocks_4`.
     for b in 0..out_ch.div_ceil(16) {
         for k in 0..kernel {
             for in_c in 0..in_ch {
