@@ -31,7 +31,7 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
     });
 }
 
-/// A8: Padé [5,4] tanh with single Newton-Raphson on reciprocal (AVX2).
+/// Padé [5,4] tanh with single Newton-Raphson on reciprocal (AVX2).
 /// Evaluates rcp_ps + 1×NR throughput vs div_ps and NR2.
 fn bench_tanh_pade_nr1_256(c: &mut Criterion) {
     use std::arch::x86_64::*;
@@ -50,7 +50,7 @@ fn bench_tanh_pade_nr1_256(c: &mut Criterion) {
     });
 }
 
-/// A8: Padé [5,4] tanh with single Newton-Raphson — dual path (AVX2).
+/// Padé [5,4] tanh with single Newton-Raphson — dual path (AVX2).
 /// Measures throughput when processing two independent registers.
 fn bench_tanh_pade_nr1_dual_256(c: &mut Criterion) {
     use std::arch::x86_64::*;
@@ -71,7 +71,7 @@ fn bench_tanh_pade_nr1_dual_256(c: &mut Criterion) {
     });
 }
 
-/// E8.T04: Padé [5,4] tanh with double Newton-Raphson on reciprocal (AVX2).
+/// Padé [5,4] tanh with double Newton-Raphson on reciprocal (AVX2).
 /// Evaluates rcp_ps + 2×NR iteration throughput vs piecewise minimax.
 fn bench_tanh_pade_nr2_256(c: &mut Criterion) {
     use std::arch::x86_64::*;
@@ -90,7 +90,7 @@ fn bench_tanh_pade_nr2_256(c: &mut Criterion) {
     });
 }
 
-/// E8.T04: Padé [5,4] tanh with hardware division oracle (AVX2).
+/// Padé [5,4] tanh with hardware division oracle (AVX2).
 /// IEEE 754 full-precision reference — maximum fidelity, minimum throughput.
 fn bench_tanh_pade_div_256(c: &mut Criterion) {
     use std::arch::x86_64::*;
@@ -124,7 +124,7 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
-/// TC3: Polynomial tanh with hardware division (AVX2).
+/// Polynomial tanh with hardware division (AVX2).
 /// IEEE 754 full-precision division — baseline for NR evaluation.
 fn bench_tanh_poly_div_256(c: &mut Criterion) {
     use std::arch::x86_64::*;
@@ -143,7 +143,7 @@ fn bench_tanh_poly_div_256(c: &mut Criterion) {
     });
 }
 
-/// TC3: Polynomial tanh with single Newton-Raphson on reciprocal (AVX2).
+/// Polynomial tanh with single Newton-Raphson on reciprocal (AVX2).
 /// Evaluates rcp_ps + 1×NR throughput vs hardware division.
 fn bench_tanh_poly_nr1_256(c: &mut Criterion) {
     use std::arch::x86_64::*;
@@ -162,7 +162,7 @@ fn bench_tanh_poly_nr1_256(c: &mut Criterion) {
     });
 }
 
-/// TC3: Polynomial tanh with double Newton-Raphson on reciprocal (AVX2).
+/// Polynomial tanh with double Newton-Raphson on reciprocal (AVX2).
 /// Evaluates rcp_ps + 2×NR throughput vs NR1 and hardware division (oracle).
 fn bench_tanh_poly_nr2_256(c: &mut Criterion) {
     use std::arch::x86_64::*;

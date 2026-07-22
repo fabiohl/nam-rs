@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Benchmarks: Radix-2 DIT vs Radix-4 DIT FFT — Research Artifact (Task A9, Spr.4).
+//! Benchmarks: Radix-2 DIT vs Radix-4 DIT FFT — preserved research artifact.
 //!
-//! **Status: CONCLUÍDO. Preservado para reprodutibilidade da decisão de engenharia.**
+//! Measures forward/inverse FFT throughput of `FftPlanner` (Radix-2) vs
+//! `FftPlannerRadix4` (Radix-4) at the sizes relevant to CabSim
+//! (N=256, N=1024, f32 scalar). Results showed Radix-4 to be 7–19% slower,
+//! which led to the decision to keep Radix-2 DIT with SIMD as the project's
+//! canonical algorithm.
 //!
-//! Mede o throughput do FFT forward/inverse de `FftPlanner` (Radix-2) vs
-//! `FftPlannerRadix4` (Radix-4) nos tamanhos relevantes ao CabSim
-//! (N=256, N=1024, f32 escalar). Resultados demonstram que Radix-4 é
-//! 7–19% mais lento, levando à decisão de manter Radix-2 DIT com SIMD
-//! como algoritmo canônico do projeto.
-//!
-//! # Running
+//! ## Running
 //! ```sh
 //! cargo bench --bench fft_radix4_bench --features long_bench
 //! ```

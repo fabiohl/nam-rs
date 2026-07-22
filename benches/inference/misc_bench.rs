@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! Miscellaneous inference benchmarks: LinearModel dot product, ContainerModel
+//! crossfade, dynamic fallbacks, non-distributable models, and ConvNet.
+
 use criterion::Criterion;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::parse_nam_json;

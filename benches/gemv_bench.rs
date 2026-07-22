@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Micro-benchmarks for GEMV kernels — Épico G Sprint 6, Tarefa 1.
+//! Micro-benchmarks for GEMV kernels.
 //!
 //! Isolates measurement of `fused_add_gemv_avx2` (generic) vs fully-unrolled
-//! specialized prototypes for the dimensions listed in the sprint plan:
+//! specialized prototypes for the dimensions listed below:
 //! 1×4, 4×4, 4×6, 8×4, 8×6, 8×8 (Out × In).
 //!
 //! All kernels operate on f16c-quantized weights and f32 inputs/outputs.
@@ -37,9 +37,11 @@ struct GemvTestData {
 /// Creates deterministic test data for a given (in_len, out_len) pair.
 /// Weights are derived from a sinusoidal pattern to avoid degenerate values.
 ///
-/// The f32→f16 quantization here uses intentional truncation (no rounding)
-/// to produce a specific weight pattern divergent from `f32_to_f16_bits`.
-/// See TODO-findings.md F5 — do not replace with library helper.
+/// The f32→f16 quantization here uses intentional truncation (no rounding),
+/// producing a weight bit-pattern that diverges from the library's
+/// `f32_to_f16_bits` (which uses round-to-nearest-even). Do NOT replace this
+/// with the library helper — doing so would change the measured weights and
+/// invalidate the benchmark workload.
 fn make_test_data(in_len: usize, out_len: usize) -> GemvTestData {
     let in_frame: Vec<f32> = (0..in_len).map(|i| (i as f32 * 0.17).sin()).collect();
     let bias: Vec<f32> = (0..out_len)

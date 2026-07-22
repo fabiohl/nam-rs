@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! WaveNet inference benchmarks: Standard model, buffer-size scaling, dynamic
+//! free-geometry fallback, and cataloged-vs-dynamic comparison.
+
 use criterion::Criterion;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::models::NamModel;
@@ -27,11 +30,11 @@ pub fn bench_wavenet_standard_process(c: &mut Criterion) {
     });
 }
 
-/// Benchmarks WaveNet Standard (P10) inference at small RT buffer sizes (1, 16, 64
+/// Benchmarks WaveNet Standard inference at small RT buffer sizes (1, 16, 64
 /// samples) covering the full RT range: 1 (per-sample minimum), 16 (small plugin
 /// buffer), 64 (common CLAP/JACK buffer).
 ///
-/// Record throughput (elem/s) and latency (ns) for each size.
+/// Records throughput (elem/s) and latency (ns) for each size.
 pub fn bench_wavenet_p10_small_block_sizes(c: &mut Criterion) {
     let mut model = match load_and_prewarm("BossWN-standard.nam") {
         Some(m) => m,

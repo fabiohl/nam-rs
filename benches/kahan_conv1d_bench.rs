@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! Micro-benchmarks for Kahan-compensated vs plain accumulation in Conv1d.
+//!
+//! Isolates the inner-loop overhead of Kahan summation against naive
+//! accumulation across kernel sizes and channel configurations, using the
+//! AVX2 `dot_product_4x_interleaved` primitive.
+//!
+//! ## Running
+//!
+//! ```sh
+//! cargo bench --bench kahan_conv1d_bench
+//! ```
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::math::common::half::f32_to_f16_bits;
 use nam_rs::math::common::{AlignedVec, Avx2Math, SimdMath, kahan_add};

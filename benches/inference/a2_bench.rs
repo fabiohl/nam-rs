@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! A2 (Channel-Aligned WaveNet) inference benchmarks: Full (CH=8) and Lite
+//! (CH=3) variants, prewarm cost, and cross-variant comparison.
+
 use criterion::Criterion;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::models::NamModel;

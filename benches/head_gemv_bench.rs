@@ -3,8 +3,8 @@
 
 //! Micro-benchmark for the Lite CH12 head GEMV masked path (in=12, out=6).
 //!
-//! Sprint S5, T2.S5.1 — Isolates `gemv_no_bias_f32_avx2(12, 6, 1)` to measure
-//! the cost of the masked tail path (`out_len=6 < 8`) vs full 8-wide path.
+//! Isolates `gemv_no_bias_f32_avx2(12, 6, 1)` to measure the cost of the
+//! masked tail path (`out_len=6 < 8`) vs the full 8-wide path.
 //!
 //! ## Running
 //!

@@ -6,8 +6,9 @@
 //! Provides deterministic signal generators, synthetic model-data builders,
 //! and model-loader helpers used across the bench suite.
 //!
-//! This module is compiled into multiple bench binaries; individual
-//! functions may appear unused in some binaries during phased migration.
+//! This module is compiled into multiple bench binaries; individual functions
+//! may appear unused in some binaries — this is expected and silenced with
+//! `#![allow(dead_code)]` below.
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
@@ -18,6 +19,8 @@ use nam_rs::models::lstm::lstm_weight_count;
 use std::fs;
 use std::path::PathBuf;
 
+/// Generates `num_samples` of a deterministic 440 Hz sine wave at 48 kHz.
+/// Used as the standard excitation signal across inference benches.
 pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
     const F0: f64 = 440.0;
     const SR: f64 = 48_000.0;
@@ -27,6 +30,9 @@ pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
         .collect()
 }
 
+/// Builds synthetic `NamModelData` for an LSTM with the given layer count and
+/// hidden size, using near-zero weights (0.01) to benchmark dispatch and process
+/// paths without external fixture files.
 pub fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
     let total_weights = lstm_weight_count(num_layers, hidden_size);
     NamModelData {
@@ -50,6 +56,9 @@ pub fn make_lstm_data(num_layers: usize, hidden_size: usize) -> NamModelData {
     }
 }
 
+/// Builds synthetic `NamModelData` for a free-geometry WaveNet Dynamic model
+/// (CH=5, K=3, COND=3) that forces routing to `WaveNetModelDyn` instead of a
+/// const-generic SKU.
 pub fn make_wavenet_dyn_data() -> NamModelData {
     let channels = 5usize;
     let kernel_size = 3usize;
@@ -117,6 +126,8 @@ pub fn make_wavenet_dyn_data() -> NamModelData {
     }
 }
 
+/// Builds synthetic `NamModelData` for a WaveNet A2 Dynamic model (CH=4, gated)
+/// that forces routing to `WaveNetA2Dyn` (CH=4 is not in the {3,8} catalog).
 pub fn make_wavenet_a2_dyn_data() -> NamModelData {
     use nam_rs::models::a2::params::{A2_DILATIONS, A2_KERNEL_SIZES};
 
@@ -163,6 +174,8 @@ pub fn make_wavenet_a2_dyn_data() -> NamModelData {
     }
 }
 
+/// Resolves the path to a model fixture file, preferring the `models-nondist`
+/// directory when present and falling back to `tests/fixtures/models`.
 pub fn model_path(filename: &str) -> PathBuf {
     let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut nondist = base.clone();
@@ -177,6 +190,9 @@ pub fn model_path(filename: &str) -> PathBuf {
     }
 }
 
+/// Loads and prewarms a model fixture (2048 samples). Returns `None` if the
+/// file is missing or fails to parse — callers should `return` to skip the
+/// benchmark silently when this happens.
 pub fn load_and_prewarm(filename: &str) -> Option<nam_rs::models::StaticModel> {
     let path = model_path(filename);
     if !path.exists() {
@@ -189,6 +205,10 @@ pub fn load_and_prewarm(filename: &str) -> Option<nam_rs::models::StaticModel> {
     Some(*model)
 }
 
+/// Loads and parses a model fixture into `NamModelData` without building the
+/// model. Returns `None` if the file is missing or fails to parse. Used by
+/// benches that need `model_data` downstream (e.g. prewarm cost with
+/// `iter_with_setup`).
 pub fn load_model_data(filename: &str) -> Option<NamModelData> {
     let path = model_path(filename);
     let json_data = fs::read_to_string(&path).ok()?;
@@ -207,6 +227,8 @@ pub fn make_f32_test_data(in_len: usize, out_len: usize) -> (Vec<f32>, Vec<f32>,
     (in_frames, weights, out_frames)
 }
 
+/// Generates a synthetic impulse response (exponentially decaying sinusoid)
+/// for CabSim/Linear benchmarks, avoiding external fixture dependencies.
 pub fn synth_ir(len: usize, freq: f32, decay: f32) -> Vec<f32> {
     const SR: f32 = 48000.0;
     (0..len)

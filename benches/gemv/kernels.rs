@@ -2,8 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 // Specialized GEMV kernels (AVX2, fully-unrolled by dimension).
-// Extracted from gemv_bench.rs per F4 — these are bench prototypes,
-// not yet canonized in the library.
+// These are bench prototypes, not yet canonized in the library.
 
 use core::arch::x86_64::*;
 use nam_rs::math::common::half::f16_bits_to_f32_f16c;
@@ -122,6 +121,7 @@ pub(super) unsafe fn gemv_specialized_4x6(
         let mut tmp = [0.0f32; 8];
         _mm256_storeu_ps(tmp.as_mut_ptr(), acc);
 
+        // Lanes 4..5: scalar accumulation for the 2 outputs beyond the SIMD width.
         for oc in 4..6 {
             let w = f16_bits_to_f32_f16c(*weights.get_unchecked(oc));
             let mut sum = *in_frame.get_unchecked(0) * w;
@@ -225,6 +225,7 @@ pub(super) unsafe fn gemv_specialized_8x6(
         let out_simd = _mm256_loadu_ps(out_frame.as_ptr());
         acc_simd = _mm256_add_ps(acc_simd, out_simd);
 
+        // Scalar accumulators for output lanes 4 and 5 (beyond the SIMD tail).
         let mut sum4 = if do_bias { bias[4] } else { 0.0 };
         let mut sum5 = if do_bias { bias[5] } else { 0.0 };
 
@@ -277,6 +278,7 @@ pub(super) unsafe fn gemv_specialized_8x8(
         let mut acc6 = _mm256_setzero_ps();
         let mut acc7 = _mm256_setzero_ps();
 
+        // Fully unrolled 8-input accumulation (one YMM accumulator per input).
         let vs0 = _mm256_set1_ps(*in_frame.get_unchecked(0));
         let vs1 = _mm256_set1_ps(*in_frame.get_unchecked(1));
         let vs2 = _mm256_set1_ps(*in_frame.get_unchecked(2));
@@ -303,6 +305,7 @@ pub(super) unsafe fn gemv_specialized_8x8(
         let w7 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(56) as *const __m128i));
         acc7 = _mm256_fmadd_ps(vs7, w7, acc7);
 
+        // Reduction tree: collapse the 8 accumulators into acc0.
         acc0 = _mm256_add_ps(acc0, acc1);
         acc2 = _mm256_add_ps(acc2, acc3);
         acc4 = _mm256_add_ps(acc4, acc5);
@@ -311,6 +314,7 @@ pub(super) unsafe fn gemv_specialized_8x8(
         acc4 = _mm256_add_ps(acc4, acc6);
         acc0 = _mm256_add_ps(acc0, acc4);
 
+        // Fused add: accumulate with the existing out_frame, then store back.
         let out_val = _mm256_loadu_ps(out_frame.as_ptr());
         acc0 = _mm256_add_ps(acc0, out_val);
         _mm256_storeu_ps(out_frame.as_mut_ptr(), acc0);

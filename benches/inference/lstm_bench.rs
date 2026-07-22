@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! LSTM inference benchmarks: recurrent processing, buffer-size scaling,
+//! scalar-vs-SIMD comparison, and dynamic free-geometry fallback.
+
 use criterion::Criterion;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::models::NamModel;
@@ -27,7 +30,7 @@ pub fn bench_lstm_2x16_process(c: &mut Criterion) {
 }
 
 /// Compares performance between Scalar (baseline) and SIMD implementations for LSTM 1x8.
-/// This benchmark validates the performance gain achieved with "T3: Fused Gates",
+/// This benchmark validates the performance gain achieved with the Fused Gates kernel,
 /// where the 4 LSTM gates are computed simultaneously in AVX2 registers.
 pub fn bench_lstm_1x8_comparison(c: &mut Criterion) {
     let data = make_lstm_data(1, 8);
@@ -57,7 +60,7 @@ pub fn bench_lstm_1x8_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-/// Comparative Benchmark (T15): LSTM 2x16 Scalar vs SIMD (Fused Gates T3).
+/// Comparative benchmark: LSTM 2x16 Scalar vs SIMD (Fused Gates).
 pub fn bench_lstm_2x16_comparison(c: &mut Criterion) {
     let data = make_lstm_data(2, 16);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 2x16 benchmark");
@@ -103,6 +106,7 @@ pub fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
     }
 }
 
+/// Measures the LSTM 2x16 prewarm cost (2048 samples).
 pub fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
     let data = make_lstm_data(2, 16);
     c.bench_function("Prewarm_LSTM_2x16_2048samp", |b| {
@@ -115,6 +119,7 @@ pub fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
     });
 }
 
+/// Measures the processing time of a 1x40 LSTM recurrent network.
 pub fn bench_lstm_1x40_process(c: &mut Criterion) {
     let data = make_lstm_data(1, 40);
     let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
@@ -130,6 +135,7 @@ pub fn bench_lstm_1x40_process(c: &mut Criterion) {
     });
 }
 
+/// Measures the processing time of a 2x24 LSTM recurrent network.
 pub fn bench_lstm_2x24_process(c: &mut Criterion) {
     let data = make_lstm_data(2, 24);
     let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
@@ -145,6 +151,7 @@ pub fn bench_lstm_2x24_process(c: &mut Criterion) {
     });
 }
 
+/// Comparative benchmark: LSTM 1x40 Scalar vs SIMD (Fused Gates).
 pub fn bench_lstm_1x40_comparison(c: &mut Criterion) {
     let data = make_lstm_data(1, 40);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 1x40 benchmark");
@@ -172,6 +179,7 @@ pub fn bench_lstm_1x40_comparison(c: &mut Criterion) {
     group.finish();
 }
 
+/// Comparative benchmark: LSTM 2x24 Scalar vs SIMD (Fused Gates).
 pub fn bench_lstm_2x24_comparison(c: &mut Criterion) {
     let data = make_lstm_data(2, 24);
     let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 2x24 benchmark");
