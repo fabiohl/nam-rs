@@ -39,7 +39,7 @@ NAM-rs uses a **static enum dispatch** pattern to route inference calls to the c
 | **ConvNet**            | `ConvNet` (backed by `ConvNetModel`)                                                                                | Layer-chain SIMD dispatch          |
 | **Linear**             | `Linear` (backed by `LinearModel`)                                                                                  | Direct SIMD FIR / Partitioned FFT  |
 
-The `NamModel::process()` implementation uses a flat `match self` on all 23 variants and directly calls the inner model's method (`src/models/static_model.rs:359`). With `#[inline(always)]`, the compiler produces a jump table at each call site — the CPU branch predictor learns the active model type within a few blocks, achieving **zero dispatch overhead** in the steady state, equivalent to a direct function call.
+The `NamModel::process()` implementation uses a flat `match self` on all 23 variants and directly calls the inner model's method (`src/models/static_model.rs`). With `#[inline(always)]`, the compiler produces a jump table at each call site — the CPU branch predictor learns the active model type within a few blocks, achieving **zero dispatch overhead** in the steady state, equivalent to a direct function call.
 
 #### Dynamic Models: Free-Shape Fallback
 
@@ -259,7 +259,7 @@ parameter was evaluated and **rejected** after benchmarking. Full quality metric
 
 Implements temporal and amplitude hysteresis (Schmitt Trigger) to prevent chattering at noise floor levels. Includes linear SIMD ramping for smooth transitions (fade-in/out), fused into a single stereo pass to optimize cache locality.
 
-## 5 Oversampling Engine — Anti-Aliasing for Neural Activations
+## 5.3 Oversampling Engine — Anti-Aliasing for Neural Activations
 
 NAM-rs provides optional **2×/4× oversampling** around the neural model to suppress aliasing from non-linear activations (tanh, sigmoid, ReLU), implemented in `src/dsp/oversample.rs` following the half-band filter design of Kahles, Esqueda & Välimäki (JAES 2019).
 
@@ -364,7 +364,7 @@ Thread model, RT-safe lock-free communication, the three-tier GC cascade, and th
 
 ### 8.1 CLAP DSP Pipeline
 
-The following diagram traces the detailed layout of parameter updates, event queues, DSP processing, and real-time-safe cleanup inside the audio processing thread ([PluginAudioProcessor::process](../src/clap/processor/mod.rs#L279)):
+The following diagram traces the detailed layout of parameter updates, event queues, DSP processing, and real-time-safe cleanup inside the audio processing thread ([PluginAudioProcessor::process](../src/clap/processor/mod.rs#L335)):
 
 ```mermaid
 graph TD
@@ -416,7 +416,7 @@ graph TD
     SPSC_Gc -.-> |drop()| GcDrop["Main Thread GC Drain"]
 ```
 
-Pipeline stages, in execution order: bypass evaluation ([process_bypass](../src/clap/processor/dsp/bypass.rs#L11)) → channel extraction ([extract_channels](../src/clap/processor/dsp/channels.rs#L10)) → input gain (SIMD + [ParamSmoother](../src/dsp/smoother.rs#L12)) → input dither/gate ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L48), [GateState](../src/dsp/gate.rs#L60)) → inference ([run_inference](../src/dsp/pipeline/stages/inference.rs#L224), resample up → `NamModel::process` → resample down) → output dither compensation/fade/Adaptive-Compute check ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L22)) → output gain → VU peak telemetry ([compute_output_peaks](../src/clap/processor/dsp/peaks.rs#L10)) → cycle-accurate telemetry ([process_telemetry](../src/clap/processor/dsp/telemetry.rs#L12)).
+Pipeline stages, in execution order: bypass evaluation ([process_bypass](../src/clap/processor/dsp/bypass.rs#L11)) → channel extraction ([extract_channels](../src/clap/processor/dsp/channels.rs#L10)) → input gain (SIMD + [ParamSmoother](../src/dsp/smoother.rs#L12)) → input dither/gate ([apply_input_stage](../src/dsp/pipeline/stages/input.rs#L48), [GateState](../src/dsp/gate.rs#L60)) → inference ([run_inference](../src/dsp/pipeline/stages/inference.rs#L231), resample up → `NamModel::process` → resample down) → output dither compensation/fade/Adaptive-Compute check ([apply_output_stage](../src/dsp/pipeline/stages/output.rs#L25)) → output gain → VU peak telemetry ([store_peaks](../src/clap/processor/dsp/peaks.rs#L8)) → cycle-accurate telemetry ([process_telemetry](../src/clap/processor/dsp/telemetry.rs#L12)).
 
 Parameter synchronization across the three incoming paths (SPSC `param_rx` for cold loads, host DAW automation events, and GUI atomics with a generation counter) is detailed in [docs/clap_integration.md](clap_integration.md) §6.2.
 
@@ -467,39 +467,41 @@ An investigation into unifying the object-swap + GC-cascade logic shared between
 
 The existing free function `gc_cascade()` (`src/common/spsc/gc.rs`) already abstracts the 3-tier cascade (SPSC → parking-lot → overflow, detailed in [docs/clap_integration.md](clap_integration.md) §6.3); both standalone and CLAP call it directly instead of through an added abstraction layer.
 
-### 8.5 R13 — GUI floating thread lifecycle (destroy watchdog)
+### 8.5 R13 — GUI Floating Thread Lifecycle (Destroy Watchdog)
 
-`gui.destroy()` sinaliza `close_signal = true` e aguarda até 2 s pela thread da
-janela flutuante via `is_finished()` polling. Se o event loop não responder
-(X11/Wayland degradado), o handle é abandonado (leak controlado: 1 thread, sem
-fds extras). O sistema operacional recolhe todos os recursos no exit do processo.
-Preferível a congelar a main thread do host (freeze do DAW).
+`gui.destroy()` signals `close_signal = true` and polls `is_finished()` for up
+to 2 s waiting for the floating window thread to exit. If the event loop is
+unresponsive (degraded X11/Wayland), the thread handle is abandoned (controlled
+leak: 1 thread, no extra fds). The OS reclaims all resources on process exit —
+preferable to freezing the host main thread (DAW hang).
 
-## Comportamento de shutdown (SIGINT / SIGTERM)
+## 8.6 Shutdown Behaviour (SIGINT / SIGTERM)
 
-### Standalone (src/main.rs)
+### Standalone (`src/main.rs`)
 
-O handler de SIGINT usa dois níveis:
+The SIGINT handler operates in two tiers:
 
-1. **Primeiro Ctrl-C**: seta `SHUTDOWN` (Release) → o loop principal (`run.rs`)
-   detecta via Acquire, drena o GC, fecha streams PipeWire e retorna normalmente.
-   PM QoS (`/dev/cpu_dma_latency`) e THP advice são liberados pelos destrutores.
+1. **First Ctrl-C**: sets `SHUTDOWN` (Release) → the main loop (`run.rs`)
+   detects it via Acquire, drains the GC, closes PipeWire streams, and returns
+   normally. PM QoS (`/dev/cpu_dma_latency`) and THP advice are released by
+   destructors.
 
-2. **Segundo Ctrl-C** (double-SIGINT, shutdown não respondeu): chama `_exit(1)`.
-   Nenhum destrutor roda — mas o **kernel fecha todos os fds e mapeamentos** no
-   exit do processo. Recursos persistentes (PM QoS, THP) **não** ficam presos:
-   o kernel os libera automaticamente (verificado; não há file lock pós-processo).
-   O único efeito é skip da drenagem do GC (itens em trânsito são liberados pelo
-   kernel junto com o heap do processo).
+2. **Second Ctrl-C** (double-SIGINT, shutdown stalled): calls `_exit(1)`.
+   No destructors run — but the **kernel closes all fds and memory mappings**
+   on process exit. Persistent resources (PM QoS, THP) are **not** left
+   dangling: the kernel releases them automatically. The only side-effect is
+   that in-flight GC items are reclaimed by the kernel along with the process
+   heap.
 
-### Plugin CLAP (src/clap/)
+### CLAP Plugin (`src/clap/`)
 
-O lifecycle é controlado pelo host via `clap_plugin.destroy()`. Ver §EP-R2 nos
-[findings de auditoria](../TODO-findings.md) para detalhes de R2/R13/R11.
+The lifecycle is driven by the host via `clap_plugin.destroy()`. See
+[docs/clap_integration.md](clap_integration.md) for the full plugin teardown
+sequence.
 
 ## 9. Error Catalog (NamErrorCode)
 
-Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`. The table below shows the category ranges with representative examples; the complete catalog of 40+ codes lives in the source enum. Keep this table synchronized with the enum on every change (see [.agents/rules/testing.md](../.agents/rules/testing.md)).
+Typed error codes for structured diagnostics. Defined in [`src/common/diagnostics/error_codes.rs`](../src/common/diagnostics/error_codes.rs). The table below shows the category ranges with representative examples; the complete catalog lives in the source enum. Keep this table synchronized with the enum on every change (see [.agents/rules/testing.md](../.agents/rules/testing.md)).
 
 | Range   | Category                   | Examples                                                                                                                                                                                                                                                                |
 |:------- |:-------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
