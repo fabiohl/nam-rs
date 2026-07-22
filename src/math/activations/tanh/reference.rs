@@ -32,7 +32,7 @@
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
-/// Padé [5,4] rational tanh with single Newton-Raphson (AVX2).
+/// Padé \[5,4\] rational tanh with single Newton-Raphson (AVX2).
 ///
 /// Experimental variant (A8). Single NR yields ~23-bit reciprocal precision;
 /// the residual ~1 ulp of reciprocal error must be weighed against the
@@ -73,7 +73,7 @@ pub unsafe fn simd_tanh_pade_nr1_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
 }
 
-/// Padé [5,4] rational tanh with single Newton-Raphson — dual 16-float path (AVX2).
+/// Padé \[5,4\] rational tanh with single Newton-Raphson — dual 16-float path (AVX2).
 ///
 /// Experimental variant (A8). Evaluates two independent `__m256` registers.
 /// Coefficients are broadcast once and shared between both lanes.
@@ -128,7 +128,7 @@ pub unsafe fn simd_tanh_pade_nr1_dual_avx2(x1: __m256, x2: __m256) -> (__m256, _
     )
 }
 
-/// Padé [5,4] rational tanh with single Newton-Raphson (AVX-512).
+/// Padé \[5,4\] rational tanh with single Newton-Raphson (AVX-512).
 ///
 /// Experimental variant (A8). Single NR yields ~23-bit reciprocal precision.
 ///
@@ -167,7 +167,7 @@ pub unsafe fn simd_tanh_pade_nr1_avx512(x: __m512) -> __m512 {
     _mm512_max_ps(neg_one, _mm512_min_ps(one, result))
 }
 
-/// Padé [5,4] rational tanh with double Newton-Raphson (AVX2).
+/// Padé \[5,4\] rational tanh with double Newton-Raphson (AVX2).
 ///
 /// Reference variant (E8.T04). Double NR saturates f32 mantissa (24 bits);
 /// error ratio vs hardware-div = 1.000× — reciprocal contributes zero drift.
@@ -212,7 +212,7 @@ pub unsafe fn simd_tanh_pade_nr2_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
 }
 
-/// Padé [5,4] rational tanh with double Newton-Raphson (AVX-512).
+/// Padé \[5,4\] rational tanh with double Newton-Raphson (AVX-512).
 ///
 /// Reference variant (E8.T04). Double NR saturates f32 mantissa (24 bits);
 /// error ratio vs hardware-div = 1.000× — reciprocal contributes zero drift.

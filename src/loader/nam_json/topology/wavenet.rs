@@ -35,7 +35,7 @@ pub enum NamWavenetTopology {
 /// [`WaveNetModelDyn`]: crate::models::wavenet::WaveNetModelDyn
 #[derive(Debug, Clone, PartialEq)]
 pub struct FreeWavenetGeometry {
-    /// Internal channels per layer-array (first array → array[0]).
+    /// Internal channels per layer-array (first array → `array[0]`).
     pub channels: Vec<usize>,
     /// Kernel size (same across all layers for legacy models;
     /// per-array kernel sizes for heterogeneous topologies).

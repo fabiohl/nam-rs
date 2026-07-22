@@ -16,11 +16,11 @@
 //!
 //! 1. **Capture stream** (`Audio/Sink`, `Direction::Input`) — acts as a Virtual Sink
 //!    that receives audio from apps, applies the DSP chain (gain + neural inference)
-//!    and writes the result to [`DspBridge`].
+//!    and writes the result to `DspBridge`.
 //! 2. **Playback stream** (`Stream/Output/Audio`, `Direction::Output`) — acts as a
-//!    playback client that reads from [`DspBridge`] and delivers to hardware.
+//!    playback client that reads from `DspBridge` and delivers to hardware.
 //!
-//! The [`DspBridge`] is a `#[repr(align(128))]` buffer shared between the two
+//! The `DspBridge` is a `#[repr(align(128))]` buffer shared between the two
 //! closures via raw pointer, with lock-free synchronization via `Ordering::Release/Acquire`
 //! and an atomic generation counter.
 //!
@@ -38,7 +38,7 @@
 //!
 //! The `PRIORITY_DRIVER = 2000` on the capture node further ensures it leads the
 //! group. This architecture was validated via `pw_stream::time()` instrumentation
-//! and documented in [`docs/pw_dual_stream_architecture.md`].
+//! and documented in `docs/pw_dual_stream_architecture.md`.
 //!
 //! Ref: [PipeWire Graph Scheduling](https://docs.pipewire.org/page_scheduling.html)
 //!
@@ -60,7 +60,7 @@
 //! 3. **WaveNet/LSTM neural inference** — The neural engine that processes the audio signal.
 //! 4. `NamResampler::process_output()` — Converts back to the original host sample rate.
 //! 5. **Output Gain and Clipping** — Applies the final volume and detects digital saturation.
-//! 6. **Write to [`DspBridge`]** — Publishes the result with `Ordering::Release` to the playback callback.
+//! 6. **Write to `DspBridge`** — Publishes the result with `Ordering::Release` to the playback callback.
 //!
 //! When no model is loaded, the engine operates in **True-Bypass** (the input signal passes clean).
 //! When the PipeWire sample rate is the same as the nam model, the resampler operates in bypass without overhead.

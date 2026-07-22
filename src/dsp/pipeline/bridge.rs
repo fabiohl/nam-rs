@@ -111,7 +111,7 @@ impl BridgeRef {
 pub struct DspBridgeWriter(std::ptr::NonNull<DspBridge>);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeWriter owns a NonNull<DspBridge> that points to a heap-immortal
+/// SAFETY: DspBridgeWriter owns a `NonNull<DspBridge>` that points to a heap-immortal
 /// allocation (Box::leak in standalone mode, or CLAP plugin lifecycle memory).
 /// The capture thread has exclusive write access to the back-buffer; the playback
 /// thread only reads the active front-buffer. All synchronization uses atomic
@@ -240,7 +240,7 @@ impl DspBridgeWriter {
 pub struct DspBridgeReader(std::ptr::NonNull<DspBridge>);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeReader owns a NonNull<DspBridge> pointing to a heap-immortal
+/// SAFETY: DspBridgeReader owns a `NonNull<DspBridge>` pointing to a heap-immortal
 /// allocation (same lifecycle as DspBridgeWriter — Box::leaked or CLAP plugin memory).
 /// The playback thread has exclusive read access to the active front-buffer (indicated
 /// by `active_read_idx`) while the capture thread writes the back-buffer. All

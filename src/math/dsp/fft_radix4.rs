@@ -7,7 +7,7 @@
 //!
 //! Este módulo é um artefato de pesquisa preservado para referência futura.
 //! O protótipo implementa um FFT Radix-4 DIT iterativo in-place sobre buffers
-//! SoA (`&mut [T]`), com API compatível com o [`FftPlanner`] (Radix-2) de
+//! SoA (`&mut [T]`), with API compatible with the `FftPlanner` (Radix-2) from
 //! produção.
 //!
 //! # Decisão de engenharia

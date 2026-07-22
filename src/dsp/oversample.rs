@@ -10,7 +10,7 @@
 //! ## Architecture
 //!
 //! Each 2× stage uses a Kaiser-windowed half-band FIR filter (25 taps, β=12,
-//! \>100 dB stop-band). The half-band property h[2n]=0 (n≠D/2) halves the
+//! \>100 dB stop-band). The half-band property h\[2n\]=0 (n≠D/2) halves the
 //! effective MAC count per sample.
 //!
 //! - **Upsampler**: inserts zeros → filters. Even outputs = x[n-D/2]*0.5;

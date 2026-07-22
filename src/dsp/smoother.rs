@@ -7,7 +7,7 @@
 //! when changing gains during real-time processing.
 
 /// Parameter smoother based on a 1-pole IIR filter.
-/// y[n] = α * target + (1 - α) * y[n-1]
+/// y\[n\] = α * target + (1 - α) * y\[n-1\]
 #[derive(Debug, Clone, Copy)]
 pub struct ParamSmoother {
     current: f32,

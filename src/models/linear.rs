@@ -111,7 +111,7 @@ impl LinearModel {
     /// Creates a new LinearModel with the given weights, bias, and implementation.
     ///
     /// Weights are expected in **forward-time order** as stored in the `.nam`
-    /// JSON (w[0] is the response at the current sample). They are reversed
+    /// JSON (`w[0]` is the response at the current sample). They are reversed
     /// internally to match the C++ `nam::Linear` layout.
     ///
     /// `implementation` controls the convolution strategy (`Auto`, `Direct`, `Fft`)

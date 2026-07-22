@@ -201,12 +201,12 @@ mod tests;
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum WeightsLayout {
-    /// Original layout (standard NAM): [Gate][H][IH] for LSTM, [OUT][IN][K] for Conv1D.
+    /// Original layout (standard NAM): `[Gate][H][IH]` for LSTM, `[OUT][IN][K]` for Conv1D.
     #[default]
     Original = 0,
-    /// Layout optimized for LSTM: [Gate][IH][H].
+    /// Layout optimized for LSTM: `[Gate][IH][H]`.
     GateMajorLstm = 1,
-    /// Layout optimized for WaveNet: Interleaved 4-Wide ([OUT/4][K][IN][4]).
+    /// Layout optimized for WaveNet: Interleaved 4-Wide (`[OUT/4][K][IN][4]`).
     Interleaved4WaveNet = 2,
 }
 

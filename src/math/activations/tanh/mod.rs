@@ -3,7 +3,7 @@
 
 //! Optimized Tanh (Hyperbolic Tangent) activation kernels.
 //!
-//! - **Production path:** Padé [5,4] rational approximant with hardware division
+//! - **Production path:** Padé \[5,4\] rational approximant with hardware division
 //!   (`simd_tanh_avx2`, `simd_tanh_dual_avx2`, `simd_tanh_avx512`).
 //! - **Reference path:** Padé NR2 variants retained for benchmarking and
 //!   documentation (`simd_tanh_pade_nr2_avx2`, `simd_tanh_pade_nr2_avx512`).

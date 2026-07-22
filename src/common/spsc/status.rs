@@ -276,7 +276,7 @@ impl RtStatusFlags {
 
     /// Clears one or more flags with Release ordering (for data handshakes).
     ///
-    /// Pair with [`check_flag_acquire`] in the consumer handshake.
+    /// Pair with [`Self::check_flag_acquire`] in the consumer handshake.
     #[inline(always)]
     pub fn clear_flag_release(&self, flag: u64) {
         self.status_bits.fetch_and(!flag, Ordering::Release);

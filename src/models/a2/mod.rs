@@ -49,7 +49,7 @@ pub use params::{
     A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,
 };
 
-/// Total weight count for WaveNetA2<CH>.
+/// Total weight count for `WaveNetA2<CH>`.
 ///
 /// Formula: `rechannel(ch) + Σ(kernel sizes: ch²·k + ch + ch + ch² + ch) + head(16·ch + 2)`.
 /// This is the single canonical source — topology changes require updates here only.

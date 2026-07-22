@@ -48,7 +48,7 @@
 //!
 //! ## Padding‑zero invariant
 //!
-//! When weights[i][12..16] = 0 (as required by the pad‑to‑16 strategy for
+//! When `weights[i][12..16]` = 0 (as required by the pad‑to‑16 strategy for
 //! CH=12 models), the 4 zero‑lanes contribute nothing to their FMA chains.
 //! Lanes 0‑11 are completely independent of lanes 12‑15. The caller must
 //! ensure the weight loader (`transpose_conv1d_interleaved`) pads with zeros
@@ -149,11 +149,11 @@ pub unsafe fn dot_product_16x_f32_avx2(weights: &[[f32; 16]], state: &[f32]) -> 
 /// passes:
 ///
 /// 1. **Pass 1 (lo):** iterates over all taps loading only `w_lo`
-///    (weights[i][0..8]). Only 8 accumulator registers are live
+///    (`weights[i][0..8]`). Only 8 accumulator registers are live
 ///    (`acc_f0_lo{0..3}`, `acc_f1_lo{0..3}`), leaving sufficient
 ///    register headroom to eliminate spills.
 /// 2. **Pass 2 (hi):** iterates over all taps loading only `w_hi`
-///    (weights[i][8..16], offset +8 floats). Only the 8 hi accumulator
+///    (`weights[i][8..16]`, offset +8 floats). Only the 8 hi accumulator
 ///    registers are live.
 ///
 /// The state broadcasts `s_f0`/`s_f1` are re‑executed in pass 2 and the
@@ -397,11 +397,11 @@ pub unsafe fn dot_product_16x_f32_accumulate_avx2(
 /// passes:
 ///
 /// 1. **Pass 1 (lo):** iterates over all taps loading only `w_lo`
-///    (weights[i][0..8]). Only 8 accumulator registers are live
+///    (`weights[i][0..8]`). Only 8 accumulator registers are live
 ///    (`acc_f0_lo{0..3}`, `acc_f1_lo{0..3}`), leaving sufficient
 ///    register headroom to eliminate spills.
 /// 2. **Pass 2 (hi):** iterates over all taps loading only `w_hi`
-///    (weights[i][8..16], offset +8 floats). Only the 8 hi accumulator
+///    (`weights[i][8..16]`, offset +8 floats). Only the 8 hi accumulator
 ///    registers are live.
 ///
 /// The state broadcasts `s_f0`/`s_f1` are re‑executed in pass 2 and the

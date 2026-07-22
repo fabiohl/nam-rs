@@ -178,7 +178,7 @@ NAM-rs provides a layered quality control surface spanning latency, fidelity, an
 **Activation Precision** — tanh/sigmoid approximation fidelity:
 
 * `Standard` (default): polynomial exp-based, exact-grade. Error ~2.4e-7 (~10,000× lower than `Fast`). Universal default for all modes.
-* `Fast`: Padé [5,4] tanh + minimax sigmoid. Error ~2.32e-3. Opt-in for CPU-constrained setups (`--activation fast`).
+* `Fast`: Padé \[5,4\] tanh + minimax sigmoid. Error ~2.32e-3. Opt-in for CPU-constrained setups (`--activation fast`).
 
 **Adaptive Compute** — graceful CPU fallback to prevent xruns:
 

@@ -3,7 +3,7 @@
 
 //! Optimized Tanh (Hyperbolic Tangent) activation kernels — production path.
 //!
-//! **Production path:** Padé [5,4] rational approximant with hardware `_mm256_div_ps`.
+//! **Production path:** Padé \[5,4\] rational approximant with hardware `_mm256_div_ps`.
 //!
 //! ```text
 //! tanh(x) ≈ x * (x² + 105) * (x² + 945) / ((15x² + 420) * x² + 945)
@@ -19,7 +19,7 @@ use crate::activation_simd_avx512;
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
-/// Padé [5,4] rational approximant for `tanh(x)` with hardware division (AVX2).
+/// Padé \[5,4\] rational approximant for `tanh(x)` with hardware division (AVX2).
 ///
 /// Production path. ~9 SIMD ops, max absolute error ~2.32e-3.
 ///
@@ -59,7 +59,7 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
 }
 
-/// Padé [5,4] rational approximant for `tanh(x)` — dual 16-float path (AVX2).
+/// Padé \[5,4\] rational approximant for `tanh(x)` — dual 16-float path (AVX2).
 ///
 /// Evaluates two independent `__m256` registers. Coefficients are broadcast
 /// once and shared between both lanes, amortising setup cost.
@@ -108,7 +108,7 @@ pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     )
 }
 
-/// Padé [5,4] rational approximant for `tanh(x)` with hardware division (AVX-512).
+/// Padé \[5,4\] rational approximant for `tanh(x)` with hardware division (AVX-512).
 ///
 /// Production path. ~9 SIMD ops, max absolute error ~2.32e-3.
 ///
@@ -209,7 +209,7 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
     }
 }
 
-/// Scalar Padé [5,4] rational approximation for `tanh(x)`.
+/// Scalar Padé \[5,4\] rational approximation for `tanh(x)`.
 ///
 /// Formula: `x·(x²+105)·(x²+945) / ((15x²+420)·x²+945)`
 /// Domain: [-4, 4], output clamped to [-1, 1].

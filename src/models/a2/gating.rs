@@ -106,7 +106,7 @@ impl GatingActivationConfig {
 ///
 /// Splits a 2×channels buffer into input (first half) and blending (second half).
 /// Applies `input_activation` to the input half and `blending_activation` to
-/// produce alpha ∈ [0,1] from the second half. Output is the weighted average:
+/// produce alpha ∈ \[0,1\] from the second half. Output is the weighted average:
 ///
 /// ```text
 /// output[i] = activated_input[i] * alpha[i] + original_input[i] * (1 - alpha[i])
@@ -118,7 +118,7 @@ impl GatingActivationConfig {
 pub struct BlendingActivationConfig {
     /// Activation function for input channels.
     pub input_activation: ActivationType,
-    /// Activation function for blending channels (determines alpha ∈ [0,1]).
+    /// Activation function for blending channels (determines alpha ∈ \[0,1\]).
     pub blending_activation: ActivationType,
     /// Scratch buffer for original input values during blending.
     scratch: AlignedVec<f32>,

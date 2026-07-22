@@ -3,8 +3,7 @@
 
 //! WaveNet A2 Dynamic model — cascade pipeline methods.
 //!
-//! These methods are shared with the [`WaveNetA2Cascade`](super::super::cascade)
-//! orchestrator. They allow the cascade to drive individual sub-arrays
+//! These methods are shared with the `WaveNetA2Cascade` orchestrator. They allow the cascade to drive individual sub-arrays
 //! (`[WaveNetA2Dyn]`) in sequence: propagating condition outputs, residuals,
 //! and head accumulators from one array to the next.
 

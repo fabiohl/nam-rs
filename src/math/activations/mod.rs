@@ -75,7 +75,7 @@ pub enum ActivationPrecision {
     /// C++ reference (`using_fast_tanh = false`) to bit-exact precision.
     #[default]
     Standard = 1,
-    /// Padé [5,4] tanh (~2.32e-3) + minimax degree-17 sigmoid (~4.09e-4).
+    /// Padé \[5,4\] tanh (~2.32e-3) + minimax degree-17 sigmoid (~4.09e-4).
     /// Cheaper/faster approximation; opt-in via `--activation fast` (CLI)
     /// or the CLAP "Activation Precision" parameter.
     Fast = 0,

@@ -17,9 +17,9 @@ use super::common::MAX_KERNEL;
 #[derive(Clone)]
 #[repr(align(64))]
 pub struct Conv1dDyn {
-    /// Full-precision f32 convolution weights [OUT][KERNEL][IN] (interleaved).
+    /// Full-precision f32 convolution weights `[OUT][KERNEL][IN]` (interleaved).
     pub weights: AlignedVec<f32>,
-    /// Bias vector [OUT].
+    /// Bias vector `[OUT]`.
     pub bias: AlignedVec<f32>,
     /// Flag indicating whether bias should be applied.
     pub do_bias: bool,
