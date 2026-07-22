@@ -1,152 +1,175 @@
-#![doc = include_str!("../README.md")]
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #![warn(missing_docs)]
 
-//! Neural Amp Modeler (NAM-rs) — high-performance inference engine for
-//! guitar/bass amplifier and pedal neural models.
+//! # 🎸 Neural Amp Modeler (NAM-rs)
 //!
-//! This library is the shared foundation ("heart") of the project, providing
-//! the inference engine, SIMD processing kernels, and model loading logic.
-//! It serves as the common substrate for:
+//! **NAM-rs** is a high-performance, real-time inference engine and DSP foundation in Rust for
+//! [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) neural network models
+//! (WaveNet A1 and A2, LSTM, ConvNet, Linear) and impulse response (.wav) convolutions.
 //!
-//! 1. The CLI executable (`main.rs`) — standalone PipeWire audio processing.
-//! 2. Plugins (e.g. CLAP) — DAW integration with full GUI.
+//! > **Notice:** The public crate functionality of `nam-rs` is currently in **public alpha**.
+//! > Feedback, bug reports, suggestions and testing are very welcome!
+//! > Official project repository & issues: <https://github.com/fabiohl/nam-rs>
 //!
-//! # Architecture Overview
+//! ---
 //!
-//! NAM-rs is organized in a modular structure to support multiple build
-//! targets:
+//! ## 💡 Overview
 //!
-//! - **Common**: Host-agnostic infrastructure (diagnostics, SPSC
-//!   communication, parameters). Re-exported at the crate root.
-//! - **Standalone**: Native implementation for PipeWire and CLI utilities.
-//!   Enabled via `standalone` feature. Used by `main.rs`.
-//! - **CLAP Plugin**: Integration as a CLAP (CLever Audio Plug-in) format
-//!   plugin with full GUI. Enabled via `clap-plugin` feature.
+//! This crate serves as the shared foundation ("heart") of the NAM-rs ecosystem, providing:
+//! - **SIMD-Accelerated Inference Kernels**: Native `x86-64-v3` (AVX2 + FMA) and `AVX-512` math routines.
+//! - **Flexible Model Loader**: Parser and builder for `.nam` (JSON) and `.namb` (binary profile) files.
+//! - **Lock-Free DSP Engine**: Zero heap allocations on the audio processing hot-path.
+//! - **Multi-Target Substrate**: Powering both the standalone PipeWire CLI (`main.rs`) and DAW plugins (CLAP format).
 //!
-//! # Quick Start — Loading a Model
+//! ---
 //!
+//! ## 🛠 Feature Flags & Recommended Dependency Setup
+//!
+//! NAM-rs uses Cargo feature flags to isolate backends and keep downstream compilation lean.
+//!
+//! > ⚠️ **Important for Library Integrators:**
+//! > By default, Cargo enables the `standalone` feature, which pulls in native Linux PipeWire (`libpipewire`) system dependencies.
+//! > When integrating `nam-rs` as a library into third-party crates (DAWs, audio plugins, or server pipelines), it is **strongly recommended**
+//! > to disable default features (`default-features = false`) to avoid pulling unused system audio drivers or conflicting dependencies into your build tree.
+//!
+//! ### `Cargo.toml` Configuration Examples
+//!
+//! **Pure Core DSP & Model Inference (Recommended for third-party crates):**
+//! ```toml
+//! [dependencies]
+//! nam-rs = { version = "3.0.0", default-features = false }
 //! ```
+//!
+//! **Adding Off-RT Testing & Audio Signal Generators:**
+//! ```toml
+//! [dependencies]
+//! nam-rs = { version = "3.0.0", default-features = false, features = ["testing"] }
+//! ```
+//!
+//! **Building Native PipeWire Standalone Audio Clients:**
+//! ```toml
+//! [dependencies]
+//! nam-rs = { version = "3.0.0", features = ["standalone"] }
+//! ```
+//!
+//! ### Feature Flags Summary Table
+//!
+//! | Feature Flag  | Default          | Description                                                                                        |
+//! |:------------- |:----------------:|:-------------------------------------------------------------------------------------------------- |
+//! | `standalone`  | Yes              | Enables native Linux PipeWire audio backend and CLI execution (`standalone` module).               |
+//! | `clap-plugin` | No               | Enables CLAP (CLever Audio Plug-in) plugin format and egui GUI (`clap` module).                    |
+//! | `testing`     | No               | Exposes off-RT test utilities, audio signal generators, and perceptual metrics (`testing` module). |
+//! | `stereo`      | Via `standalone` | Enables multi-channel / stereo dual-model loader support.                                          |
+//!
+//! ---
+//!
+//! ## 🚀 Quick Start — Loading & Building a Model
+//!
+//! The [`loader::load_and_build_model`] function reads `.nam` (JSON) or `.namb` (binary) files and
+//! constructs optimized [`models::StaticModel`] instances ready for real-time execution.
+//!
+//! ```rust
 //! use std::path::Path;
 //! use nam_rs::loader::{load_and_build_model, LoadOptions};
 //! use nam_rs::SystemSnapshot;
 //!
+//! // Capture system capabilities (SIMD feature set, CPU topology)
 //! let sys = SystemSnapshot::capture();
-//! let model = load_and_build_model(
+//!
+//! // Load a model file (.nam or .namb)
+//! let model_pair = load_and_build_model(
 //!     Path::new(concat!(
 //!         env!("CARGO_MANIFEST_DIR"),
 //!         "/tests/fixtures/models/linear_test.nam",
 //!     )),
 //!     &sys,
-//!     false, // mono
+//!     false, // mono execution (set true for stereo)
 //!     LoadOptions::default(),
 //! )
 //! .expect("Failed to load model");
 //!
-//! assert_eq!(model.architecture, "Linear");
-//! assert!(model.model_l.is_some());
-//! // Mono load: right channel is None
-//! assert!(model.model_r.is_none());
-//! assert!(model.sample_rate > 0);
+//! assert_eq!(model_pair.architecture, "Linear");
+//! assert!(model_pair.model_l.is_some());
+//! assert!(model_pair.model_r.is_none()); // Mono load: right channel is None
+//! assert!(model_pair.sample_rate > 0);
 //! ```
 //!
-//! The [`loader::load_and_build_model`] function reads `.nam` (JSON) or `.namb`
-//! (binary) files and returns a [`loader::LoadedModelPair`] containing the
-//! constructed [`models::StaticModel`] instances, gain calibration, sample rate,
-//! and model metadata.
+//! ---
 //!
-//! For stereo models, pass `true` as the third argument — both `model_l`
-//! and `model_r` will be populated.
+//! ## ⚡ FastMath & SIMD Vector Activations
 //!
-//! # Activation Functions
+//! High-performance scalar activation functions are available directly in [`math::activations`]:
 //!
-//! The crate exposes high-performance scalar activation functions in
-//! [`math::activations`]:
+//! ```rust
+//! use nam_rs::math::activations::{tanh, sigmoid};
 //!
-//! ```
-//! use nam_rs::math::activations::tanh;
-//! use nam_rs::math::activations::sigmoid;
-//!
-//! // tanh: Padé [5,4] rational approximant, clamped to [-1.0, 1.0]
+//! // Padé [5,4] rational approximant, clamped to [-1.0, 1.0]
 //! let t = tanh(1.0);
 //! assert!((t - 0.761594).abs() < 1e-3);
 //! assert!(tanh(10.0) <= 1.0);
 //! assert!(tanh(-10.0) >= -1.0);
 //!
-//! // sigmoid: degree-17 minimax polynomial, clamped to [0.0, 1.0]
+//! // Degree-17 minimax polynomial, clamped to [0.0, 1.0]
 //! let s = sigmoid(0.0);
 //! assert!((s - 0.5).abs() < 1e-2);
 //! assert!(sigmoid(10.0) > 0.999);
 //! assert!(sigmoid(-10.0) < 0.001);
 //! ```
 //!
-//! Both functions are always available (no feature gate). For slice-based
-//! dispatch (auto-selecting SIMD kernels), use `tanh_slice` and
-//! `sigmoid_slice` from the same modules.
+//! For slice-based processing that automatically selects vectorized SIMD kernels (AVX2/AVX-512),
+//! use `tanh_slice` and `sigmoid_slice` from [`math::activations`].
 //!
-//! # Module Map
+//! ---
 //!
-//! | Module     | Purpose                                            |
-//! | ---------- | -------------------------------------------------- |
-//! | [`loader`] | Model loading and construction (`.nam`, `.namb`)   |
-//! | [`math`]   | Mathematical primitives, SIMD kernels, activations |
-//! | [`models`] | Neural network architectures and topologies        |
-//! | [`dsp`]    | Digital signal processing engine                   |
-//! | [`common`] | Diagnostics, SPSC communication, parameters        |
+//! ## 🗺 Crate Module Map
 //!
-//! # Real-Time Safety & Performance Guarantees
+//! | Module       | Purpose                                                         | Key Entry Points & Types                                         |
+//! |:------------ |:--------------------------------------------------------------- |:---------------------------------------------------------------- |
+//! | [`loader`]   | Model deserialization & construction (`.nam`, `.namb`)          | [`loader::load_and_build_model`], [`loader::LoadOptions`]        |
+//! | [`math`]     | Mathematical primitives, SIMD kernels, & activations            | [`math::activations`]                                            |
+//! | [`models`]   | Neural network architectures & static topologies                | [`models::StaticModel`], WaveNet, LSTM, ConvNet                  |
+//! | [`dsp`]      | Digital signal processing engine & oversampling                 | [`dsp::gate::GateParams`], [`dsp::oversample::OversampleEngine`] |
+//! | [`common`]   | Diagnostics, atomic bitmasks, & SPSC queues                     | [`common::RtStatusFlags`], [`common::alloc_audit`]               |
+//! | `standalone` | Native PipeWire driver & CLI (requires `standalone`)            | PipeWire Graph Engine integration                                |
+//! | `clap`       | CLAP DAW plugin & egui GUI (requires `clap-plugin`)             | CLAP plugin entrypoint                                           |
+//! | `testing`    | Off-RT test utilities & perceptual metrics (requires `testing`) | Audio validation and f64 Oracles                                 |
 //!
-//! NAM-rs is engineered for **absolute real-time safety** on the audio
-//! processing thread. The following guarantees are enforced at the
-//! architecture level — violations trigger compile-time or runtime
-//! diagnostics:
+//! ---
 //!
-//! ## Zero Heap Allocations on the Hot-Path
+//! ## 🛡 Real-Time Safety & Performance Guarantees
 //!
-//! Heap objects (`Box`, `Vec`, `Arc`, `String`) must **never** be allocated
-//! or dropped on the real-time audio thread. All heap-managed resources are
-//! created off-RT and transferred via the lock-free SPSC GC cascade
-//! ([`common::spsc`]). The [`common::alloc_audit`] module provides
-//! compile-time auditing of allocation behavior in hot-path functions.
+//! NAM-rs is engineered for **absolute real-time safety** on the audio processing thread (`SCHED_FIFO`).
+//! The following guarantees are enforced at the architecture level:
 //!
-//! ## Zero Blocking I/O
+//! ### 1. Zero Heap Allocations on Hot-Path
+//! Heap objects (`Box`, `Vec`, `Arc`, `String`) are **never** allocated or dropped on the real-time audio thread.
+//! All dynamic resources are allocated off-RT and swapped via lock-free SPSC channels ([`common::spsc`]).
+//! Compile-time allocation auditing is available via [`common::alloc_audit`].
 //!
-//! No `println!`, `eprintln!`, `format!`, file I/O, or blocking
-//! synchronization primitives are permitted on the RT thread. Instead, the
-//! system uses [`common::RtStatusFlags`] — an atomic bitmask — to signal
-//! state transitions. The main (non-RT) thread polls these flags and
-//! performs any necessary logging or I/O.
+//! ### 2. Zero Blocking I/O
+//! No `println!`, `eprintln!`, `format!`, file I/O, or blocking synchronization primitives are permitted on the RT thread.
+//! State transitions are signaled atomically via [`common::RtStatusFlags`].
 //!
-//! ## Denormal Protection (FTZ + DAZ)
+//! ### 3. Denormal Protection (FTZ + DAZ)
+//! Subnormal (denormal) floating-point numbers cause severe performance degradation (up to 100× slowdown).
+//! NAM-rs configures **Flush-To-Zero (FTZ)** and **Denormals-Are-Zero (DAZ)** at initialization and periodically
+//! reasserts them on the hot path ([`math::common::set_daz_ftz`]).
 //!
-//! Subnormal (denormal) floating-point numbers cause extreme performance
-//! degradation on x86-64 — up to 100× slowdown per operation. NAM-rs
-//! configures **Flush-To-Zero (FTZ)** and **Denormals-Are-Zero (DAZ)** in
-//! the MXCSR register at startup and periodically reasserts them on the
-//! hot-path (every 1024 blocks) to guard against DAW hosts that may reset
-//! the register between callbacks. See [`math::common::set_daz_ftz`].
+//! ### 4. Panic-Free Hot Path
+//! Stack unwinding (panics) breaks hard real-time determinism.
+//! Processing hot paths avoid `unwrap()`/`expect()` in favor of explicit fallback bounds checks.
 //!
-//! ## Panic-Free Processing
+//! ### 5. Lock-Free Cache-Isolated Concurrency
+//! Shared structures RT ↔ Main use `#[repr(align(128))]` to eliminate false sharing on CPU cache lines.
+//! Inter-thread SPSC buffers use `Acquire`/`Release` atomic ordering.
 //!
-//! Stack unwinding (panics) allocates memory and breaks real-time
-//! determinism. The processing pipeline avoids `unwrap()`/`expect()` in
-//! favor of explicit fallback paths, and loop structures are designed for
-//! static elimination of bounds checks.
+//! ---
 //!
-//! ## Lock-Free Concurrency
+//! ## 📜 License
 //!
-//! Shared structures between the RT and main threads use
-//! `#[repr(align(128))]` to prevent false sharing on cache lines. The SPSC
-//! ring buffer (via [`rtrb`]) uses `Acquire`/`Release` ordering on the
-//! hot-path — never `SeqCst`.
-//!
-//! # License
-//!
-//! This library is licensed under the **Apache License, Version 2.0**.
-//! Consumers of this library must comply with the terms of the Apache-2.0
-//! license, including proper attribution and inclusion of the license
-//! notice in derivative works. See the `LICENSE` file for the full text.
+//! Licensed under the **Apache License, Version 2.0**.
+//! Official repository: <https://github.com/fabiohl/nam-rs>
 
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("NAM-rs requires x86_64 architecture");
