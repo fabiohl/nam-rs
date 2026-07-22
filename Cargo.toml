@@ -9,6 +9,13 @@ repository = "https://github.com/fabiohl/nam-rs"
 description = "An opinionated, high-performance Neural Amp Modeler (NAM) client and core implementation in Rust for Linux/PipeWire and CLAP plugins."
 readme = "README.md"
 authors = ["Fábio Henrique de Lima Silva <fabio.henrique.lima.silva@gmail.com>"]
+include = [
+    "src/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE.txt",
+    "NOTICE.txt",
+]
 keywords = ["audio", "dsp", "nam", "neural-amp-modeler", "guitar"]
 categories = [
     "multimedia::audio",
@@ -182,5 +189,5 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 allow_attributes = "warn"
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["clap-plugin"]
 rustdoc-args = ["--cfg", "docsrs"]

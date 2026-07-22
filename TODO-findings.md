@@ -184,7 +184,7 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 
 ### Épico E1: Ajustes de Manifesto e Metadados no Cargo.toml
 
-#### Tarefa E1.1: Configuração do Restritor `include`
+#### Tarefa E1.1: Configuração do Restritor `include` ✅ CONCLUÍDO
 
 * **Arquivo Alvo**: [Cargo.toml](file:///home/fabio/nam-rs/Cargo.toml) — bloco `[package]`.
 * **Descrição**: Inserir o campo `include` para restringir os arquivos empacotados pelo Cargo ao estritamente necessário para compilar a crate.
@@ -205,7 +205,7 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 
 ---
 
-#### Tarefa E1.2: Decisão e Configuração de `[package.metadata.docs.rs]`
+#### Tarefa E1.2: Decisão e Configuração de `[package.metadata.docs.rs]` ✅ CONCLUÍDO
 
 * **Arquivo Alvo**: [Cargo.toml](file:///home/fabio/nam-rs/Cargo.toml) — seção já existente `[package.metadata.docs.rs]`.
 * **Descrição**: Avaliar se `all-features = true` é seguro para o ambiente de build do `docs.rs` (que não possui `libpipewire`). Se a compilação com `all-features` falhar no `docs.rs`, substituir pela opção abaixo.
