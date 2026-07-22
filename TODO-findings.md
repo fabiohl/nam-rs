@@ -286,6 +286,12 @@ Tudo isso é exposto no `crates.io` sob a licença **Apache-2.0**, mantendo o `n
 
 #### Tarefa E3.1: Validação Automatizada de Documentação e Doc-Tests
 
+> **Concluído em 2026-07-22**: Adicionada fase `[6/6]` em `utils/lints.sh` que executa:
+>
+> * `cargo doc --no-deps` com `RUSTDOCFLAGS="-D warnings"` (falha em warnings de doc)
+> * `cargo test --doc` (compila e executa todos os doc-tests)
+> * `PHASE_TOTAL` atualizado de 5 para 6. Script completo executado com sucesso: 6/6 fases passam.
+
 * **Arquivo Alvo**: [utils/lints.sh](file:///home/fabio/nam-rs/utils/lints.sh)
 * **Descrição**: Adicionar uma nova fase ao final do script que executa `cargo doc --no-deps` (para validar zero warnings de documentação) e `cargo test --doc` (para compilar e executar os doc-tests).
 * **Critério de Aceite**: O script `utils/lints.sh` executa todas as fases com sucesso, sem erros de documentação nem falhas de doc-tests.

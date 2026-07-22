@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-PHASE_TOTAL=5
+PHASE_TOTAL=6
 source "$(dirname "$0")/_lib.sh"
 
 echo -e "${BLUE}${BOLD}================================================================${NC}"
@@ -108,6 +108,17 @@ cargo clippy --all-targets --no-default-features --features clap-plugin,testing
 
 echo -e "  ${YELLOW}${BOLD}Clippy: All Features (catch-all)...${NC}"
 cargo clippy --all-targets --all-features
+
+# ---------------------------------------------------------------------------
+# [6/6] Documentation validation (doc generation + doc-tests)
+# ---------------------------------------------------------------------------
+phase "Validando documentação (cargo doc + cargo test --doc)..."
+
+echo -e "  ${YELLOW}${BOLD}Building docs (--no-deps, zero warnings)...${NC}"
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+
+echo -e "  ${YELLOW}${BOLD}Running doc-tests...${NC}"
+cargo test --doc
 
 echo -e "\n${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}             Suíte de qualidade concluída com sucesso!           ${NC}"
