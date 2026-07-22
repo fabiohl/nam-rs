@@ -112,6 +112,12 @@ pub unsafe fn gemv_with_bias_f32_avx512(
                     let rb5 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 13) * in_len + ic));
                     let rb6 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 14) * in_len + ic));
                     let rb7 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 15) * in_len + ic));
+                    // 16×8 matrix transpose: 16 frames (ra* = frames 0..7,
+                    // rb* = frames 8..15) × 8 input channels at offset ic.
+                    // Two independent shuffle trees (group a, group b) each
+                    // transpose 8×8 via unpack → shuffle → permute2f128, then
+                    // _mm512_insertf32x8 merges the transposed YMM halves into
+                    // ZMM. Each v_in_k broadcasts channel k across all 16 frames.
                     let ta0 = _mm256_unpacklo_ps(ra0, ra1);
                     let ta1 = _mm256_unpackhi_ps(ra0, ra1);
                     let ta2 = _mm256_unpacklo_ps(ra2, ra3);
@@ -447,6 +453,12 @@ pub unsafe fn gemv_no_bias_f32_avx512(
                     let rb5 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 13) * in_len + ic));
                     let rb6 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 14) * in_len + ic));
                     let rb7 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 15) * in_len + ic));
+                    // 16×8 matrix transpose: 16 frames (ra* = frames 0..7,
+                    // rb* = frames 8..15) × 8 input channels at offset ic.
+                    // Two independent shuffle trees (group a, group b) each
+                    // transpose 8×8 via unpack → shuffle → permute2f128, then
+                    // _mm512_insertf32x8 merges the transposed YMM halves into
+                    // ZMM. Each v_in_k broadcasts channel k across all 16 frames.
                     let ta0 = _mm256_unpacklo_ps(ra0, ra1);
                     let ta1 = _mm256_unpackhi_ps(ra0, ra1);
                     let ta2 = _mm256_unpacklo_ps(ra2, ra3);

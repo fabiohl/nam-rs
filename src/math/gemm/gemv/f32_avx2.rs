@@ -117,6 +117,10 @@ pub unsafe fn gemv_with_bias_f32_avx2(
                     let row5 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 5) * in_len + ic));
                     let row6 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 6) * in_len + ic));
                     let row7 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 7) * in_len + ic));
+                    // 8×8 matrix transpose: row_k holds frame (n+k)'s 8 input channels
+                    // at offset ic. unpack → shuffle → permute2f128 converts from
+                    // row-major [frame][channel] to column-major [channel][frame]
+                    // layout, so v_in_k broadcasts channel k across all 8 frames.
                     let t0 = _mm256_unpacklo_ps(row0, row1);
                     let t1 = _mm256_unpackhi_ps(row0, row1);
                     let t2 = _mm256_unpacklo_ps(row2, row3);
@@ -410,6 +414,10 @@ pub unsafe fn gemv_no_bias_f32_avx2(
                     let row5 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 5) * in_len + ic));
                     let row6 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 6) * in_len + ic));
                     let row7 = _mm256_loadu_ps(in_frames.as_ptr().add((n + 7) * in_len + ic));
+                    // 8×8 matrix transpose: row_k holds frame (n+k)'s 8 input channels
+                    // at offset ic. unpack → shuffle → permute2f128 converts from
+                    // row-major [frame][channel] to column-major [channel][frame]
+                    // layout, so v_in_k broadcasts channel k across all 8 frames.
                     let t0 = _mm256_unpacklo_ps(row0, row1);
                     let t1 = _mm256_unpackhi_ps(row0, row1);
                     let t2 = _mm256_unpacklo_ps(row2, row3);

@@ -30,6 +30,11 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
     let mut i = 0;
 
     unsafe {
+        // Accumulator alternation: 16 ZMM accumulators (8 per frame).
+        // Set A (sum{a}{0..3}) and Set B (sum{b}{0..3}) alternate every
+        // 4 samples to hide FMA latency. The 32-sample loop processes
+        // 8 blocks of 4 (A,B,A,B,A,B,A,B), the 16-sample loop processes
+        // 4 blocks (A only), and the tail handles < 4 elements.
         let perm_idx = _mm512_set_epi32(3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0);
 
         let mut sum0_a0 = _mm512_setzero_ps();
