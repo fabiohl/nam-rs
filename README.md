@@ -9,7 +9,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **NAM-rs** is a cutting-edge, high-fidelity, high-performance, real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) core and client written in pure Rust. Designed for guitar amplifiers, pedals, and studio gear simulation on Linux, it operates both as a **native PipeWire standalone application** and as a **CLAP plugin with an integrated GUI** for digital audio workstations (DAWs).
 
-> 💬 **Feedback, bug reports, suggestions, and testing are very welcome!**
+> ⚠️ **NAM-rs is public beta now!** It's taking steps from *"works in my machine"* towards *"used and loved by the community"*.
+>
+> ❤️‍🔥 Feedback, bug reports, suggestions, and testing are very welcome (and needed)!
 
 ---
 
