@@ -166,10 +166,7 @@ impl AdaptiveCompute {
     /// Creates a new `AdaptiveCompute` instance with the given mode.
     #[cold]
     pub fn new(mode: AdaptiveComputeMode) -> Self {
-        debug!(
-            "[Adaptive] FSM initialized: mode={:?}, state=Full",
-            mode
-        );
+        debug!("[Adaptive] FSM initialized: mode={:?}, state=Full", mode);
         Self {
             state: AdaptiveState::Full,
             prev_state: AdaptiveState::Full,

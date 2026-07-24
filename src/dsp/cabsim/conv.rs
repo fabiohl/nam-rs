@@ -169,7 +169,11 @@ impl ConvEngine {
         } else {
             info!(
                 "[Conv] Engine built: {} IR samples, partition={}, fft={}, {} partitions, isa={:?}",
-                ir.len(), partition_size, fft_size, num_partitions, isa
+                ir.len(),
+                partition_size,
+                fft_size,
+                num_partitions,
+                isa
             );
         }
 

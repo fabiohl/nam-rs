@@ -96,7 +96,10 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
 
     check_crc(data, version, weights_offset, crc32_header)?;
-    debug!("[Loader] .namb CRC32 validated (v{}, crc=0x{:08X})", version, crc32_header);
+    debug!(
+        "[Loader] .namb CRC32 validated (v{}, crc=0x{:08X})",
+        version, crc32_header
+    );
 
     // 4. Reads the binary weights
     let pesos_raw = &data[weights_offset..];

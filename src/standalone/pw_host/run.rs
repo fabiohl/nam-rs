@@ -213,6 +213,25 @@ pub fn run_pipewire_host(
             }
         }
 
+        if rt_status.check_flag_acquire(crate::common::spsc::RT_STATUS_NEEDS_QUANTUM_LOG) {
+            let new_quantum = rt_status.requested_pw_quantum.load(Ordering::Relaxed);
+            let old_quantum = rt_status.previous_quantum.load(Ordering::Relaxed);
+            if new_quantum != 0 && new_quantum != old_quantum {
+                log::info!(
+                    "{} PipeWire quantum renegotiated: {} -> {} samples ({}->{} ms @48kHz)",
+                    "🔄".cyan(),
+                    old_quantum,
+                    new_quantum,
+                    old_quantum as f64 * 1000.0 / 48_000.0,
+                    new_quantum as f64 * 1000.0 / 48_000.0,
+                );
+                rt_status
+                    .previous_quantum
+                    .store(new_quantum, Ordering::Relaxed);
+            }
+            rt_status.clear_flag_relaxed(crate::common::spsc::RT_STATUS_NEEDS_QUANTUM_LOG);
+        }
+
         if rt_status.check_flag_acquire(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD) {
             let partition_size = rt_status
                 .requested_cabsim_partition_size

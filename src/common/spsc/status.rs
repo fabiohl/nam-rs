@@ -62,6 +62,11 @@ pub const RT_STATUS_HOST_CONTRACT_VIOLATION: u64 = 1 << 20;
 /// Flag indicating that `ContainerModel::set_slimmable_size` failed to reset a submodel.
 /// Replaces `log::error!` for RT-zero-IO compliance. Set by RT callback, read by main thread.
 pub const RT_STATUS_SLIMMABLE_RESET_FAILED: u64 = 1 << 21;
+/// Flag indicating that the PipeWire quantum (buffer size) changed.
+/// Set by the RT callback whenever the per-cycle sample count differs from the
+/// previous cycle. The main thread reads `requested_pw_quantum`, logs, and clears.
+pub const RT_STATUS_NEEDS_QUANTUM_LOG: u64 = 1 << 23;
+
 /// Flag indicating that the GC cascade reached Tier 3 (overflow buffer).
 /// Set whenever an item is parked in the overflow buffer, regardless of overwrite.
 pub const RT_STATUS_GC_TIER3: u64 = 1 << 22;
@@ -99,6 +104,7 @@ pub const RT_STATUS_GC_TIER3: u64 = 1 << 22;
 /// | 20 | `HOST_CONTRACT_VIOLATION` | PipeWire buffer FFI contract violated (misaligned or OOB) |
 /// | 21 | `SLIMMABLE_RESET_FAILED` | ContainerModel submodel reset failed on RT thread |
 /// | 22 | `GC_TIER3` | GC cascade reached Tier 3 (overflow buffer) — item parked |
+/// | 23 | `NEEDS_QUANTUM_LOG` | PipeWire quantum (buffer size in frames) changed |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.
@@ -164,6 +170,15 @@ pub struct RtStatusFlags {
     /// Set by RT thread, read and cleared by main thread after rebuild.
     pub requested_os_factor: AtomicU32,
 
+    /// PipeWire quantum (buffer size in frames) detected by the RT callback.
+    /// Stored by the RT thread whenever `n_samples` differs from the previous cycle.
+    /// Read by the main thread for quantum-renegotiation logging.
+    pub requested_pw_quantum: AtomicU32,
+
+    /// Previous quantum value used by the main loop to detect and log changes.
+    /// Updated by the main thread after logging. Not accessed by the RT thread.
+    pub previous_quantum: AtomicU32,
+
     /// Incremented by the RT callback when capture (source)
     /// `dequeue_buffer()` returns `None` — PipeWire buffer miss on the input side.
     pub pw_buffer_miss: AtomicU32,
@@ -219,6 +234,8 @@ impl RtStatusFlags {
             requested_cabsim_partition_size: AtomicU32::new(0),
             requested_slimmable_ch: AtomicU32::new(0),
             requested_os_factor: AtomicU32::new(0),
+            requested_pw_quantum: AtomicU32::new(0),
+            previous_quantum: AtomicU32::new(0),
             pw_buffer_miss: AtomicU32::new(0),
             playback_miss: AtomicU32::new(0),
             capture_pw_now: AtomicI64::new(0),

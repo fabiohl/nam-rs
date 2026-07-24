@@ -133,6 +133,11 @@ pub fn process_dsp_buffer(
                         rt_status_for_process
                             .last_n_samples
                             .store(n, Ordering::Relaxed);
+                        rt_status_for_process
+                            .requested_pw_quantum
+                            .store(n, Ordering::Relaxed);
+                        rt_status_for_process
+                            .set_flag(crate::common::spsc::RT_STATUS_NEEDS_QUANTUM_LOG);
                     }
                 }
             }

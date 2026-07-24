@@ -43,11 +43,36 @@ pub fn configure_process_wide() {
             0,
         );
         if ret == -1 && *libc::__errno_location() == libc::EINVAL {
+            let err = std::io::Error::last_os_error();
             log::info!(
-                "Kernel does not support PR_THP_DISABLE_EXCEPT_ADVISED — \
-                 falling back to classic PR_SET_THP_DISABLE."
+                "Kernel does not support PR_THP_DISABLE_EXCEPT_ADVISED (errno={}: {}) — \
+                 falling back to classic PR_SET_THP_DISABLE.",
+                err.raw_os_error().unwrap_or(-1),
+                err,
             );
-            libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+            let classic_ret = libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+            if classic_ret == -1 {
+                let fallback_err = std::io::Error::last_os_error();
+                log::warn!(
+                    "Classic PR_SET_THP_DISABLE also failed (errno={}: {}). \
+                     THP may remain active — background compaction latencies possible.",
+                    fallback_err.raw_os_error().unwrap_or(-1),
+                    fallback_err,
+                );
+            } else {
+                log::info!(
+                    "Transparent Huge Pages globally disabled (classic fallback). \
+                     Only MADV_HUGEPAGE regions may use THP."
+                );
+            }
+        } else if ret == -1 {
+            let err = std::io::Error::last_os_error();
+            log::warn!(
+                "prctl(PR_SET_THP_DISABLE) failed with unexpected errno={}: {}. \
+                 THP state unknown — background compaction latencies possible.",
+                err.raw_os_error().unwrap_or(-1),
+                err,
+            );
         }
     }
 

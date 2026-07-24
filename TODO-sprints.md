@@ -325,7 +325,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 3.2: Cobertura de Logs nas Camadas Standalone (`src/standalone/`) e CLAP (`src/clap/`)
 
-#### Task 3.2.1: Enriquecimento de Eventos Standalone / PipeWire e HugeTLB
+#### Task 3.2.1: Enriquecimento de Eventos Standalone / PipeWire e HugeTLB [DONE]
 
 - **Descrição**: Preencher as lacunas pontuais de logging na camada PipeWire Host standalone, especificamente durante a renegociação de quantum/buffer e no fallback de HugeTLB.
 - **Direcionamento Técnico**:
