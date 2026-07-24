@@ -264,6 +264,12 @@ pub struct ColdShared {
     pub(crate) dialog_handle_sink: Mutex<Option<std::thread::JoinHandle<()>>>,
     /// Sink for IR dialog thread handle (written by UI, read by main thread for join).
     pub(crate) ir_dialog_handle_sink: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Host-log bridge sink for forwarding `log::*` macros to the DAW host.
+    /// Each CLAP instance registers a `Weak<HostLogFn>` with the global `NamLogger`.
+    /// This `Arc` is stored here (owned by the plugin) so the `Weak` stays alive
+    /// for the plugin's lifetime.
+    #[cfg(feature = "clap-plugin")]
+    pub(crate) host_log_sink: Mutex<Option<Arc<crate::common::diagnostics::logger::HostLogFn>>>,
 }
 
 /// Model payload deferred from the main thread until `buffer_size` is known

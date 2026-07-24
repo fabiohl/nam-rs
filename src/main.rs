@@ -17,7 +17,7 @@
 //! - **ZERO LOCKS** in the Audio thread (`pw_host` module): Audio does not "wait" for the visual interface. If there is no new instruction, it continues using the previous one. This avoids sound "glitching".
 //! - **ZERO ALLOCATIONS** in the Audio thread: The audio channel memory (`process()`) is always prepared 100% in advance. Audio never "requests more RAM" out of nowhere.
 
-use nam_rs::diagnostics::SystemSnapshot;
+use nam_rs::diagnostics::{SystemSnapshot, logger::NamLogger};
 use nam_rs::dsp::cabsim::conv::ConvEngine;
 use nam_rs::dsp::cabsim::loader::CabSimIr;
 use nam_rs::math::activations::set_activation_precision;
@@ -33,8 +33,13 @@ fn main() -> anyhow::Result<()> {
     // Install panic hook to capture crash diagnostics
     nam_rs::common::panic_hook::install_panic_hook("standalone");
 
-    // Initialize the logging backend (respects RUST_LOG; default: info)
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Initialize the NamLogger backend (respects RUST_LOG/NAM_LOG_LEVEL; default: info)
+    let level_filter = std::env::var("RUST_LOG")
+        .or_else(|_| std::env::var("NAM_LOG_LEVEL"))
+        .unwrap_or_else(|_| "info".to_string())
+        .parse::<log::LevelFilter>()
+        .unwrap_or(log::LevelFilter::Info);
+    NamLogger::init_standalone(level_filter).expect("Failed to initialize NamLogger backend");
 
     #[cfg(feature = "testing")]
     if std::env::var("NAM_DISABLE_GATE").is_ok() {

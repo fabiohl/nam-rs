@@ -19,6 +19,7 @@ use crate::common::params::NamPluginParams;
 use crate::common::spsc::{GcOverflowBuffer, RtStatusFlags};
 use clack_plugin::prelude::*;
 use rtrb::RingBuffer;
+use std::ffi::CString;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -148,6 +149,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 ir_dialog_state: None,
                 dialog_handle_sink: Mutex::new(None),
                 ir_dialog_handle_sink: Mutex::new(None),
+                host_log_sink: Mutex::new(None),
             },
         })
     }
@@ -202,6 +204,51 @@ impl DefaultPluginFactory for NamClapPlugin {
             .unwrap_or_else(|e| e.into_inner())
             .take()
             .ok_or(PluginError::Message("slimmable_tx producer already taken"))?;
+
+        // Register host-log sink with the global NamLogger so that all
+        // log::info! / log::warn! / log::error! macros in the CLAP plugin
+        // are forwarded to the DAW host's log console.
+        {
+            use crate::common::diagnostics::logger::{HostLogFn, NamLogger};
+            use clack_extensions::log::{HostLog, LogSeverity};
+
+            let _ = NamLogger::init_plugin(log::LevelFilter::Info);
+
+            if let Some(host_log) = host.get_extension::<HostLog>() {
+                // SAFETY: HostSharedHandle is repr(transparent) over
+                // NonNull<clap_host>. We extract the pointer and store
+                // it as opaque usize. Valid for the plugin's lifetime.
+                let handle_copy = *host; // Copy
+                let host_nn: std::ptr::NonNull<()> =
+                    unsafe { std::mem::transmute_copy(&handle_copy) };
+                let host_addr = host_nn.as_ptr() as usize;
+
+                let sink: Arc<HostLogFn> = Arc::new(move |severity_str, msg| {
+                    let severity = match severity_str {
+                        "ERROR" => LogSeverity::Error,
+                        "WARN" => LogSeverity::Warning,
+                        "INFO" => LogSeverity::Info,
+                        "DEBUG" => LogSeverity::Debug,
+                        _ => LogSeverity::Info,
+                    };
+                    let cmsg = CString::new(msg).unwrap_or_default();
+                    // SAFETY: host_addr was obtained from a valid
+                    // HostSharedHandle during init. The pointer is
+                    // valid for the plugin's lifetime.
+                    let ptr = host_addr as *mut ();
+                    let nn = unsafe { std::ptr::NonNull::new_unchecked(ptr) };
+                    let host_shared: HostSharedHandle<'static> =
+                        unsafe { std::mem::transmute::<std::ptr::NonNull<()>, _>(nn) };
+                    host_log.log(&host_shared, severity, &cmsg);
+                });
+                if let Some(nl) = NamLogger::global() {
+                    nl.register_sink(&sink);
+                }
+                if let Ok(mut guard) = shared.cold.host_log_sink.lock() {
+                    *guard = Some(sink);
+                }
+            }
+        }
 
         #[cfg_attr(test, allow(unused_mut, clippy::allow_attributes))]
         let main_thread = NamClapMainThread {

@@ -10,13 +10,34 @@
 //! and therefore never touch this buffer from the audio thread. The public API
 //! uses `std::sync::Mutex` — ordinary (blocking) `lock()` for off-RT use,
 //! `try_lock()` for panic-hook contexts where deadlock must be avoided.
+//!
+//! # NamLogger — Facade Bridge
+//!
+//! The `NamLogger` struct implements the `log::Log` trait, acting as the
+//! global backend for the `log` crate facade. It maintains:
+//! 1. A global `LogBuffer` ring buffer for diagnostic trace.
+//! 2. A list of registered host-log sinks (CLAP plugin instances).
+//! 3. Optional stderr output for standalone/CLI mode.
+//!
+//! ## Multi-instance CLAP safety
+//!
+//! `NamLogger::init()` is protected by `OnceLock`, so the first CLAP instance
+//! installs the global logger and subsequent instances reuse it without
+//! triggering `SetLoggerError`.
 
+use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Default maximum number of log records held in the ring buffer.
 const DEFAULT_CAPACITY: usize = 256;
+
+/// Callback type for CLAP host-log sinks.
+///
+/// Each CLAP plugin instance registers a sink via `register_sink()`.
+/// The callback receives (severity-as-string, formatted-message).
+pub type HostLogFn = dyn Fn(&str, &str) + Send + Sync;
 
 /// A single log record stored in the `LogBuffer`.
 #[derive(Debug, Clone)]
@@ -179,6 +200,156 @@ impl LogBuffer {
     pub fn capacity(&self) -> usize {
         self.capacity
     }
+}
+
+// ---------------------------------------------------------------------------
+// NamLogger — Global log::Log backend
+// ---------------------------------------------------------------------------
+
+/// Global `NamLogger` instance (initialized once per process).
+static NAM_LOGGER: OnceLock<NamLogger> = OnceLock::new();
+
+/// Converts a `log::Level` to a static string slice.
+fn level_str(level: log::Level) -> &'static str {
+    match level {
+        log::Level::Error => "ERROR",
+        log::Level::Warn => "WARN",
+        log::Level::Info => "INFO",
+        log::Level::Debug => "DEBUG",
+        log::Level::Trace => "TRACE",
+    }
+}
+
+/// Central bridge between the `log` crate facade and NAM-rs logging infra.
+///
+/// Implements `log::Log` and routes every log record to:
+/// 1. The global `LogBuffer` ring buffer.
+/// 2. stderr (if in standalone mode and the level passes `NAM_LOG_LEVEL`/`RUST_LOG`).
+/// 3. All registered CLAP host-log sinks (`Weak<HostLogFn>`).
+///
+/// ## Multi-instance CLAP
+///
+/// `NamLogger::init_standalone()` and `NamLogger::init_plugin()` install the
+/// global `log` backend exactly once via `OnceLock`. Subsequent calls are
+/// no-ops, so multiple CLAP instances in the same DAW process never trigger
+/// `SetLoggerError`.
+#[derive(Debug)]
+pub struct NamLogger {
+    buffer: LogBuffer,
+    sinks: Mutex<Vec<Weak<HostLogFn>>>,
+    standalone_mode: bool,
+    max_level: Mutex<LevelFilter>,
+}
+
+impl NamLogger {
+    /// Creates the global `NamLogger` in standalone mode and installs it as
+    /// the `log` crate backend. Safe to call multiple times — only the first
+    /// call takes effect.
+    pub fn init_standalone(level_filter: LevelFilter) -> Result<(), SetLoggerError> {
+        let logger = NAM_LOGGER.get_or_init(|| NamLogger {
+            buffer: LogBuffer::default(),
+            sinks: Mutex::new(Vec::new()),
+            standalone_mode: true,
+            max_level: Mutex::new(level_filter),
+        });
+        log::set_logger(logger)?;
+        log::set_max_level(level_filter);
+        Ok(())
+    }
+
+    /// Creates the global `NamLogger` in plugin mode and installs it as the
+    /// `log` crate backend. Safe to call multiple times — only the first
+    /// call takes effect. Returns a reference to the global instance.
+    pub fn init_plugin(level_filter: LevelFilter) -> Result<&'static NamLogger, SetLoggerError> {
+        let logger = NAM_LOGGER.get_or_init(|| NamLogger {
+            buffer: LogBuffer::default(),
+            sinks: Mutex::new(Vec::new()),
+            standalone_mode: false,
+            max_level: Mutex::new(level_filter),
+        });
+        match log::set_logger(logger) {
+            Ok(()) => {
+                log::set_max_level(level_filter);
+                Ok(logger)
+            }
+            Err(_) => {
+                // Already set by another CLAP instance — expected for 2nd+ instance.
+                log::set_max_level(level_filter);
+                Ok(logger)
+            }
+        }
+    }
+
+    /// Returns a reference to the global `NamLogger`, if initialized.
+    pub fn global() -> Option<&'static NamLogger> {
+        NAM_LOGGER.get()
+    }
+
+    /// Returns a reference to the global `LogBuffer`, if the logger is initialized.
+    pub fn log_buffer() -> Option<&'static LogBuffer> {
+        NAM_LOGGER.get().map(|l| &l.buffer)
+    }
+
+    /// Registers a CLAP host-log sink. The sink is stored as a `Weak`
+    /// reference — when the plugin instance is destroyed and its `Arc` drops,
+    /// the `Weak` becomes dead and is automatically purged on the next log
+    /// dispatch.
+    pub fn register_sink(&self, sink: &Arc<HostLogFn>) {
+        let mut sinks = self.sinks.lock().unwrap_or_else(|e| e.into_inner());
+        sinks.push(Arc::downgrade(sink));
+    }
+
+    /// Updates the maximum log level filter at runtime.
+    pub fn set_max_level(&self, level: LevelFilter) {
+        *self.max_level.lock().unwrap_or_else(|e| e.into_inner()) = level;
+        log::set_max_level(level);
+    }
+}
+
+impl Log for NamLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        let max = *self.max_level.lock().unwrap_or_else(|e| e.into_inner());
+        metadata.level() <= max
+    }
+
+    fn log(&self, record: &Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+
+        let level = record.level();
+        let target = record.target();
+        let message = record.args().to_string();
+
+        let log_record = LogRecord::now(level_str(level), target, &message);
+        self.buffer.push(log_record);
+
+        // stderr output for standalone mode
+        if self.standalone_mode {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            eprintln!(
+                "[{ts}] {level} {target}: {message}",
+                level = level_str(level)
+            );
+        }
+
+        // Dispatch to registered CLAP host-log sinks
+        let mut sinks = self.sinks.lock().unwrap_or_else(|e| e.into_inner());
+        let severity = level_str(level);
+        sinks.retain(|weak| {
+            if let Some(sink) = weak.upgrade() {
+                sink(severity, &message);
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    fn flush(&self) {}
 }
 
 #[cfg(test)]

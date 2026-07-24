@@ -11,7 +11,7 @@
 
 use clack_host::prelude::*;
 use nam_rs::clap::test_util;
-use nam_rs::diagnostics::SystemSnapshot;
+use nam_rs::diagnostics::{SystemSnapshot, logger::NamLogger};
 use nam_rs::loader;
 use nam_rs::models::NamModel;
 use nam_rs::spsc;
@@ -21,7 +21,8 @@ use std::path::{Path, PathBuf};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Replicate standalone startup initialization structure
     nam_rs::common::panic_hook::install_panic_hook("pgo_profiler");
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    NamLogger::init_standalone(log::LevelFilter::Info)
+        .expect("Failed to initialize NamLogger backend");
 
     log::info!("🎸 Starting real-world PGO profiling workload...");
 

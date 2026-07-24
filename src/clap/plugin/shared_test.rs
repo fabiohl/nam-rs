@@ -96,6 +96,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             ir_dialog_state: None,
             dialog_handle_sink: Mutex::new(None),
             ir_dialog_handle_sink: Mutex::new(None),
+            host_log_sink: Mutex::new(None),
         },
     }
 }

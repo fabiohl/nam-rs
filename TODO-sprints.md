@@ -41,7 +41,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 1.1.2: Implementação da Facade Bridge `NamLogger` e Suporte Multi-Instância CLAP
+#### Task 1.1.2: Implementação da Facade Bridge `NamLogger` e Suporte Multi-Instância CLAP [DONE]
 
 - **Descrição**: Implementar a struct `NamLogger` que satisfaz a trait `log::Log` da crate `log`. Resolver a limitação de chamada única de `log::set_logger()` em ambientes com múltiplas instâncias CLAP rodando no mesmo processo da DAW.
 - **Direcionamento Técnico**:

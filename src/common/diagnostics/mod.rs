@@ -25,6 +25,7 @@ pub mod system_info;
 pub use bundle::{DiagnosticBundle, ErrorContext};
 pub use diagnostic::NamDiagnostic;
 pub use error_codes::NamErrorCode;
+pub use logger::{HostLogFn, LogBuffer, LogRecord, NamLogger};
 pub use snapshot::{
     ACTIVE_MODEL_INFO, ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, AudioInfo, HasRuntimeSnapshot,
     ModelInfo, RtInfo, RuntimeSnapshot, TelemetrySnapshot,
