@@ -277,6 +277,16 @@ impl DefaultPluginFactory for NamClapPlugin {
             ir_dialog_state: None,
         };
 
+        let host_name = main_thread
+            .host
+            .name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| String::from("Unknown"));
+        let negotiated_clap = main_thread.host.clap_version();
+        log::info!(
+            "NAM-rs plugin instance created in host \"{host_name}\" (negotiated CLAP API {negotiated_clap})",
+        );
+
         Ok(main_thread)
     }
 }

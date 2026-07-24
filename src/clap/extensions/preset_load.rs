@@ -35,6 +35,12 @@ impl PluginPresetLoadImpl for NamClapMainThread<'_> {
         let path_buf = PathBuf::from(path_str);
 
         // Enqueue the model for loading via the existing pipeline (same as GUI/drag-drop).
+        let preset_name = path_buf
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
         let mut pending_guard = self
             .shared
             .cold
@@ -52,7 +58,7 @@ impl PluginPresetLoadImpl for NamClapMainThread<'_> {
 
         self.host.shared().request_callback();
 
-        log::info!("Loading preset from {path_str:?}");
+        log::info!("Loading preset \"{preset_name}\" from {path_str:?}");
 
         Ok(())
     }

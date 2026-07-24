@@ -23,10 +23,34 @@ impl<'a> PluginRenderImpl for NamClapMainThread<'a> {
     }
 
     fn set(&mut self, mode: RenderMode) -> Result<(), PluginError> {
+        let old_val = self.shared.cold.render_mode.load(Ordering::Acquire);
         let val = match mode {
             RenderMode::Realtime => RENDER_MODE_REALTIME,
             RenderMode::Offline => RENDER_MODE_OFFLINE,
         };
+
+        if old_val != val {
+            let old_mode = if old_val == RENDER_MODE_OFFLINE {
+                "Offline"
+            } else {
+                "Realtime"
+            };
+            let new_mode = if val == RENDER_MODE_OFFLINE {
+                "Offline"
+            } else {
+                "Realtime"
+            };
+            log::info!(
+                "Render mode changed: {old_mode} -> {new_mode} \
+                 (oversample={}, adaptive_compute=Off in Offline mode)",
+                if val == RENDER_MODE_OFFLINE {
+                    "max quality"
+                } else {
+                    "host-budget"
+                }
+            );
+        }
+
         self.shared.cold.render_mode.store(val, Ordering::Release); // pairs with Acquire load em processor/events.rs:136
         Ok(())
     }

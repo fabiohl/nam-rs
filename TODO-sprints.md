@@ -342,7 +342,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 3.2.2: Logs Estruturados de Ciclo de Vida CLAP, Render Mode e Presets
+#### Task 3.2.2: Logs Estruturados de Ciclo de Vida CLAP, Render Mode e Presets [DONE]
 
 - **Descrição**: Adicionar eventos de log via facade `log::*` durante a instanciação do plugin CLAP, transições de modo de renderização e carregamento de presets.
 - **Direcionamento Técnico**:
