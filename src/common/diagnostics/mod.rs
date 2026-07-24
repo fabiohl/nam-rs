@@ -18,6 +18,7 @@ pub mod bundle;
 pub mod diagnostic;
 pub mod error_codes;
 pub mod format;
+pub mod logger;
 pub mod snapshot;
 pub mod system_info;
 

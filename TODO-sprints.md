@@ -23,7 +23,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 1.1: Engine `NamLogger`, `LogBuffer` Ring Buffer e Concorrência Multi-Instância CLAP
 
-#### Task 1.1.1: Design e Implementação do Ring Buffer `LogBuffer` Thread-Safe
+#### Task 1.1.1: Design e Implementação do Ring Buffer `LogBuffer` Thread-Safe [DONE]
 
 - **Descrição**: Criar a estrutura `LogBuffer` em [`src/common/diagnostics/logger.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger.rs), responsável por reter em memória um histórico circular com capacidade para ~128 a 256 entradas de log formatadas (timestamp UNIX/relativo, log level, target/módulo, mensagem).
 - **Direcionamento Técnico**:
