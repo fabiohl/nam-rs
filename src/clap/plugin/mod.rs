@@ -68,6 +68,19 @@ impl DefaultPluginFactory for NamClapPlugin {
         let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
         let (slimmable_tx, slimmable_rx) = RingBuffer::new(4);
 
+        let dialog_state = Some(Arc::new(
+            crate::clap::gui::ui::zones::dialog_state::DialogSharedState {
+                pending_model: Mutex::new(None),
+                loading: std::sync::atomic::AtomicBool::new(false),
+            },
+        ));
+        let ir_dialog_state = Some(Arc::new(
+            crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState {
+                pending_ir: Mutex::new(None),
+                ir_loading: std::sync::atomic::AtomicBool::new(false),
+            },
+        ));
+
         Ok(NamClapShared {
             rt_to_ui: RtToUi {
                 ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
@@ -145,8 +158,8 @@ impl DefaultPluginFactory for NamClapPlugin {
                 slimmable_rx: Mutex::new(Some(slimmable_rx)),
                 full_wavenet_model: Mutex::new(None),
                 pending_model: Mutex::new(None),
-                dialog_state: None,
-                ir_dialog_state: None,
+                dialog_state: dialog_state.clone(),
+                ir_dialog_state: ir_dialog_state.clone(),
                 dialog_handle_sink: Mutex::new(None),
                 ir_dialog_handle_sink: Mutex::new(None),
                 host_log_sink: Mutex::new(None),
@@ -270,11 +283,11 @@ impl DefaultPluginFactory for NamClapPlugin {
             #[cfg(feature = "clap-plugin")]
             dialog_handle: None,
             #[cfg(feature = "clap-plugin")]
-            dialog_state: None,
+            dialog_state: shared.cold.dialog_state.clone(),
             #[cfg(feature = "clap-plugin")]
             ir_dialog_handle: None,
             #[cfg(feature = "clap-plugin")]
-            ir_dialog_state: None,
+            ir_dialog_state: shared.cold.ir_dialog_state.clone(),
         };
 
         let host_name = main_thread
