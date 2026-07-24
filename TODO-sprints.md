@@ -196,7 +196,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 2.2: Migração das Chamadas Manuais `HostLog` para a Facade `log::*` nos Módulos CLAP
 
-#### Task 2.2.1: Migração do Ciclo de Vida e Carregamento (`load.rs`, `housekeeping.rs`, `state.rs`, `preset_load.rs`)
+#### Task 2.2.1: Migração do Ciclo de Vida e Carregamento (`load.rs`, `housekeeping.rs`, `state.rs`, `preset_load.rs`) [DONE]
 
 - **Descrição**: Substituir as chamadas brutas e manuais de `HostLog` nestes módulos off-RT por chamadas equivalentes à facade unificada `log::info!`, `log::warn!`, `log::error!`.
 - **Direcionamento Técnico**:

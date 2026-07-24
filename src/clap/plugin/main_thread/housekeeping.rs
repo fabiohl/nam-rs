@@ -7,9 +7,7 @@ use super::NamClapMainThread;
 use crate::common::spsc::{self, drain_gc_channels};
 use crate::models::slimmable::slice_wavenet_model;
 use crate::models::{NamModel, StaticModel};
-use clack_extensions::log::{HostLog, LogSeverity};
 use clack_extensions::tail::HostTail;
-use std::ffi::CString;
 use std::sync::atomic::Ordering;
 
 impl<'a> NamClapMainThread<'a> {
@@ -61,14 +59,10 @@ impl<'a> NamClapMainThread<'a> {
             .cold
             .rt_status
             .check_and_clear_flag(spsc::RT_STATUS_SLIMMABLE_RESET_FAILED)
-            && let Some(log) = self.host.get_extension::<HostLog>()
         {
-            let shared = self.host.shared();
-            let msg = CString::new(
-                "NAM-rs: ContainerModel submodel reset failed — model may run in previous state.",
-            )
-            .unwrap_or_default();
-            log.log(&shared, LogSeverity::Error, &msg);
+            log::error!(
+                "ContainerModel submodel reset failed — model may run in previous state."
+            );
         }
 
         // WaveNet slimmable rebuild: main thread performs all allocation,
@@ -229,18 +223,7 @@ impl<'a> NamClapMainThread<'a> {
                         .ui_load_error
                         .store(true, Ordering::Relaxed);
 
-                    if let Some(log) = self.host.get_extension::<HostLog>() {
-                        let shared = self.host.shared();
-                        let err_str = format!("NAM-rs: Failed to load model from GUI: {:?}", e);
-                        let sanitized_err = err_str.replace('\0', " ");
-                        let msg = CString::new(sanitized_err).unwrap_or_else(|_| {
-                            CString::new(
-                                "NAM-rs: Failed to load model from GUI due to invalid characters",
-                            )
-                            .unwrap_or_default()
-                        });
-                        log.log(&shared, LogSeverity::Error, &msg);
-                    }
+                    log::error!("Failed to load model from GUI: {e:?}");
                 }
             }
         }
@@ -300,19 +283,7 @@ impl<'a> NamClapMainThread<'a> {
                             .ui_ir_load_error
                             .store(true, Ordering::Relaxed);
 
-                        if let Some(log) = self.host.get_extension::<HostLog>() {
-                            let shared = self.host.shared();
-                            let err_str =
-                                format!("NAM-rs: Failed to load cab-sim IR from GUI: {:?}", e);
-                            let sanitized_err = err_str.replace('\0', " ");
-                            let msg = CString::new(sanitized_err).unwrap_or_else(|_| {
-                                CString::new(
-                                    "NAM-rs: Failed to load IR from GUI due to invalid characters",
-                                )
-                                .unwrap_or_default()
-                            });
-                            log.log(&shared, LogSeverity::Error, &msg);
-                        }
+                        log::error!("Failed to load cab-sim IR from GUI: {e:?}");
                     }
                 }
             }

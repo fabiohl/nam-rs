@@ -15,12 +15,10 @@ use crate::clap::plugin::debug_assert_main_thread;
 use crate::common::diagnostics::NamDiagnostic;
 use crate::common::params::RtPluginParams;
 use clack_common::stream::{InputStream, OutputStream};
-use clack_extensions::log::{HostLog, LogSeverity};
 use clack_extensions::state_context::{
     PluginStateContext, PluginStateContextImpl, StateContextType,
 };
 use clack_plugin::prelude::*;
-use std::ffi::CString;
 use std::io::{Read, Write};
 
 #[derive(Debug, thiserror::Error)]
@@ -125,34 +123,17 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                                     }
                                 });
                         if let Some(new_path) = found {
-                            if let Some(log) = self.host.get_extension::<HostLog>() {
-                                let msg = format!(
-                                    "NAM-rs: Model not found at original path ({:?}), using portable fallback: {:?}",
-                                    path, new_path
-                                );
-                                if let Ok(c_msg) = CString::new(msg) {
-                                    log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
-                                }
-                            }
+                            log::info!("Model not found at original path ({path:?}), using portable fallback: {new_path:?}");
                             if let Err(e) = self.load_model(&new_path) {
                                 return Err(PluginError::Error(Box::new(
                                     StateContextError::ModelRestore(*e),
                                 )));
                             }
-                        } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                            let msg = format!(
-                                "NAM-rs: Saved model not found at path: {:?} and basename {:?} not located in search paths",
-                                path, basename
-                            );
-                            if let Ok(c_msg) = CString::new(msg) {
-                                log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                            }
+                        } else {
+                            log::warn!("Saved model not found at path: {path:?} and basename {basename:?} not located in search paths");
                         }
-                    } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                        let msg = format!("NAM-rs: Saved model not found at path: {:?}", path);
-                        if let Ok(c_msg) = CString::new(msg) {
-                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                        }
+                    } else {
+                        log::warn!("Saved model not found at path: {path:?}");
                     }
                 }
             }
@@ -162,22 +143,11 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                 let ir_path_opt = self.params.ir_path.clone();
                 if let Some(ref ir_path) = ir_path_opt {
                     if ir_path.exists() {
-                        if let Err(e) = self.load_cabsim(ir_path)
-                            && let Some(log) = self.host.get_extension::<HostLog>()
-                        {
-                            let msg = format!(
-                                "NAM-rs: Failed to restore saved IR ({:?}): {}",
-                                ir_path, e
-                            );
-                            if let Ok(c_msg) = CString::new(msg) {
-                                log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                            }
+                        if let Err(e) = self.load_cabsim(ir_path) {
+                            log::warn!("Failed to restore saved IR ({ir_path:?}): {e}");
                         }
-                    } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                        let msg = format!("NAM-rs: Saved IR not found at path: {:?}", ir_path);
-                        if let Ok(c_msg) = CString::new(msg) {
-                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                        }
+                    } else {
+                        log::warn!("Saved IR not found at path: {ir_path:?}");
                     }
                 } else {
                     use crate::clap::plugin::ClapParamPayload;

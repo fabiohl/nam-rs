@@ -13,12 +13,10 @@ use crate::clap::plugin::debug_assert_main_thread;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
-use clack_extensions::log::{HostLog, LogSeverity};
 use clack_extensions::params::{HostParams, ParamRescanFlags};
 use clack_extensions::state::PluginStateImpl;
 use clack_plugin::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::ffi::CString;
 use std::io::{Read, Write};
 
 pub(crate) const CURRENT_STATE_VERSION: u32 = 1;
@@ -94,11 +92,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             .map_err(|e| PluginError::Error(Box::new(StateError::ReadStream(e))))?;
 
         if buffer.is_empty() {
-            if let Some(log) = self.host.get_extension::<HostLog>() {
-                let msg =
-                    CString::new("NAM-rs: Empty state buffer, returning false").unwrap_or_default();
-                log.log(&self.host.shared(), LogSeverity::Debug, &msg);
-            }
+            log::debug!("Empty state buffer, returning false");
             return Err(PluginError::Message("Empty state buffer"));
         }
 
@@ -141,13 +135,8 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
 
         if let Some(path) = self.params.model_path.clone() {
             if path.exists() {
-                if let Err(e) = self.load_model(&path)
-                    && let Some(log) = self.host.get_extension::<HostLog>()
-                {
-                    let msg = format!("NAM-rs: Failed to restore saved model ({:?}): {}", path, e);
-                    if let Ok(c_msg) = CString::new(msg) {
-                        log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                    }
+                if let Err(e) = self.load_model(&path) {
+                    log::warn!("Failed to restore saved model ({path:?}): {e}");
                 }
             } else {
                 // Fallback: absolute path does not exist, try portable lookup via basename
@@ -166,40 +155,15 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                                 }
                             });
                     if let Some(new_path) = found {
-                        if let Some(log) = self.host.get_extension::<HostLog>() {
-                            let msg = format!(
-                                "NAM-rs: Model not found at original path ({:?}), using portable fallback: {:?}",
-                                path, new_path
-                            );
-                            if let Ok(c_msg) = CString::new(msg) {
-                                log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
-                            }
+                        log::info!("Model not found at original path ({path:?}), using portable fallback: {new_path:?}");
+                        if let Err(e) = self.load_model(&new_path) {
+                            log::warn!("Failed to restore model via fallback ({new_path:?}): {e}");
                         }
-                        if let Err(e) = self.load_model(&new_path)
-                            && let Some(log) = self.host.get_extension::<HostLog>()
-                        {
-                            let msg = format!(
-                                "NAM-rs: Failed to restore model via fallback ({:?}): {}",
-                                new_path, e
-                            );
-                            if let Ok(c_msg) = CString::new(msg) {
-                                log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                            }
-                        }
-                    } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                        let msg = format!(
-                            "NAM-rs: Saved model not found at path: {:?} and basename {:?} not located in search paths",
-                            path, basename
-                        );
-                        if let Ok(c_msg) = CString::new(msg) {
-                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                        }
+                    } else {
+                        log::warn!("Saved model not found at path: {path:?} and basename {basename:?} not located in search paths");
                     }
-                } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                    let msg = format!("NAM-rs: Saved model not found at path: {:?}", path);
-                    if let Ok(c_msg) = CString::new(msg) {
-                        log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                    }
+                } else {
+                    log::warn!("Saved model not found at path: {path:?}");
                 }
             }
         }
@@ -211,20 +175,11 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             let ir_path_opt = self.params.ir_path.clone();
             if let Some(ref ir_path) = ir_path_opt {
                 if ir_path.exists() {
-                    if let Err(e) = self.load_cabsim(ir_path)
-                        && let Some(log) = self.host.get_extension::<HostLog>()
-                    {
-                        let msg =
-                            format!("NAM-rs: Failed to restore saved IR ({:?}): {}", ir_path, e);
-                        if let Ok(c_msg) = CString::new(msg) {
-                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                        }
+                    if let Err(e) = self.load_cabsim(ir_path) {
+                        log::warn!("Failed to restore saved IR ({ir_path:?}): {e}");
                     }
-                } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                    let msg = format!("NAM-rs: Saved IR not found at path: {:?}", ir_path);
-                    if let Ok(c_msg) = CString::new(msg) {
-                        log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                    }
+                } else {
+                    log::warn!("Saved IR not found at path: {ir_path:?}");
                 }
             } else {
                 // No IR in saved state: bypass cabsim by sending None engine.

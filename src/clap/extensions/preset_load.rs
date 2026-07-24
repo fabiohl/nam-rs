@@ -7,7 +7,7 @@
 
 use clack_extensions::preset_discovery::prelude::*;
 use clack_plugin::prelude::*;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::path::PathBuf;
 
 use crate::clap::plugin::NamClapMainThread;
@@ -52,16 +52,7 @@ impl PluginPresetLoadImpl for NamClapMainThread<'_> {
 
         self.host.shared().request_callback();
 
-        // Log the preset load request.
-        if let Some(log) = self.host.get_extension::<clack_extensions::log::HostLog>() {
-            let msg = CString::new(format!("NAM-rs: Loading preset from {:?}", path_str))
-                .unwrap_or_default();
-            log.log(
-                &self.host.shared(),
-                clack_extensions::log::LogSeverity::Info,
-                &msg,
-            );
-        }
+        log::info!("Loading preset from {path_str:?}");
 
         Ok(())
     }

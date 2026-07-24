@@ -11,7 +11,6 @@ use crate::loader::load_and_build_model;
 use crate::models::NamModel;
 use crate::models::StaticModel;
 use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
-use clack_extensions::log::{HostLog, LogSeverity};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
@@ -57,15 +56,6 @@ impl<'a> NamClapMainThread<'a> {
                 "Model sample rate ({model_rate} Hz) differs from host sample rate ({host_rate} Hz); \
                  resampler will convert internally"
             );
-            if let Some(log) = self.host.get_extension::<HostLog>() {
-                let msg = format!(
-                    "NAM-rs: model sample rate ({model_rate} Hz) differs from host ({host_rate} Hz); \
-                     will resample internally"
-                );
-                if let Ok(c_msg) = std::ffi::CString::new(msg) {
-                    log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
-                }
-            }
         }
         let new_resampler = Box::new(NamResampler::new(host_rate, model_rate, 0).map_err(|e| {
             Box::new(
@@ -209,12 +199,7 @@ impl<'a> NamClapMainThread<'a> {
             );
         }
 
-        if let Some(log) = self.host.get_extension::<HostLog>() {
-            let msg = format!("NAM-rs: model loaded ({:?})", path);
-            if let Ok(c_msg) = std::ffi::CString::new(msg) {
-                log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
-            }
-        }
+        log::info!("Model loaded: {path:?}");
 
         if let Some(mut state_ext) = self
             .host
