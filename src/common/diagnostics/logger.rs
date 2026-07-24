@@ -247,6 +247,18 @@ fn level_str(level: log::Level) -> &'static str {
     }
 }
 
+fn format_wall_clock_time() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let millis = now.subsec_millis();
+    let hours = (secs / 3600) % 24;
+    let minutes = (secs / 60) % 60;
+    let seconds = secs % 60;
+    format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis)
+}
+
 /// Central bridge between the `log` crate facade and NAM-rs logging infra.
 ///
 /// Implements `log::Log` and routes every log record to:
@@ -353,13 +365,12 @@ impl Log for NamLogger {
 
         // stderr output for standalone mode
         if self.standalone_mode {
-            let ts = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
             eprintln!(
-                "[{ts}] {level} {target}: {message}",
-                level = level_str(level)
+                "{time} {level:5} {target}: {message}",
+                time = format_wall_clock_time(),
+                level = level_str(level),
+                target = record.target(),
+                message = record.args()
             );
         }
 

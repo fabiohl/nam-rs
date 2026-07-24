@@ -477,7 +477,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 4.2.3: Formatação Legível de Timestamp Wall-Clock no Modo Standalone
+#### Task 4.2.3: Formatação Legível de Timestamp Wall-Clock no Modo Standalone [DONE]
 
 - **Descrição**: Atualizar a saída para `stderr` do `NamLogger` no modo standalone em [`src/common/diagnostics/logger.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger.rs) para incluir horário legível em formato wall-clock (`HH:MM:SS` ou `HH:MM:SS.mmm`).
 - **Direcionamento Técnico**:
