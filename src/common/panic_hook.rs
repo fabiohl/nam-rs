@@ -10,6 +10,7 @@
 //! allocations (`var_os`, `PathBuf`) only occur when a writable `~/.cache/nam-rs`
 //! directory is found.
 
+use crate::common::diagnostics::NamLogger;
 use crate::common::diagnostics::SystemSnapshot;
 use crate::common::diagnostics::snapshot::{
     ACTIVE_MODEL_INFO, ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE,
@@ -126,6 +127,17 @@ fn format_panic_report_to_buf(
         let _ = writeln!(w, "audio.sr={}", rate);
     }
 
+    // Recent Log Trace (up to 30 lines, zero-alloc via try_lock)
+    let _ = writeln!(w, "──── Recent Log Trace ─────────────────────────");
+    if let Some(buffer) = NamLogger::log_buffer() {
+        let count = buffer.try_render_trace_into(&mut w, 30);
+        if count == 0 {
+            let _ = writeln!(w, "<log buffer locked>");
+        }
+    } else {
+        let _ = writeln!(w, "<log buffer not initialized>");
+    }
+
     let unix_ts = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -223,7 +235,7 @@ pub fn install_panic_hook(component: &'static str) {
             .get()
             .expect("SystemSnapshot not initialized");
 
-        let mut report_buf = [0u8; 4096];
+        let mut report_buf = [0u8; 16384];
         let written = format_panic_report_to_buf(
             &mut report_buf,
             component,

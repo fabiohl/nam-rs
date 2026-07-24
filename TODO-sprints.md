@@ -101,7 +101,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 1.2.2: Expansão do Buffer e Inclusão de Log Trace em `src/common/panic_hook.rs`
+#### Task 1.2.2: Expansão do Buffer e Inclusão de Log Trace em `src/common/panic_hook.rs` [DONE]
 
 - **Descrição**: Atualizar o manipulador de pânico em [`src/common/panic_hook.rs`](file:///home/fabio/nam-rs/src/common/panic_hook.rs) para incorporar as entradas mais recentes de log no crash report salvo em `~/.cache/nam-rs/crash-*.txt`.
 - **Direcionamento Técnico**:

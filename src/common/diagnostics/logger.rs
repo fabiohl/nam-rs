@@ -186,6 +186,37 @@ impl LogBuffer {
         Some(out)
     }
 
+    /// Attempts to render a trace directly into a [`std::fmt::Write`] without
+    /// blocking or allocating. Returns the number of records written (0 if the
+    /// lock could not be acquired).
+    ///
+    /// Designed for zero-alloc use in panic hooks and crash-report paths.
+    pub fn try_render_trace_into(
+        &self,
+        writer: &mut impl std::fmt::Write,
+        limit: usize,
+    ) -> usize {
+        let inner = match self.inner.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => return 0,
+        };
+        let start = if inner.len() > limit {
+            inner.len() - limit
+        } else {
+            0
+        };
+        let mut count = 0;
+        for record in inner.range(start..) {
+            let _ = writeln!(
+                writer,
+                "[{}] {} {}: {}",
+                record.timestamp_secs, record.level, record.target, record.message
+            );
+            count += 1;
+        }
+        count
+    }
+
     /// Returns the current number of records in the buffer.
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap_or_else(|e| e.into_inner()).len()
