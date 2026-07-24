@@ -161,7 +161,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 2.1: Inicialização do `NamLogger` nos Entrypoints e Ponte Automática CLAP `HostLog`
 
-#### Task 2.1.1: Inicialização do `NamLogger` no Plugin CLAP (`NamClapPlugin::new_shared`)
+#### Task 2.1.1: Inicialização do `NamLogger` no Plugin CLAP (`NamClapPlugin::new_shared`) [DONE]
 
 - **Descrição**: Registrar a inicialização do `NamLogger` no ponto de fabricação/instanciação do plugin CLAP e conectar a extensão `HostLog` do host via callback de sink registrado.
 - **Direcionamento Técnico**:
@@ -179,7 +179,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 2.1.2: Refino e Validação da Inicialização no CLI Standalone (`main.rs`)
+#### Task 2.1.2: Refino e Validação da Inicialização no CLI Standalone (`main.rs`) [DONE]
 
 - **Descrição**: Validar e refinar a inicialização do `NamLogger::init_standalone()` no ponto de entrada do binário CLI (`main.rs`).
 - **Direcionamento Técnico**:

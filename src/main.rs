@@ -69,9 +69,12 @@ fn main() -> anyhow::Result<()> {
     let sys = SystemSnapshot::capture();
     log::info!(
         "🎸 {}",
-        format!("NAM-rs Standalone v{} — Neural Amp Modeler", sys.version)
-            .bright_green()
-            .bold()
+        format!(
+            "NAM-rs Standalone v{} [x86-64-v3] — Neural Amp Modeler",
+            sys.version
+        )
+        .bright_green()
+        .bold()
     );
 
     // 3. PREPARE THE AUDIO: Initialize PipeWire (the Linux sound system)
