@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use crate::common::diagnostics::{NamErrorCode, SystemSnapshot};
+use crate::common::diagnostics::{NamErrorCode, NamLogger, SystemSnapshot};
 
 static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -253,4 +253,74 @@ fn test_diagnostic_bundle_redaction() {
         *name = String::new();
     }
     ACTIVE_SAMPLE_RATE.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Verifies that `DiagnosticBundle::render()` includes the `──── Recent Log Trace ────`
+/// section when the global `NamLogger` is initialized, and that emitted log messages
+/// appear in the output.
+#[test]
+fn test_diagnostic_bundle_includes_log_trace_when_logger_initialized() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+
+    // Ensure NamLogger is initialized (safe to call multiple times due to OnceLock;
+    // log::set_logger may fail harmlessly if already registered by another test).
+    let _ = NamLogger::init_standalone(log::LevelFilter::Info);
+
+    log::info!("Test log message 1");
+    log::warn!("Test warning with /path/to/file");
+    log::error!("Test error message");
+
+    let bundle = DiagnosticBundle::capture();
+    let rendered = bundle.render();
+
+    assert!(
+        rendered.contains("──── Recent Log Trace ─────────────────────────"),
+        "Must contain log trace header when logger is initialized"
+    );
+    assert!(
+        rendered.contains("Test log message 1"),
+        "Must contain emitted log messages in trace"
+    );
+    assert!(
+        rendered.contains("Test warning"),
+        "Must contain warning in trace"
+    );
+    assert!(
+        rendered.contains("Test error message"),
+        "Must contain error in trace"
+    );
+}
+
+/// Verifies that the log trace section respects the `full` flag for path redaction
+/// when absolute paths are present in log messages.
+#[test]
+fn test_diagnostic_bundle_log_trace_redaction() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+
+    let _ = NamLogger::init_standalone(log::LevelFilter::Info);
+
+    if let Ok(home) = std::env::var("HOME") {
+        let test_path = format!("{}/test_model.nam", home);
+        log::info!("Loading model from {}", test_path);
+
+        // Default (redacted) mode: HOME should be replaced with ~
+        let bundle_redacted = DiagnosticBundle::capture();
+        let rendered_redacted = bundle_redacted.render();
+        assert!(
+            !rendered_redacted.contains(&test_path),
+            "Full HOME path should not appear in redacted trace"
+        );
+        assert!(
+            rendered_redacted.contains("~/test_model.nam"),
+            "HOME path should be redacted to ~/... in trace"
+        );
+
+        // Full (unredacted) mode: full path should be present
+        let bundle_full = DiagnosticBundle::capture().with_full(true);
+        let rendered_full = bundle_full.render();
+        assert!(
+            rendered_full.contains(&test_path),
+            "Full HOME path should appear in full trace"
+        );
+    }
 }

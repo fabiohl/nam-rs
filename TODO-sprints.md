@@ -82,7 +82,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-### Sprint 1.2: Integração nos Relatórios de Diagnóstico, Panic Hook e Rotação de Crash Files
+### Sprint 1.2: Integração nos Relatórios de Diagnóstico, Panic Hook e Rotação de Crash Files [DONE]
 
 #### Task 1.2.1: Anexar Rastro de Execução (`Recent Log Trace`) no `DiagnosticBundle::render()`
 

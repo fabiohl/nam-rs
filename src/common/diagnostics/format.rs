@@ -66,6 +66,46 @@ pub(crate) fn redact_path(p: &std::path::Path, full: bool) -> String {
     p.to_string_lossy().into_owned()
 }
 
+/// Redacts absolute paths embedded in free-form text (log traces, etc.).
+///
+/// When `full` is false, scans the string for token sequences that start with `/`
+/// and look like absolute paths, and replaces `$HOME` with `~` /
+/// `$XDG_RUNTIME_DIR` with `$XDG_RUNTIME_DIR`. When `full` is true, returns
+/// the text unchanged.
+pub(crate) fn redact_text(text: &str, full: bool) -> String {
+    if full {
+        return text.to_string();
+    }
+    let mut result = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'/' && (i == 0 || !is_path_byte(bytes[i - 1])) {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && is_path_byte(bytes[i]) {
+                i += 1;
+            }
+            let candidate = std::str::from_utf8(&bytes[start..i]).unwrap_or("");
+            if candidate.len() > 1 {
+                let path = std::path::Path::new(candidate);
+                let redacted = redact_path(path, false);
+                result.push_str(&redacted);
+            } else {
+                result.push_str(candidate);
+            }
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+fn is_path_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'/' || b == b'.' || b == b'_' || b == b'-'
+}
+
 /// Helper function to format model paths.
 /// Default (not full): only prints file basename.
 /// Full: prints the raw absolute path.

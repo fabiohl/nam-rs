@@ -5,7 +5,8 @@
 //! with optional error context for support triage.
 
 use super::error_codes::NamErrorCode;
-use super::format::{format_model_path, redact_path, timestamp};
+use super::format::{format_model_path, redact_path, redact_text, timestamp};
+use super::logger::NamLogger;
 use super::snapshot::{ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, RuntimeSnapshot};
 use super::system_info::SystemSnapshot;
 use std::sync::atomic::Ordering;
@@ -247,9 +248,7 @@ impl DiagnosticBundle {
              os={} kernel={}\n\
              pipewire={}\n\
              features={}\n\
-             timestamp={}\n\
-             {separator}\n\
-             Copy the block above when opening a support ticket.",
+             timestamp={}\n",
             self.system.arch,
             self.system.os,
             self.system.kernel,
@@ -260,6 +259,21 @@ impl DiagnosticBundle {
                 self.system.features.join(", ")
             },
             timestamp(),
+        ));
+
+        // Recent Log Trace
+        if let Some(buffer) = NamLogger::log_buffer() {
+            let trace = buffer.render_trace(50);
+            if !trace.is_empty() {
+                let trace_formatted = redact_text(&trace, self.full);
+                block.push_str("──── Recent Log Trace ─────────────────────────\n");
+                block.push_str(&trace_formatted);
+            }
+        }
+
+        block.push_str(&format!(
+            "{separator}\n\
+             Copy the block above when opening a support ticket.",
         ));
 
         block
