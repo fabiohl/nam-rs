@@ -33,16 +33,7 @@ pub(crate) fn spawn_file_dialog(
                 state
                     .loading
                     .store(false, std::sync::atomic::Ordering::Release);
-                if let (Some(log), Ok(c_msg)) = (
-                    host_static.get_extension::<clack_extensions::log::HostLog>(),
-                    std::ffi::CString::new("NAM-rs: File dialog portal timed out after 120s"),
-                ) {
-                    log.log(
-                        &host_static,
-                        clack_extensions::log::LogSeverity::Warning,
-                        &c_msg,
-                    );
-                }
+                log::warn!("File dialog portal timed out after 120s");
             }
         }
     })
@@ -76,16 +67,7 @@ pub(crate) fn spawn_ir_file_dialog(
                 state
                     .ir_loading
                     .store(false, std::sync::atomic::Ordering::Release);
-                if let (Some(log), Ok(c_msg)) = (
-                    host_static.get_extension::<clack_extensions::log::HostLog>(),
-                    std::ffi::CString::new("NAM-rs: IR file dialog portal timed out after 120s"),
-                ) {
-                    log.log(
-                        &host_static,
-                        clack_extensions::log::LogSeverity::Warning,
-                        &c_msg,
-                    );
-                }
+                log::warn!("IR file dialog portal timed out after 120s");
             }
         }
     })

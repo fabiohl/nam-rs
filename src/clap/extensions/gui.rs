@@ -9,7 +9,6 @@ use crate::clap::plugin::debug_assert_main_thread;
 use clack_extensions::gui::{
     GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window,
 };
-use clack_extensions::log::{HostLog, LogSeverity};
 use clack_plugin::plugin::PluginError;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -123,12 +122,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         } else {
             "embedded"
         };
-        if let Some(log) = self.host.get_extension::<HostLog>() {
-            let shared = self.host.shared();
-            let msg = std::ffi::CString::new(format!("NAM-rs: GUI mode selected = {mode}"))
-                .unwrap_or_default();
-            log.log(&shared, LogSeverity::Info, &msg);
-        }
+        log::info!("GUI mode selected = {mode}");
         Ok(())
     }
 

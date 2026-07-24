@@ -216,7 +216,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 2.2.2: Migração dos Módulos de Interface Gráfica e Manipuladores de Arquivos (`gui/`, `file_dialogs.rs`, `gui.rs`)
+#### Task 2.2.2: Migração dos Módulos de Interface Gráfica e Manipuladores de Arquivos (`gui/`, `file_dialogs.rs`, `gui.rs`) [DONE]
 
 - **Descrição**: Migrar chamadas manuais `HostLog` nos módulos da GUI e seletores de arquivo para a facade `log::*`.
 - **Direcionamento Técnico**:

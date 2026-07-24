@@ -69,14 +69,8 @@ impl NamPluginWindow {
         alive_fence: Arc<std::sync::atomic::AtomicBool>,
         scale_factor: f32,
     ) -> Self {
-        if let (true, Some(log), Ok(c_msg)) = (
-            std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland"),
-            host.get_extension::<clack_extensions::log::HostLog>(),
-            std::ffi::CString::new(
-                "NAM-rs: Wayland session detected, using XDG portal for file dialogs",
-            ),
-        ) {
-            log.log(&host, clack_extensions::log::LogSeverity::Info, &c_msg);
+        if std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland") {
+            log::info!("Wayland session detected, using XDG portal for file dialogs");
         }
 
         // WHITELIST: gl_context() fails only if baseview did not set up an OpenGL context,
