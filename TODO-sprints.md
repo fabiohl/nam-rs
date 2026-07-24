@@ -281,7 +281,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 3.1: Cobertura de Logs nos Subsistemas de Carregamento (`src/loader/`) e DSP Off-RT (`src/dsp/`)
 
-#### Task 3.1.1: Pre-Dispatch & Detailed Parsing Logs em `src/loader/`
+#### Task 3.1.1: Pre-Dispatch & Detailed Parsing Logs em `src/loader/` [DONE]
 
 - **Descrição**: Adicionar chamadas `log::info!`, `log::warn!` e `log::debug!` nas etapas de pré-despacho, parsing de metadados JSON/NAMB e compilação de pesos nos carregadores de modelo em `src/loader/`.
 - **Direcionamento Técnico**:

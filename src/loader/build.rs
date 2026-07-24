@@ -7,6 +7,7 @@
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::loader::{dispatcher, nam_json, namb};
 use crate::models::NamModel;
+use log::{debug, info};
 use std::path::Path;
 
 use super::loaded_model_pair::{
@@ -76,6 +77,8 @@ pub fn load_and_build_model(
     let path_str = path.to_string_lossy();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let ext_lower = ext.to_lowercase();
+
+    info!("[Loader] Loading model from \"{}\"", path_str);
 
     // 1. Reading and Parsing
     let model_data = if ext_lower == "namb" {
@@ -154,6 +157,18 @@ pub fn load_and_build_model(
         return Err(anyhow::anyhow!("Unsupported file extension: {}", ext));
     };
 
+    let model_version = model_data.version.as_deref().unwrap_or("(unknown)");
+    let weights_count = model_data.weights.len();
+    let model_sample_rate = model_data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE);
+    info!(
+        "[Loader] Parsed model: arch=\"{}\", version={}, {} weights, sample_rate={:.0} Hz",
+        model_data.architecture, model_version, weights_count, model_sample_rate
+    );
+    debug!(
+        "[Loader] Model details: {:?} weights_layout",
+        model_data.weights_layout
+    );
+
     // 2. Metadata and Calibration Extraction
     let meta = model_data.metadata.clone().unwrap_or_default();
     let in_level = meta.input_level_dbu.unwrap_or(DEFAULT_INPUT_LEVEL_DBU);
@@ -167,7 +182,18 @@ pub fn load_and_build_model(
     let input_mult_adj = lut.db_to_linear(input_db_adj);
     let output_mult_adj = lut.db_to_linear(output_db_adj);
 
+    let model_name = meta.name.as_deref().unwrap_or("(unnamed)");
+    debug!(
+        "[Loader] Metadata: name=\"{}\", in_level={:.1} dBu, loudness={:.1} dB, \
+         input_adj={:+.1} dB, output_adj={:+.1} dB",
+        model_name, in_level, loudness, input_db_adj, output_db_adj
+    );
+
     // 3. Dispatcher (Build Model L/R)
+    info!(
+        "[Loader] Dispatching model build: arch=\"{}\", layout={:?}",
+        model_data.architecture, model_data.weights_layout
+    );
     let mut model_l = dispatcher::build_model(&model_data)
         .inspect_err(|e| {
             NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
@@ -268,6 +294,23 @@ pub fn load_and_build_model(
             "Interleaved4WaveNet".to_string()
         }
     };
+
+    let has_l = model_l.is_some();
+    let has_r = model_r.is_some();
+    let channels = if has_l && has_r {
+        "stereo"
+    } else if has_l {
+        "mono (L only)"
+    } else if has_r {
+        "mono (R only, unexpected)"
+    } else {
+        "none (build failed)"
+    };
+    info!(
+        "[Loader] Model built successfully: arch=\"{}\", topology=\"{}\", \
+         {} ch, layout={}, sample_rate={} Hz",
+        architecture, topology, channels, weights_layout_str, nam_rate
+    );
 
     Ok(LoadedModelPair {
         model_l,

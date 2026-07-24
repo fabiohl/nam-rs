@@ -10,6 +10,7 @@
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::sinc_kernel::TAPS_PER_PHASE;
+use log::{debug, info};
 
 use std::io;
 use std::io::Read;
@@ -71,10 +72,20 @@ impl CabSimIr {
     /// or resampling errors. Never panics.
     #[cold]
     pub fn load(path: &Path, target_rate: u32, normalize: bool) -> io::Result<Box<Self>> {
+        info!(
+            "[Loader] Loading IR from \"{}\" (target_rate={} Hz, normalize={})",
+            path.display(),
+            target_rate,
+            normalize
+        );
         let data = Self::read_file(path)?;
         let (samples, original_rate) = Self::parse_wav(&data)?;
 
         let mut samples = if target_rate != 0 && target_rate != original_rate {
+            info!(
+                "[Loader] IR resampling: {} Hz -> {} Hz",
+                original_rate, target_rate
+            );
             Self::resample(&samples, original_rate, target_rate)?
         } else {
             samples
@@ -87,10 +98,23 @@ impl CabSimIr {
         };
 
         let normalized = if normalize {
-            Self::normalize_in_place(&mut samples)
+            let was_normalized = Self::normalize_in_place(&mut samples);
+            if was_normalized {
+                info!("[Loader] IR normalized to peak 1.0");
+            } else {
+                debug!("[Loader] IR normalization skipped (peak already ~1.0 or zero)");
+            }
+            was_normalized
         } else {
             false
         };
+
+        info!(
+            "[Loader] IR loaded: {} samples, {} Hz, normalized={}",
+            samples.len(),
+            effective_rate,
+            normalized
+        );
 
         Ok(Box::new(Self {
             samples,
@@ -137,6 +161,7 @@ impl CabSimIr {
 
         let mut data = Vec::with_capacity(file_size as usize);
         file.read_to_end(&mut data)?;
+        debug!("[Loader] IR file read: {} bytes", data.len());
         Ok(data)
     }
 
@@ -246,6 +271,17 @@ impl CabSimIr {
                 ));
             }
         };
+
+        let fmt_label = match (audio_format, bits_per_sample) {
+            (WAV_FORMAT_PCM, 16) => "PCM16",
+            (WAV_FORMAT_PCM, 24) => "PCM24",
+            (WAV_FORMAT_IEEE_FLOAT, 32) => "float32",
+            _ => "unknown",
+        };
+        debug!(
+            "[Loader] IR WAV parsed: {} channels, {} Hz, fmt={}, {} samples",
+            num_channels, sample_rate, fmt_label, num_samples
+        );
 
         if samples.is_empty() {
             return Err(io::Error::new(

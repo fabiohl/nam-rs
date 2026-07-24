@@ -8,7 +8,7 @@ use super::error::NambError;
 use super::fallback::make_fallback_model_data;
 use super::header::{FLAG_HAS_CRC32, NambHeader, check_crc};
 use anyhow::Result;
-use log::info;
+use log::{debug, info};
 
 /// Loads a model in the `.namb` binary format.
 pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
@@ -27,6 +27,15 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // (no padding, no uninit bytes, correct alignment via `read_unaligned`).
     let header = unsafe { core::ptr::read_unaligned(data.as_ptr().cast::<NambHeader>()) };
     header.validate()?;
+
+    let hdr_version = header.version;
+    let hdr_weights_offset = header.weights_offset as usize;
+    let hdr_flags = header.flags;
+    let file_size = data.len();
+    info!(
+        "[Loader] .namb header v{} — weights_offset={}, flags=0x{:02X}, file_size={}",
+        hdr_version, hdr_weights_offset, hdr_flags, file_size
+    );
 
     // 2. Reads the JSON metadata section (optional in .namb, but common)
     // If weights_offset > header_size, there is a JSON between them.
@@ -56,11 +65,17 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         };
 
         if !actual_json.is_empty() {
+            debug!(
+                "[Loader] .namb JSON metadata section: {} bytes",
+                actual_json.len()
+            );
             crate::loader::nam_json::parse_nam_json(std::str::from_utf8(actual_json)?)?
         } else {
+            debug!("[Loader] .namb has no JSON metadata — using fallback defaults");
             make_fallback_model_data()
         }
     } else {
+        debug!("[Loader] .namb has no JSON metadata gap — using fallback defaults");
         make_fallback_model_data()
     };
 
@@ -68,7 +83,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     let version = header.version;
     let crc32_header = header.crc32;
 
-    if version >= 2 && header.flags & FLAG_HAS_CRC32 == 0 {
+    if version >= 2 && hdr_flags & FLAG_HAS_CRC32 == 0 {
         return Err(NambError::CrcMissing { version }.into());
     }
 
@@ -81,6 +96,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
 
     check_crc(data, version, weights_offset, crc32_header)?;
+    debug!("[Loader] .namb CRC32 validated (v{}, crc=0x{:08X})", version, crc32_header);
 
     // 4. Reads the binary weights
     let pesos_raw = &data[weights_offset..];
@@ -119,6 +135,11 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     let sample_rate_header = header.sample_rate;
     let input_level_header = header.input_level_dbu;
     let output_level_header = header.output_level_dbu;
+
+    debug!(
+        "[Loader] .namb weights read: {} floats, sample_rate={:.0}, in_level={:.1}, out_level={:.1}",
+        float_count, sample_rate_header, input_level_header, output_level_header
+    );
 
     if !sample_rate_header.is_finite() {
         return Err(NambError::InvalidHeaderField {
@@ -189,9 +210,10 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         model_data.version = Some(version_str);
     }
 
+    let arch = model_data.architecture.as_str();
     info!(
-        "[Loader] .namb v{} loaded ({} weights, layout={:?})",
-        version_header, float_count, model_data.weights_layout
+        "[Loader] .namb v{} loaded (arch={}, {} weights, layout={:?})",
+        version_header, arch, float_count, model_data.weights_layout
     );
 
     Ok(model_data)
