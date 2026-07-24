@@ -251,7 +251,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 2.2.4: Auditoria de Conformidade, RT-Safety e Validação do Épico 02
+#### Task 2.2.4: Auditoria de Conformidade, RT-Safety e Validação do Épico 02 [DONE]
 
 - **Descrição**: Realizar a auditoria final de código e verificação do Épico 02.
 - **Direcionamento Técnico**:

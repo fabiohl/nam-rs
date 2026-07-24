@@ -58,9 +58,7 @@ mod tests {
         let captured_msgs = captured.lock().unwrap();
         let found = captured_msgs
             .iter()
-            .any(|(severity, msg)| {
-                *severity == "INFO" && msg.contains("HostLog sink")
-            });
+            .any(|(severity, msg)| *severity == "INFO" && msg.contains("HostLog sink"));
         assert!(
             found,
             "HostLog sink should have received the log message.\nCaptured: {captured_msgs:#?}"
@@ -79,8 +77,12 @@ mod tests {
         test_util::assert_log_buffer_contains("CLAP integration: warn level test");
 
         let captured_msgs = captured.lock().unwrap();
-        let has_error = captured_msgs.iter().any(|(s, m)| *s == "ERROR" && m.contains("error level test"));
-        let has_warn = captured_msgs.iter().any(|(s, m)| *s == "WARN" && m.contains("warn level test"));
+        let has_error = captured_msgs
+            .iter()
+            .any(|(s, m)| *s == "ERROR" && m.contains("error level test"));
+        let has_warn = captured_msgs
+            .iter()
+            .any(|(s, m)| *s == "WARN" && m.contains("warn level test"));
         assert!(has_error, "HostLog sink should receive ERROR messages");
         assert!(has_warn, "HostLog sink should receive WARN messages");
     }

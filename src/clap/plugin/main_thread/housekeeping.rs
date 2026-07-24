@@ -60,9 +60,7 @@ impl<'a> NamClapMainThread<'a> {
             .rt_status
             .check_and_clear_flag(spsc::RT_STATUS_SLIMMABLE_RESET_FAILED)
         {
-            log::error!(
-                "ContainerModel submodel reset failed — model may run in previous state."
-            );
+            log::error!("ContainerModel submodel reset failed — model may run in previous state.");
         }
 
         // WaveNet slimmable rebuild: main thread performs all allocation,

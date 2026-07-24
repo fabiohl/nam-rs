@@ -123,14 +123,18 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                                     }
                                 });
                         if let Some(new_path) = found {
-                            log::info!("Model not found at original path ({path:?}), using portable fallback: {new_path:?}");
+                            log::info!(
+                                "Model not found at original path ({path:?}), using portable fallback: {new_path:?}"
+                            );
                             if let Err(e) = self.load_model(&new_path) {
                                 return Err(PluginError::Error(Box::new(
                                     StateContextError::ModelRestore(*e),
                                 )));
                             }
                         } else {
-                            log::warn!("Saved model not found at path: {path:?} and basename {basename:?} not located in search paths");
+                            log::warn!(
+                                "Saved model not found at path: {path:?} and basename {basename:?} not located in search paths"
+                            );
                         }
                     } else {
                         log::warn!("Saved model not found at path: {path:?}");

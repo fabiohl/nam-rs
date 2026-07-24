@@ -145,9 +145,7 @@ pub fn assert_log_buffer_contains(expected: &str) {
     let found = snapshot.iter().any(|r| r.message.contains(expected));
     if !found {
         let all_messages: Vec<_> = snapshot.iter().map(|r| &r.message).collect();
-        panic!(
-            "LogBuffer does not contain '{expected}'.\nRecent log messages:\n{all_messages:#?}"
-        );
+        panic!("LogBuffer does not contain '{expected}'.\nRecent log messages:\n{all_messages:#?}");
     }
 }
 
@@ -156,20 +154,19 @@ pub fn assert_log_buffer_contains(expected: &str) {
 /// Returns `(captured_messages, sink_arc)` where:
 /// - `captured_messages` is a shared `Vec<(String, String)>` of (severity, message) pairs
 /// - `sink_arc` must be kept alive for the `Weak` reference to remain valid
-pub fn register_test_sink() -> (
-    Arc<std::sync::Mutex<Vec<(String, String)>>>,
-    Arc<crate::common::diagnostics::logger::HostLogFn>,
-) {
+pub type TestSinkCapture = Arc<std::sync::Mutex<Vec<(String, String)>>>;
+pub type TestSink = Arc<crate::common::diagnostics::logger::HostLogFn>;
+
+pub fn register_test_sink() -> (TestSinkCapture, TestSink) {
     let captured: Arc<std::sync::Mutex<Vec<(String, String)>>> =
         Arc::new(std::sync::Mutex::new(Vec::new()));
     let cap = Arc::clone(&captured);
-    let sink: Arc<crate::common::diagnostics::logger::HostLogFn> = Arc::new(
-        move |severity: &str, msg: &str| {
+    let sink: Arc<crate::common::diagnostics::logger::HostLogFn> =
+        Arc::new(move |severity: &str, msg: &str| {
             if let Ok(mut v) = cap.lock() {
                 v.push((severity.to_string(), msg.to_string()));
             }
-        },
-    );
+        });
     let logger = crate::common::diagnostics::logger::NamLogger::global()
         .expect("NamLogger::global() should be Some after plugin init");
     logger.register_sink(&sink);
