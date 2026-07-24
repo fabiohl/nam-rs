@@ -118,7 +118,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 1.2.3: Rotação e Limpeza Automática de Crash Files em `~/.cache/nam-rs/`
+#### Task 1.2.3: Rotação e Limpeza Automática de Crash Files em `~/.cache/nam-rs/` [DONE]
 
 - **Descrição**: Implementar mecanismo de retenção de histórico de crash reports (Finding 09), limitando o total de arquivos mantidos no diretório do usuário.
 - **Direcionamento Técnico**:

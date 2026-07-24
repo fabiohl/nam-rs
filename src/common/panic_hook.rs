@@ -5,10 +5,13 @@
 //!
 //! The hook minimizes allocations during the crash path: `SystemSnapshot` is
 //! pre-captured at `install_panic_hook` time, the report is formatted into a
-//! stack-allocated `[u8; 4096]` buffer via `LimitWriter`, and `RwLock` reads
+//! stack-allocated `[u8; 16384]` buffer via `LimitWriter`, and `RwLock` reads
 //! use `try_read()` with fallback to avoid deadlocks. Remaining heap
 //! allocations (`var_os`, `PathBuf`) only occur when a writable `~/.cache/nam-rs`
 //! directory is found.
+//!
+//! Crash files are automatically pruned: when the total number of `crash-*.txt`
+//! files exceeds `MAX_CRASH_FILES`, the oldest (by modification time) are removed.
 
 use crate::common::diagnostics::NamLogger;
 use crate::common::diagnostics::SystemSnapshot;
@@ -64,6 +67,46 @@ impl FmtWrite for LimitWriter<'_> {
         self.buf[self.cursor..self.cursor + len].copy_from_slice(&bytes[..len]);
         self.cursor += len;
         Ok(())
+    }
+}
+
+/// Maximum number of crash report files retained in `~/.cache/nam-rs/`.
+const MAX_CRASH_FILES: usize = 10;
+
+/// Prunes old crash files from `~/.cache/nam-rs/` if the total exceeds
+/// [`MAX_CRASH_FILES`]. Crash files are identified by the `crash-*.txt` pattern
+/// and sorted by modification time (oldest first, excluding `.tmp` files).
+///
+/// All I/O errors are silently swallowed — this runs inside the panic hook and
+/// must never escalate into a new panic.
+fn prune_old_crash_files(cache_dir: &std::path::Path) {
+    let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> = match std::fs::read_dir(cache_dir) {
+        Ok(iter) => {
+            iter.filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path()
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.starts_with("crash-") && n.ends_with(".txt"))
+                        .unwrap_or(false)
+                })
+                .filter_map(|e| {
+                    let mtime = e.metadata().ok()?.modified().ok()?;
+                    Some((e.path(), mtime))
+                })
+                .collect()
+        }
+        Err(_) => return,
+    };
+
+    if entries.len() <= MAX_CRASH_FILES {
+        return;
+    }
+
+    entries.sort_by_key(|(_, mtime)| *mtime);
+    let excess = entries.len() - MAX_CRASH_FILES;
+    for (path, _) in entries.iter().take(excess) {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -294,6 +337,7 @@ pub fn install_panic_hook(component: &'static str) {
                         let _ = file.sync_all();
                         drop(file);
                         let _ = std::fs::rename(&tmp_file_path, &file_path);
+                        prune_old_crash_files(&cache_dir);
                     } else {
                         let _ = std::fs::remove_file(&tmp_file_path);
                     }
