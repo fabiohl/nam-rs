@@ -36,6 +36,7 @@
 //! zero-alloc operations that manipulate pre-allocated ring buffers.
 
 use anyhow::{Result, bail};
+use log::info;
 use std::ptr;
 
 /// Minimum sample rate to guard against catastrophic upsampling (4 kHz).
@@ -96,6 +97,10 @@ impl NamResampler {
         }
 
         if pw_rate == nam_rate {
+            info!(
+                "[Resampler] Bypass: pw_rate={}, nam_rate={} (match)",
+                pw_rate, nam_rate
+            );
             return Ok(Self {
                 inner: None,
                 outer: None,
@@ -114,6 +119,11 @@ impl NamResampler {
             pw_rate,
             generate_polyphase_bank(nam_rate, pw_rate).map_err(|e| anyhow::anyhow!("{e}"))?,
         )?;
+
+        info!(
+            "[Resampler] Minimum-phase resampler built: pw_rate={}, nam_rate={}",
+            pw_rate, nam_rate
+        );
 
         Ok(Self {
             inner: Some(inner),
@@ -143,6 +153,10 @@ impl NamResampler {
         }
 
         if pw_rate == nam_rate {
+            info!(
+                "[Resampler] Linear-phase bypass: pw_rate={}, nam_rate={} (match)",
+                pw_rate, nam_rate
+            );
             return Ok(Self {
                 inner: None,
                 outer: None,
@@ -163,6 +177,11 @@ impl NamResampler {
             generate_polyphase_bank_linear(nam_rate, pw_rate)
                 .map_err(|e| anyhow::anyhow!("{e}"))?,
         )?;
+
+        info!(
+            "[Resampler] Linear-phase resampler built: pw_rate={}, nam_rate={}",
+            pw_rate, nam_rate
+        );
 
         Ok(Self {
             inner: Some(inner),

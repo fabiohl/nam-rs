@@ -300,7 +300,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 3.1.2: Logs Off-RT em Construtores e Configuradores do Subsistema DSP (`src/dsp/`)
+#### Task 3.1.2: Logs Off-RT em Construtores e Configuradores do Subsistema DSP (`src/dsp/`) [DONE]
 
 - **Descrição**: Inserir registros de log em todas as funções construtoras, reconfigurações off-RT e alteradores de estado nos módulos de DSP de `src/dsp/` (resampler, oversample, noise gate, cabsim, adaptive compute).
 - **Direcionamento Técnico**:

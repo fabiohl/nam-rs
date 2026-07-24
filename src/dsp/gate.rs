@@ -9,6 +9,7 @@
 //! artifacts (clicks/zipper noise) when switching between processing modes.
 
 use crate::math::common::SimdMath;
+use log::{debug, info};
 
 /// Configuration parameters for the Gate and Hysteresis logic.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -38,6 +39,10 @@ impl GateParams {
         mono_epsilon: f32,
     ) -> Self {
         let div = fade_frames.max(1) as f32;
+        info!(
+            "[Gate] Params: open={:.1} dB, close={:.1} dB, hold={}, fade={}, eps={:e}",
+            threshold_open_db, threshold_close_db, hold_frames, fade_frames, mono_epsilon
+        );
         Self {
             threshold_open_db,
             threshold_close_db,
@@ -88,6 +93,7 @@ impl DynamicHysteresis {
     /// Creates a new instance in the initial Open state.
     #[cold]
     pub fn new() -> Self {
+        debug!("[Gate] DynamicHysteresis FSM initialized (state=Open)");
         Self {
             state: GateState::Open,
             hold_counter: 0,

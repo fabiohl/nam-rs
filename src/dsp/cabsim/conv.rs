@@ -32,6 +32,7 @@ use crate::math::common::dispatch::InstructionSet;
 use crate::math::common::dispatch::SimdMathConfig;
 use crate::math::common::traits::SimdMath;
 use crate::math::dsp::fft::RfftPlanner;
+use log::info;
 
 /// Uniform-Partitioned Overlap-Save convolution engine.
 ///
@@ -159,6 +160,18 @@ impl ConvEngine {
         let acc_im = AlignedVec::new(n_bins, 0.0_f32)?;
         let output_buf = AlignedVec::new(fft_size, 0.0_f32)?;
         let isa = SimdMathConfig::current().instruction_set;
+
+        if num_partitions == 0 {
+            info!(
+                "[Conv] Engine built: passthrough (empty IR), partition={}, fft={}",
+                partition_size, fft_size
+            );
+        } else {
+            info!(
+                "[Conv] Engine built: {} IR samples, partition={}, fft={}, {} partitions, isa={:?}",
+                ir.len(), partition_size, fft_size, num_partitions, isa
+            );
+        }
 
         Ok(Self {
             fft_size,
