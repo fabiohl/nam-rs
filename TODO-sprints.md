@@ -64,7 +64,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 1.1.3: Testes Unitários e de Concorrência do Engine `logger.rs`
+#### Task 1.1.3: Testes Unitários e de Concorrência do Engine `logger.rs` [DONE]
 
 - **Descrição**: Desenvolver a suíte de testes unitários para a infraestrutura de logging em [`src/common/diagnostics/logger_test.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger_test.rs) (incluso via `#[cfg(test)] #[path = "logger_test.rs"] mod logger_test;` em `mod.rs`).
 - **Direcionamento Técnico**:

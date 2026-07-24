@@ -37,7 +37,7 @@ const DEFAULT_CAPACITY: usize = 256;
 ///
 /// Each CLAP plugin instance registers a sink via `register_sink()`.
 /// The callback receives (severity-as-string, formatted-message).
-pub type HostLogFn = dyn Fn(&str, &str) + Send + Sync;
+pub type HostLogFn = dyn for<'a, 'b> Fn(&'a str, &'b str) + Send + Sync;
 
 /// A single log record stored in the `LogBuffer`.
 #[derive(Debug, Clone)]
