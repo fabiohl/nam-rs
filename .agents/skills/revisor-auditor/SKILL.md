@@ -36,6 +36,7 @@ Use this skill for a general and holistic codebase review in search of architect
 * Maximize clean code reuse across modules, adopting the best design patterns from the Rust community.
 * Restrict the scope of `unsafe` blocks to the absolute minimum necessary, ensuring they are tightly bounded, isolated, and comprehensively documented with their respective memory safety invariants.
 * Provide exemplary comments and technical documentation (triggering the `documentador` skill).
+* Provide exemplary logging (see `debugger` skill for more info) in ordem to ease the dubugging and troubleshooting process.
 
 ### Performance and Low-Latency Master
 

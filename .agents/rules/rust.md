@@ -56,3 +56,16 @@ Off-RT resource swaps (oversampling factor, model, cab IR) always go through the
 Measurement and spectral analysis functions are **strictly off-RT** — they allocate on the heap and are never called from the audio thread. Placement, gate calibration, and f64-oracle-wins rules are defined once in [.agents/rules/testing.md](testing.md) — do not duplicate them here.
 
 * **True-peak prohibition (RT-specific):** BS.1770-4 Annex 2 true-peak (4× polyphase FIR, 48 taps) is too expensive for the RT thread. Use sample-peak detection on the audio-thread hot-path; true-peak only in integration tests (`src/testing/perceptual.rs`).
+
+---
+
+## 7. Logging & Diagnostics Standards (Off-RT Logging)
+
+* **Unified `log::*` Facade:** All off-RT modules (constructors, builders, parsers, configuration functions, plugin lifecycle, preset loading) MUST use the unified `log::*` facade (`info!`, `warn!`, `error!`, `debug!`). Never create disconnected custom logging routines or depend solely on manual host logger calls.
+* **Strict Off-RT Enforcement:** `log::*` macros are **strictly prohibited** inside the hot-path audio thread (`process()`, audio callback, inner DSP sample loops). Signaling RT state transitions or anomalies MUST be done exclusively via atomic bitmasks (`RtStatusFlags`) or lock-free SPSC channels, which are then consumed off-RT by main-thread loops (`poll_rt_status()` / `emit_pending_logs()`).
+* **Comprehensive Domain Coverage:**
+  * **Model & IR Loaders (`src/loader/`, `src/dsp/cabsim/loader.rs`):** Log file path/basename, file size in bytes, format detection (`.nam` vs `.namb`), parsing duration, model topology (WaveNet, LSTM, ConvNet, Linear), receptive field, weight counts, sample rate, and CabSim IR metadata (sample rate, channels, frames, resample status).
+  * **DSP Infrastructure (`src/dsp/` constructors/config):** Log resampler initialization (ratios, filter mode), oversampling mode transitions (`Off`, `2×`, `4×`) with added latency in samples and ms, noise gate thresholds/toggles, and adaptive compute state changes.
+  * **CLAP Plugin Lifecycle (`src/clap/`):** Log DAW host name/version, CLAP API version, render mode changes (`Realtime` vs `Offline` HQ), and preset path/name.
+  * **Standalone & PipeWire Host (`src/standalone/`):** Log PipeWire quantum/buffer renegotiations, CPU affinity/SCHED_FIFO status, and HugeTLB allocation attempts/fallbacks.
+* **Log Buffer & Diagnostics Integration:** All `log::*` calls populate the central `NamLogger` ring buffer (`LogBuffer`), ensuring that a recent execution trace (`Recent Log Trace`) is automatically included in support bundles (`DiagnosticBundle::render()`) and crash reports (`~/.cache/nam-rs/crash-*.txt`).

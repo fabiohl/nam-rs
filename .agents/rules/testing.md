@@ -50,3 +50,9 @@ Each script strictly extends the previous one's scope — never repeat a check:
 - Never add a test to `utils/tests-long.sh` without first running it standalone to
   confirm it terminates and passes/skips cleanly — a hang there is worse than a
   failure (silently costs the full nightly window).
+
+## 4. Logging & Diagnostics Verification in Tests
+
+- **Log Buffer & Diagnostic Assertions:** When adding or updating off-RT loaders, builders, or diagnostic reporters (`bundle.rs`, `logger.rs`), include unit tests verifying that diagnostic log messages are properly captured in `LogBuffer` and included in `DiagnosticBundle::render()`.
+- **Panic Hook & Heap Audit Parity:** Any change to `panic_hook.rs` or `DiagnosticBundle` formatting must validate the `#[cfg(feature = "heap-audit")]` test path (`format_panic_report_for_audit_test`) to ensure stack safety (`[u8; 16384]` limit) and zero unwanted heap allocations during crash report rendering.
+- **Log Silence in Hot-Path Benchmarks:** Benchmarks (`benches/`) and real-time audio loop tests must explicitly verify that no `log::*` calls are executed within the audio callback or DSP hot-paths.

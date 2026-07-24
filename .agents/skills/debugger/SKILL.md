@@ -80,6 +80,11 @@ When debugging or fixing audio thread code (`src/standalone/pw_host/`, audio pro
 
 ### 2.3 Diagnostic Logging System
 
-- `nam-rs` uses a unified logger facade (`log::*`) backed by `NamLogger`.
-- Log entries are output to terminal (CLI Standalone) or forwarded to host via `HostLog` (CLAP plugin), and automatically captured in an in-memory `LogBuffer`.
-- Diagnostic dumps (`DiagnosticBundle::capture().render()`) combine system info, runtime telemetry, error context, and recent log traces into a single block.
+- **Unified `NamLogger` & Multi-Instance CLAP**: All off-RT logging uses `log::*`. `NamLogger` acts as the global backend (`OnceLock`), broadcasting records to terminal (CLI Standalone) and active CLAP hosts (`HostLog` weak sink list) across N plugin instances without logger collision.
+- **Log Trace in Dumps & Crash Reports**: `LogBuffer` retains recent log messages in memory. Both `DiagnosticBundle::render()` and `panic_hook.rs` MUST include the `──── Recent Log Trace ────` section in support dumps and `~/.cache/nam-rs/crash-*.txt` files.
+- **Panic Hook Stack Safety & File Rotation**: Crash reporting in `panic_hook.rs` uses an expanded 16 KiB buffer (`[u8; 16384]`) for zero-alloc stack safety during panics and automatically rotates crash files (retaining a maximum of 10 `crash-*.txt` files).
+- **Domain Logging Mandate (Off-RT Only)**:
+  - *Loaders & Parsers (`src/loader/`)*: Log file size, format (`.nam`/`.namb`), topology, weights, receptive field, and CabSim IR specs.
+  - *DSP Infrastructure (`src/dsp/`)*: Log resampler init, oversampling factor changes (`Off`, `2×`, `4×`) with added latency in samples/ms, noise gate thresholds, and adaptive compute state transitions.
+  - *CLAP & Host (`src/clap/`, `src/standalone/`)*: Log DAW host info, CLAP API version, render mode (`Realtime` vs `Offline`), preset paths, and PipeWire quantum renegotiations.
+  - *Hot-Path Restriction*: Zero `log::*` in `process()` — RT state transitions are signaled strictly via atomic `RtStatusFlags` and polled off-RT.
