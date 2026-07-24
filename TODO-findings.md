@@ -286,7 +286,7 @@ gantt
   - Atualização de `DiagnosticBundle::render()` e `panic_hook.rs` para incluir o rastro de logs (com buffer expandido ou Log Trace limitado).
   - Rotação de crash files em `~/.cache/nam-rs/` (máximo N arquivos).
 
-### Épico 02: Conexão nos Entrypoints e Encaminhamento CLAP `HostLog` [DOING]
+### Épico 02: Conexão nos Entrypoints e Encaminhamento CLAP `HostLog` [DONE]
 
 - **Objetivo**: Garantir que tanto o binário CLI quanto o plugin CLAP inicializem o `NamLogger`, repassem os logs para seus respectivos destinos, e migrem o código existente para a facade unificada.
 - **Achados Cobertos**: Finding 01 (completo).
@@ -295,7 +295,7 @@ gantt
   - **Fase 2**: Encaminhamento `NamLogger` → `HostLog` no CLAP (bridge automático).
   - **Fase 3**: Migração gradual das ~30 chamadas manuais `HostLog` → `log::*` nos módulos CLAP (`state.rs`, `load.rs`, `housekeeping.rs`, `gui/`, etc.), eliminando duplicação. Manter `emit_pending_logs()` apenas para flags atômicas RT (que não podem usar `log::*` por design).
 
-### Épico 03: Auditoria e Cobertura Completa de Logs na Base de Código (`/src/`)
+### Épico 03: Auditoria e Cobertura Completa de Logs na Base de Código (`/src/`) [DOING]
 
 - **Objetivo**: Inserir registros de log informativos, defensivos e precisos em todos os módulos da biblioteca, aproveitando oportunidades off-RT.
 - **Achados Cobertos**: Finding 03, Finding 04, Finding 05, Finding 06.

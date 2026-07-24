@@ -265,3 +265,115 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 - **Critérios de Aceite**:
   - `utils/lints.sh` sem avisos ou erros.
   - `utils/tests-quick.sh` com 100% de aprovação.
+
+---
+
+## Épico 03: Auditoria e Cobertura Completa de Logs na Base de Código (`/src/`)
+
+- **Objetivo**: Inserir registros de log informativos, defensivos e precisos em todos os módulos off-RT da biblioteca, expandindo a visibilidade de diagnósticos em `src/loader/`, `src/dsp/`, `src/standalone/` e `src/clap/`, mantendo o isolamento absoluto de zero `log::*` no hot-path de áudio real-time.
+- **Achados Cobertos em `TODO-findings.md`**:
+  - [Finding 03](file:///home/fabio/nam-rs/TODO-findings.md#finding-03-ausência-de-logs-em-etapas-críticas-do-loader-p2--médio) — Cobertura de logs pre-dispatch e parsing nos módulos de carregamento (`loader/`).
+  - [Finding 04](file:///home/fabio/nam-rs/TODO-findings.md#finding-04-ausência-de-logs-no-subsistema-dsp-p1--alto) — Logging off-RT nos construtores, inicializadores e configuradores de DSP (`dsp/`).
+  - [Finding 05](file:///home/fabio/nam-rs/TODO-findings.md#finding-05-gaps-pontuais-em-eventos-da-camada-pipewire-p3--baixo) — Logs de renegociação de quantum/buffer PipeWire e detalhes de fallback HugeTLB (`standalone/`).
+  - [Finding 06](file:///home/fabio/nam-rs/TODO-findings.md#finding-06-cobertura-parcial-de-eventos-do-ciclo-de-vida-clap-p2--médio) — Logs de instanciação de plugin (DAW/API CLAP), modo de renderização (Realtime vs Offline) e preset loading (`clap/`).
+
+---
+
+### Sprint 3.1: Cobertura de Logs nos Subsistemas de Carregamento (`src/loader/`) e DSP Off-RT (`src/dsp/`)
+
+#### Task 3.1.1: Pre-Dispatch & Detailed Parsing Logs em `src/loader/`
+
+- **Descrição**: Adicionar chamadas `log::info!`, `log::warn!` e `log::debug!` nas etapas de pré-despacho, parsing de metadados JSON/NAMB e compilação de pesos nos carregadores de modelo em `src/loader/`.
+- **Direcionamento Técnico**:
+  - Registrar tipo de arquitetura (WaveNet, LSTM, ConvNet), número de parâmetros, dilatações/camadas e sample rate target durante `loader::build` e `namb::parse`.
+  - Registrar falhas de validação de schema ou discrepâncias de versão com contexto rico (`log::warn!` / `log::error!`).
+  - Em [`src/dsp/cabsim/loader.rs`](file:///home/fabio/nam-rs/src/dsp/cabsim/loader.rs), registrar o carregamento de arquivos IR WAV/FLAC, tamanho de amostras, quantidade de canais e de amostragem.
+- **Especialista**: Engenheiro de Carregamento de Modelos & DSP.
+- **Criticidade / Risco**: **Médio (P2)**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/loader/build.rs`](file:///home/fabio/nam-rs/src/loader/build.rs)
+  - `[MODIFY]` [`src/loader/namb/parse.rs`](file:///home/fabio/nam-rs/src/loader/namb/parse.rs)
+  - `[MODIFY]` [`src/dsp/cabsim/loader.rs`](file:///home/fabio/nam-rs/src/dsp/cabsim/loader.rs)
+- **Critérios de Aceite**:
+  - O carregamento de modelos `.nam` / `.namb` e arquivos IR emite eventos descritivos de nível `info` contendo metadados do modelo/IR.
+  - Erros de parsing capturam detalhes claros sobre a discrepância no arquivo sem causar pânico silencioso.
+
+---
+
+#### Task 3.1.2: Logs Off-RT em Construtores e Configuradores do Subsistema DSP (`src/dsp/`)
+
+- **Descrição**: Inserir registros de log em todas as funções construtoras, reconfigurações off-RT e alteradores de estado nos módulos de DSP de `src/dsp/` (resampler, oversample, noise gate, cabsim, adaptive compute).
+- **Direcionamento Técnico**:
+  - [`src/dsp/resampler/mod.rs`](file:///home/fabio/nam-rs/src/dsp/resampler/mod.rs): Logar ao instanciar o resampler (razão de amostragem `in_rate` -> `out_rate`, número de taps, modo de interpolação).
+  - [`src/dsp/oversample.rs`](file:///home/fabio/nam-rs/src/dsp/oversample.rs): Logar alteração do fator de oversampling (ex: 2x/4x/8x), latência em amostras introduzida e atraso equivalente em milissegundos.
+  - [`src/dsp/gate.rs`](file:///home/fabio/nam-rs/src/dsp/gate.rs): Logar a inicialização do Noise Gate e transições de configuração (threshold, attack, release, ativado/desativado).
+  - [`src/dsp/adaptive.rs`](file:///home/fabio/nam-rs/src/dsp/adaptive.rs): Logar alteração nos modos de economia de computação adaptativa.
+  - **Restrição Crucial**: Todas as chamadas `log::*` devem residir **exclusivamente em funções off-RT** (`new()`, `reset()`, `set_sample_rate()`, `set_ratio()`, `set_threshold()`). O método `process()` / hot-path de áudio é 100% isento de `log::*`.
+- **Especialista**: Cientista de Processamento Digital de Sinais (DSP) & Rust.
+- **Criticidade / Risco**: **Alto (P1 / Finding 04)**. Extrema atenção para não colocar nenhuma chamada `log::*` dentro das funções de processamento no áudio callback.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/dsp/resampler/mod.rs`](file:///home/fabio/nam-rs/src/dsp/resampler/mod.rs)
+  - `[MODIFY]` [`src/dsp/oversample.rs`](file:///home/fabio/nam-rs/src/dsp/oversample.rs)
+  - `[MODIFY]` [`src/dsp/gate.rs`](file:///home/fabio/nam-rs/src/dsp/gate.rs)
+  - `[MODIFY]` [`src/dsp/cabsim/conv.rs`](file:///home/fabio/nam-rs/src/dsp/cabsim/conv.rs)
+  - `[MODIFY]` [`src/dsp/adaptive.rs`](file:///home/fabio/nam-rs/src/dsp/adaptive.rs)
+- **Critérios de Aceite**:
+  - Qualquer reconfiguração de DSP off-RT gera registros claros de `log::info!`.
+  - Nenhuma chamada `log::*` está presente nas rotinas executadas no loop real-time de áudio.
+
+---
+
+### Sprint 3.2: Cobertura de Logs nas Camadas Standalone (`src/standalone/`) e CLAP (`src/clap/`)
+
+#### Task 3.2.1: Enriquecimento de Eventos Standalone / PipeWire e HugeTLB
+
+- **Descrição**: Preencher as lacunas pontuais de logging na camada PipeWire Host standalone, especificamente durante a renegociação de quantum/buffer e no fallback de HugeTLB.
+- **Direcionamento Técnico**:
+  - Em [`src/standalone/pw_host/run.rs`](file:///home/fabio/nam-rs/src/standalone/pw_host/run.rs): Adicionar `log::info!` quando o PipeWire renegociar o tamanho do buffer/quantum (ex: de 256 para 128 amostras ou alteração de taxa de amostragem no gráfico).
+  - Em [`src/standalone/rt_setup/thread.rs`](file:///home/fabio/nam-rs/src/standalone/rt_setup/thread.rs) ou [`pm_qos.rs`](file:///home/fabio/nam-rs/src/standalone/rt_setup/pm_qos.rs): Enriquecer os logs de fallback de HugeTLB quando a alocação de memória de páginas grandes explícitas falhar e recorrer a THP (Transparent Huge Pages), registrando o código de erro do OS (`errno`) ou motivo detalhado.
+- **Especialista**: Engenheiro de Linux Low-Latency & PipeWire.
+- **Criticidade / Risco**: **Baixo-Médio (P3 / Finding 05)**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/standalone/pw_host/run.rs`](file:///home/fabio/nam-rs/src/standalone/pw_host/run.rs)
+  - `[MODIFY]` [`src/standalone/rt_setup/thread.rs`](file:///home/fabio/nam-rs/src/standalone/rt_setup/thread.rs)
+- **Critérios de Aceite**:
+  - Mudanças de quantum/buffer size no PipeWire são explicitamente logadas com os novos valores.
+  - Falha na reserva HugeTLB descreve o motivo específico e confirma a ativação do fallback THP.
+
+---
+
+#### Task 3.2.2: Logs Estruturados de Ciclo de Vida CLAP, Render Mode e Presets
+
+- **Descrição**: Adicionar eventos de log via facade `log::*` durante a instanciação do plugin CLAP, transições de modo de renderização e carregamento de presets.
+- **Direcionamento Técnico**:
+  - [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs) / [`load.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/load.rs): Emitir `log::info!` ao instanciar o plugin registrando o nome/id da DAW hospedeira (`host.name()`) e a versão da API CLAP negociada.
+  - [`src/clap/extensions/render.rs`](file:///home/fabio/nam-rs/src/clap/extensions/render.rs): Emitir `log::info!` quando o host CLAP alternar entre modo `Realtime` e modo `Offline` (bounce/export HQ), informando a reconfiguração automática de oversampling.
+  - [`src/clap/extensions/preset_load.rs`](file:///home/fabio/nam-rs/src/clap/extensions/preset_load.rs): Emitir `log::info!` ao carregar um preset, registrando o caminho do arquivo e o nome do preset.
+- **Especialista**: Engenheiro de Plugins de Áudio CLAP.
+- **Criticidade / Risco**: **Médio (P2 / Finding 06)**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs)
+  - `[MODIFY]` [`src/clap/extensions/render.rs`](file:///home/fabio/nam-rs/src/clap/extensions/render.rs)
+  - `[MODIFY]` [`src/clap/extensions/preset_load.rs`](file:///home/fabio/nam-rs/src/clap/extensions/preset_load.rs)
+- **Critérios de Aceite**:
+  - A inicialização do plugin na DAW produz registro com nome do host e versão da extensão.
+  - Mudanças em modo de renderização (`Offline` vs `Realtime`) e trocas de presets aparecem no histórico de logs.
+
+---
+
+### Sprint 3.3: Auditoria Final de RT-Safety, Zero-Log em Hot-Path e Validação Completa
+
+#### Task 3.3.1: Auditoria de RT-Safety e Validação Automatizada do Épico 03
+
+- **Descrição**: Realizar verificação automatizada e estática para garantir 100% de conformidade com as regras de RT-Safety de logging no projeto (conforme diretriz `testing.md`).
+- **Direcionamento Técnico**:
+  - Verificar presenças dos cabeçalhos SPDX Apache-2.0 e Copyright 2026 em todos os arquivos editados.
+  - Garantir zero chamadas `log::*` na thread de áudio real-time.
+  - Executar os scripts `utils/lints.sh` e `utils/tests-quick.sh` (permitido uma única vez ao final).
+- **Especialista**: Lead QA & Revisor Auditor.
+- **Criticidade / Risco**: **Médio-Alto**.
+- **Arquivos Afetados**:
+  - Todos os arquivos do Épico 03.
+- **Critérios de Aceite**:
+  - `utils/lints.sh` sem avisos ou erros.
+  - `utils/tests-quick.sh` com 100% de aprovação.
