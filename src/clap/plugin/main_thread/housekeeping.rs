@@ -312,6 +312,7 @@ impl<'a> NamClapMainThread<'a> {
         let current_latency = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
         if current_latency != self.last_reported_latency {
             self.last_reported_latency = current_latency;
+            log::info!("[Housekeeping] Latency changed: {} samples reported to host.", current_latency);
             if let Some(latency_ext) = self
                 .host
                 .get_extension::<clack_extensions::latency::HostLatency>()
@@ -328,6 +329,7 @@ impl<'a> NamClapMainThread<'a> {
             .load(Ordering::Relaxed);
         if cabsim_tail != self.last_reported_cabsim_tail {
             self.last_reported_cabsim_tail = cabsim_tail;
+            log::info!("[Housekeeping] CabSim tail changed: {} samples reported to host.", cabsim_tail);
             if let Some(tail_ext) = self.host.get_extension::<HostTail>() {
                 let raw = std::ptr::NonNull::from(self.host.as_raw());
                 // SAFETY: HostMainThreadHandle and HostAudioProcessorHandle are

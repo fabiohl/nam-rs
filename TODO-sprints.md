@@ -375,7 +375,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 4.1: Captura de Eventos RT e Telemetria de Host no `LogBuffer`
 
-#### Task 4.1.1: Encaminhamento de Eventos RT Drenados para a Facade `log::*` e `LogBuffer`
+#### Task 4.1.1: Encaminhamento de Eventos RT Drenados para a Facade `log::*` e `LogBuffer` [DONE]
 
 - **Descrição**: Modificar a rotina `emit_pending_logs()` em [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs) para que, além de emitir mensagens para a extensão `HostLog` do host CLAP, cada uma das 9 flags atômicas de status real-time dadas por `RtStatusFlags` seja espelhada via chamadas `log::warn!` ou `log::error!`.
 - **Direcionamento Técnico**:
@@ -400,7 +400,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 4.1.2: Logging de Telemetria para Mudanças de Latência e Cauda CabSim em Housekeeping
+#### Task 4.1.2: Logging de Telemetria para Mudanças de Latência e Cauda CabSim em Housekeeping [DONE]
 
 - **Descrição**: Adicionar registros de log via `log::info!` no método `housekeeping()` em [`src/clap/plugin/main_thread/housekeeping.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs) quando forem detectadas e comunicadas ao host CLAP alterações na latência do plugin ou na cauda (tail length) do CabSim.
 - **Direcionamento Técnico**:

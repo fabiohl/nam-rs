@@ -24,6 +24,7 @@ impl<'a> NamClapMainThread<'a> {
             {
                 let msg = CString::new("NAM-rs: Output clipping detected!").unwrap_or_default();
                 log.log(&shared, LogSeverity::Warning, &msg);
+                log::warn!("NAM-rs: Output clipping detected!");
             }
 
             if self
@@ -35,6 +36,7 @@ impl<'a> NamClapMainThread<'a> {
                 let msg = CString::new("NAM-rs: GC channel overflow! Possible memory leak.")
                     .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
+                log::error!("NAM-rs: GC channel overflow! Possible memory leak.");
             }
 
             if self
@@ -48,6 +50,7 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Warning, &msg);
+                log::warn!("NAM-rs: GC cascade reached Tier 3 (overflow buffer). Sustained GC pressure.");
             }
 
             if self
@@ -60,6 +63,7 @@ impl<'a> NamClapMainThread<'a> {
                     CString::new("NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB.")
                         .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
+                log::error!("NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB.");
             }
 
             if self
@@ -71,6 +75,7 @@ impl<'a> NamClapMainThread<'a> {
                 let msg = CString::new("NAM-rs: Critical failure! No active model for processing.")
                     .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
+                log::error!("NAM-rs: Critical failure! No active model for processing.");
             }
 
             if self
@@ -84,6 +89,7 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
+                log::error!("NAM-rs: Heap allocation detected in audio thread during process()!");
             }
 
             if self
@@ -97,6 +103,7 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Info, &msg);
+                log::info!("NAM-rs: HugeTLB explicit 2 MB pages active — reduced TLB pressure on DSP thread.");
             }
 
             if self
@@ -110,6 +117,7 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Info, &msg);
+                log::info!("NAM-rs: Transparent Huge Pages (THP) advice active — kernel may promote to 2 MB.");
             }
 
             if self
@@ -121,6 +129,7 @@ impl<'a> NamClapMainThread<'a> {
                 let msg = CString::new("NAM-rs: WaveNet slimmable slice_channels rebuild failed.")
                     .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
+                log::error!("NAM-rs: WaveNet slimmable slice_channels rebuild failed.");
             }
         }
     }
