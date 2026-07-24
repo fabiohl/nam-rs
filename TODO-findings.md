@@ -277,7 +277,7 @@ gantt
     Logs em standalone/ e clap/             :e3_2, after e3_1, 1d
 ```
 
-### Épico 01: Núcleo do Engine `NamLogger` e Retenção de Histórico
+### Épico 01: Núcleo do Engine `NamLogger` e Retenção de Histórico [DONE]
 
 - **Objetivo**: Criar o motor centralizador de logging thread-safe, com suporte a multi-instância CLAP, e integrar a retenção de histórico nos relatórios de diagnóstico.
 - **Achados Cobertos**: Finding 01 (parcial), Finding 02, Finding 07, Finding 08, Finding 09.
@@ -286,7 +286,7 @@ gantt
   - Atualização de `DiagnosticBundle::render()` e `panic_hook.rs` para incluir o rastro de logs (com buffer expandido ou Log Trace limitado).
   - Rotação de crash files em `~/.cache/nam-rs/` (máximo N arquivos).
 
-### Épico 02: Conexão nos Entrypoints e Encaminhamento CLAP `HostLog`
+### Épico 02: Conexão nos Entrypoints e Encaminhamento CLAP `HostLog` [DOING]
 
 - **Objetivo**: Garantir que tanto o binário CLI quanto o plugin CLAP inicializem o `NamLogger`, repassem os logs para seus respectivos destinos, e migrem o código existente para a facade unificada.
 - **Achados Cobertos**: Finding 01 (completo).

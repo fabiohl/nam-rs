@@ -148,3 +148,120 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 - **Critérios de Aceite**:
   - `utils/lints.sh` sem nenhum warning ou erro.
   - `utils/tests-quick.sh` com 100% de aprovação nos testes da suíte rápida.
+
+---
+
+## Épico 02: Conexão nos Entrypoints e Encaminhamento CLAP `HostLog`
+
+- **Objetivo**: Garantir que tanto o binário CLI (`main.rs`) quanto o plugin CLAP inicializem a facade central `NamLogger`, repassem as mensagens de log aos seus respectivos destinos (stderr ou extensão `HostLog` da DAW hospedeira), e migrem o código off-RT CLAP para a facade unificada `log::*`.
+- **Achados Cobertos em `TODO-findings.md`**:
+  - [Finding 01 (completo)](file:///home/fabio/nam-rs/TODO-findings.md#finding-01-facade-log-desconectada-no-modo-clap-plugin-p0--crítico) — Inicialização nos entrypoints e ponte automática entre `NamLogger` e `HostLog` CLAP.
+
+---
+
+### Sprint 2.1: Inicialização do `NamLogger` nos Entrypoints e Ponte Automática CLAP `HostLog`
+
+#### Task 2.1.1: Inicialização do `NamLogger` no Plugin CLAP (`NamClapPlugin::new_shared`)
+
+- **Descrição**: Registrar a inicialização do `NamLogger` no ponto de fabricação/instanciação do plugin CLAP e conectar a extensão `HostLog` do host via callback de sink registrado.
+- **Direcionamento Técnico**:
+  - Em `NamClapPlugin::new_shared()` (ou fábrica associada em [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs)), invocar `NamLogger::init_clap()` (idempotente via `OnceLock`).
+  - Extrair a extensão `clack_extensions::log::HostLog` quando fornecida pelo host CLAP.
+  - Registrar um sink callback em `NamLogger::register_sink()` associado ao ciclo de vida da instância do plugin.
+- **Especialista**: Arquiteto de Plugins CLAP & Concorrência Rust.
+- **Criticidade / Risco**: **Crítico (P0/P1)**. Blocker para que chamadas `log::*` em módulos compartilhados funcionem dentro de DAWs.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs)
+  - `[MODIFY]` [`src/clap/plugin/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/mod.rs)
+  - `[MODIFY]` [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs)
+- **Critérios de Aceite**:
+  - Chamadas `log::info!`, `log::warn!`, `log::error!` emitidas em qualquer lugar da biblioteca populam o `LogBuffer` e são enviadas à DAW hospedeira.
+
+---
+
+#### Task 2.1.2: Refino e Validação da Inicialização no CLI Standalone (`main.rs`)
+
+- **Descrição**: Validar e refinar a inicialização do `NamLogger::init_standalone()` no ponto de entrada do binário CLI (`main.rs`).
+- **Direcionamento Técnico**:
+  - Garantir o correto parsing das variáveis de ambiente (`RUST_LOG` / `NAM_LOG_LEVEL`).
+  - Emitir um log informativo inicial contendo a versão do `nam-rs`, target ISA (`x86-64-v3`) e o modo de execução.
+- **Especialista**: Engenheiro de Sistemas CLI/Standalone.
+- **Criticidade / Risco**: **Baixo-Médio**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/main.rs`](file:///home/fabio/nam-rs/src/main.rs)
+- **Critérios de Aceite**:
+  - Execução via terminal gera output formatado em stderr respeitando o nível selecionado e popula o `LogBuffer`.
+
+---
+
+### Sprint 2.2: Migração das Chamadas Manuais `HostLog` para a Facade `log::*` nos Módulos CLAP
+
+#### Task 2.2.1: Migração do Ciclo de Vida e Carregamento (`load.rs`, `housekeeping.rs`, `state.rs`, `preset_load.rs`)
+
+- **Descrição**: Substituir as chamadas brutas e manuais de `HostLog` nestes módulos off-RT por chamadas equivalentes à facade unificada `log::info!`, `log::warn!`, `log::error!`.
+- **Direcionamento Técnico**:
+  - Substituir trechos que chamavam `host.get_extension::<HostLog>()` com `CString` manuais por macros `log::*`.
+  - Essa migração faz com que as mensagens passem pelo `NamLogger`, alimentando tanto o `LogBuffer` (diagnósticos/crash reports) quanto a DAW via o bridge construído na Sprint 2.1.
+- **Especialista**: Engenheiro de Áudio CLAP.
+- **Criticidade / Risco**: **Médio**. Requer atenção para preservar as mensagens informativas sem alterações de fluxo.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/plugin/main_thread/load.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/load.rs)
+  - `[MODIFY]` [`src/clap/plugin/main_thread/housekeeping.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs)
+  - `[MODIFY]` [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)
+  - `[MODIFY]` [`src/clap/extensions/state_context.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state_context.rs)
+  - `[MODIFY]` [`src/clap/extensions/preset_load.rs`](file:///home/fabio/nam-rs/src/clap/extensions/preset_load.rs)
+- **Critérios de Aceite**:
+  - Chamadas diretas/manuais a `HostLog` removidas desses módulos.
+  - Mensagens de log de estado e carregamento devidamente gravadas no `LogBuffer` e enviadas ao host.
+
+---
+
+#### Task 2.2.2: Migração dos Módulos de Interface Gráfica e Manipuladores de Arquivos (`gui/`, `file_dialogs.rs`, `gui.rs`)
+
+- **Descrição**: Migrar chamadas manuais `HostLog` nos módulos da GUI e seletores de arquivo para a facade `log::*`.
+- **Direcionamento Técnico**:
+  - Substituir requisições de log brutas em `gui.rs`, `gui/window/state.rs` e `gui/ui/zones/file_dialogs.rs` por `log::*`.
+  - Manter `emit_pending_logs()` em [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs) operando **exclusivamente** para o consumo off-RT das 9 flags atômicas RT (`RtStatusFlags`).
+- **Especialista**: Engenheiro de GUI & Frontend Plugin.
+- **Criticidade / Risco**: **Médio**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/extensions/gui.rs`](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)
+  - `[MODIFY]` [`src/clap/gui/window/state.rs`](file:///home/fabio/nam-rs/src/clap/gui/window/state.rs)
+  - `[MODIFY]` [`src/clap/gui/ui/zones/file_dialogs.rs`](file:///home/fabio/nam-rs/src/clap/gui/ui/zones/file_dialogs.rs)
+  - `[MODIFY]` [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs)
+- **Critérios de Aceite**:
+  - Módulos de GUI utilizam 100% `log::*`.
+  - `emit_pending_logs()` fica restrito à drenagem de `RtStatusFlags`.
+
+---
+
+#### Task 2.2.3: Suíte de Testes de Integração CLAP & Logger Verification
+
+- **Descrição**: Desenvolver testes unitários e de integração para validar a ponte do `NamLogger` no ambiente CLAP.
+- **Direcionamento Técnico**:
+  - Criar/atualizar testes em `src/clap/` para instanciar o plugin via `NamClapPlugin` e verificar o registro do logger.
+  - Validar que chamadas `log::info!` emitidas durante o ciclo de vida do plugin chegam ao `LogBuffer` e ao mock de `HostLog`.
+- **Especialista**: Engenheiro de QA & Testes Rust.
+- **Criticidade / Risco**: **Médio**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/test_util.rs`](file:///home/fabio/nam-rs/src/clap/test_util.rs)
+  - `[MODIFY]` [`src/clap/processor_state_test.rs`](file:///home/fabio/nam-rs/src/clap/processor_state_test.rs)
+- **Critérios de Aceite**:
+  - Testes de integração CLAP executando sem erros e validando a captura e encaminhamento de logs.
+
+---
+
+#### Task 2.2.4: Auditoria de Conformidade, RT-Safety e Validação do Épico 02
+
+- **Descrição**: Realizar a auditoria final de código e verificação do Épico 02.
+- **Direcionamento Técnico**:
+  - Confirmar a presença do cabeçalho SPDX Apache-2.0 e Copyright 2026 nos arquivos modificados.
+  - Garantir zero chamadas `log::*` na thread de áudio real-time.
+  - Executar `utils/lints.sh` e `utils/tests-quick.sh`.
+- **Especialista**: Revisor Auditor & Lead QA.
+- **Criticidade / Risco**: **Médio**.
+- **Arquivos Afetados**:
+  - Todos os arquivos do Épico 02.
+- **Critérios de Aceite**:
+  - `utils/lints.sh` sem avisos ou erros.
+  - `utils/tests-quick.sh` com 100% de aprovação.
