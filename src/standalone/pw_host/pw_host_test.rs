@@ -126,6 +126,7 @@ fn test_dsp_bridge_concurrent_access() {
         }
     }
 
+    bridge.consumed_gen.store(u64::MAX, Ordering::Release);
     writer_handle.join().unwrap();
 
     // 4. Performance Check:

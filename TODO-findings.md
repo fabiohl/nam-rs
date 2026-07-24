@@ -295,7 +295,7 @@ gantt
   - **Fase 2**: Encaminhamento `NamLogger` → `HostLog` no CLAP (bridge automático).
   - **Fase 3**: Migração gradual das ~30 chamadas manuais `HostLog` → `log::*` nos módulos CLAP (`state.rs`, `load.rs`, `housekeeping.rs`, `gui/`, etc.), eliminando duplicação. Manter `emit_pending_logs()` apenas para flags atômicas RT (que não podem usar `log::*` por design).
 
-### Épico 03: Auditoria e Cobertura Completa de Logs na Base de Código (`/src/`) [DOING]
+### Épico 03: Auditoria e Cobertura Completa de Logs na Base de Código (`/src/`) [DONE]
 
 - **Objetivo**: Inserir registros de log informativos, defensivos e precisos em todos os módulos da biblioteca, aproveitando oportunidades off-RT.
 - **Achados Cobertos**: Finding 03, Finding 04, Finding 05, Finding 06.

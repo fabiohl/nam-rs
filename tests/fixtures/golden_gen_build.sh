@@ -792,6 +792,7 @@ EXTRA_MODELS=(
     "mock_a2.nam"
     "slimmable_container.nam"
     "slimmable_wavenet.nam"
+    "wavenet.nam"
     "wavenet_a2_container.nam"
 )
 for nam in "${EXTRA_MODELS[@]}"; do

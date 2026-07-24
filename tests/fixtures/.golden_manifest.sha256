@@ -240,4 +240,5 @@ af27424abbff1fcd941010c161e154ec3937a677a9f700bec8c3add60c97ad21 src/bin/gen_str
 # MODEL-REGISTRY: mock_a2.nam
 # MODEL-REGISTRY: slimmable_container.nam
 # MODEL-REGISTRY: slimmable_wavenet.nam
+# MODEL-REGISTRY: wavenet.nam
 # MODEL-REGISTRY: wavenet_a2_container.nam
