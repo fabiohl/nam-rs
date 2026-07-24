@@ -50,7 +50,9 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Warning, &msg);
-                log::warn!("NAM-rs: GC cascade reached Tier 3 (overflow buffer). Sustained GC pressure.");
+                log::warn!(
+                    "NAM-rs: GC cascade reached Tier 3 (overflow buffer). Sustained GC pressure."
+                );
             }
 
             if self
@@ -103,7 +105,9 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Info, &msg);
-                log::info!("NAM-rs: HugeTLB explicit 2 MB pages active — reduced TLB pressure on DSP thread.");
+                log::info!(
+                    "NAM-rs: HugeTLB explicit 2 MB pages active — reduced TLB pressure on DSP thread."
+                );
             }
 
             if self
@@ -117,7 +121,9 @@ impl<'a> NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Info, &msg);
-                log::info!("NAM-rs: Transparent Huge Pages (THP) advice active — kernel may promote to 2 MB.");
+                log::info!(
+                    "NAM-rs: Transparent Huge Pages (THP) advice active — kernel may promote to 2 MB."
+                );
             }
 
             if self

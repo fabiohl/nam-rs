@@ -583,3 +583,54 @@ fn flush_idempotent() {
     logger.flush();
     assert_eq!(logger.buffer.len(), 1);
 }
+
+// =========================================================================
+// Task 4.3.1 — wall-clock format and LogRecord timestamp integrity
+// =========================================================================
+
+#[test]
+fn test_format_wall_clock_time_produces_valid_format() {
+    let time_str = format_wall_clock_time();
+    assert_eq!(
+        time_str.len(),
+        12,
+        "format should be HH:MM:SS.mmm (12 chars)"
+    );
+    assert_eq!(&time_str[2..3], ":", "char 2 should be ':'");
+    assert_eq!(&time_str[5..6], ":", "char 5 should be ':'");
+    assert_eq!(&time_str[8..9], ".", "char 8 should be '.'");
+    let parts: Vec<&str> = time_str.split([':', '.']).collect();
+    assert_eq!(parts.len(), 4);
+    for (i, part) in parts.iter().enumerate() {
+        let val: u32 = part
+            .parse()
+            .unwrap_or_else(|_| panic!("part {i} '{part}' not numeric"));
+        if i == 0 {
+            assert!(val < 24, "hours must be < 24, got {val}");
+        } else if i < 3 {
+            assert!(val < 60, "minutes/seconds must be < 60, got {val}");
+        } else {
+            assert!(val < 1000, "milliseconds must be < 1000, got {val}");
+        }
+    }
+}
+
+#[test]
+fn test_log_record_timestamp_is_u64_unix_epoch() {
+    let record = LogRecord::now("INFO", "test", "message");
+    assert!(
+        record.timestamp_secs > 1_700_000_000,
+        "timestamp_secs should be a recent UNIX epoch value (got {})",
+        record.timestamp_secs
+    );
+}
+
+#[test]
+fn test_log_record_timestamp_is_monotonic() {
+    let r1 = LogRecord::now("INFO", "a", "first");
+    let r2 = LogRecord::now("INFO", "b", "second");
+    assert!(
+        r2.timestamp_secs >= r1.timestamp_secs,
+        "LogRecord timestamps should be monotonic"
+    );
+}

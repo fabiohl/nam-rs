@@ -507,7 +507,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 4.3: Suíte de Testes e Validação Automatizada de Diagnóstico
 
-#### Task 4.3.1: Cobertura de Testes Unitários de Diagnóstico e Validação do Épico 04
+#### Task 4.3.1: Cobertura de Testes Unitários de Diagnóstico e Validação do Épico 04 [DONE]
 
 - **Descrição**: Desenvolver testes unitários para validar o comportamento das novas emissões de log e garantir conformidade com os critérios de RT-safety e lints.
 - **Direcionamento Técnico**:
