@@ -304,3 +304,238 @@ gantt
   - Logs de estado de resampling, oversampling, noise gate e latência em `src/dsp/` (construtores e configuradores off-RT).
   - Logs de quantum/buffer PipeWire e enriquecimento de fallbacks HugeTLB em `src/standalone/`.
   - Logs de instanciação, render mode e preset loading em `src/clap/` (via `log::*`, não `HostLog` manual).
+
+---
+
+## 6. Achados Residuais — Auditoria Pós-Implementação (2026-07-24)
+
+Os achados abaixo foram identificados após a auditoria de conformidade dos Épicos 01–03, que foram todos implementados com sucesso. Eles representam lacunas residuais de qualidade de diagnóstico — não são bloqueadores funcionais, mas degradam a utilidade do sistema de logging em situações de suporte remoto e debugging.
+
+---
+
+### Finding 10: Eventos RT Críticos do `emit_pending_logs()` não Alimentam o `LogBuffer` (P2 — Médio)
+
+- **Componentes Afetados**: [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs)
+
+- **Prioridade**: P2 — Médio
+
+- **Situação Atual**:
+  O método `emit_pending_logs()` em [`logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs) drena 9 flags atômicas RT (`RtStatusFlags`) e envia as mensagens diretamente à extensão `HostLog` da DAW hospedeira via `log.log(&shared, LogSeverity::*, &msg)`. Este é o caminho correto e by-design para garantir que eventos originados no audio thread (onde `log::*` é proibido) sejam visíveis ao host.
+
+  **O problema**: como essas mensagens bypasam totalmente a facade `log::*`, elas **nunca passam pelo `NamLogger`** e, portanto, **não são gravadas no `LogBuffer`**. Isso significa que eventos de criticidade máxima como:
+
+  - `"NAM-rs: Output clipping detected!"` (`RT_STATUS_HAS_CLIPPED`)
+  - `"NAM-rs: GC channel overflow! Possible memory leak."` (`RT_STATUS_GC_OVERFLOW`)
+  - `"NAM-rs: Heap allocation detected in audio thread during process()!"` (`RT_STATUS_HEAP_ALLOC`)
+  - `"NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB."` (`RT_STATUS_GC_CORRUPTED`)
+  - `"NAM-rs: Critical failure! No active model for processing."` (`RT_STATUS_MODEL_LOAD_FAILED`)
+  - `"NAM-rs: WaveNet slimmable slice_channels rebuild failed."` (`RT_STATUS_SLIMMABLE_SLICE_FAILED`)
+
+  **não aparecem na seção `Recent Log Trace`** dos crash reports nem dos `DiagnosticBundle`. Se o plugin travar logo após um evento de GC corruption, o crash report gerado não conterá o evento RT que precipitou o crash — precisamente a informação mais crítica para triagem.
+
+- **Proposta de Solução**:
+  Após cada `log.log(&shared, severity, &msg)` em `emit_pending_logs()`, adicionar uma chamada `log::warn!()` ou `log::error!()` equivalente via facade unificada. Como `emit_pending_logs()` é chamado exclusivamente da main thread (via `on_main_thread()`), o uso de `log::*` é seguro e elegante. Exemplo de padrão a adotar para cada flag:
+
+  ```rust
+  // Antes (apenas HostLog):
+  log.log(&shared, LogSeverity::Error, &msg);
+
+  // Depois (HostLog + LogBuffer via log::*):
+  log.log(&shared, LogSeverity::Error, &msg);
+  log::error!("NAM-rs: GC channel overflow! Possible memory leak.");
+  ```
+
+  **Restrição importante**: A chamada `log::*` deve usar uma string literal idêntica ou equivalente à do `CString`, para manter consistência no LogBuffer. Não é necessário reuso de variável — a string é estática e trivial.
+
+  **Critério de aceite**:
+  - Todos os 9 eventos RT drenados por `emit_pending_logs()` aparecem no `LogBuffer` (visíveis em `DiagnosticBundle::render()` e crash reports).
+  - Nenhuma regressão de RT-safety (o código adicionado está exclusivamente no caminho off-RT).
+  - Testes em [`src/clap/processor_state_test.rs`](file:///home/fabio/nam-rs/src/clap/processor_state_test.rs) validam que flags RT disparadas são capturadas no `LogBuffer`.
+
+---
+
+### Finding 11: Ausência de Log na Destruição da Instância do Plugin CLAP (P3 — Baixo)
+
+- **Componentes Afetados**: [`src/clap/plugin/main_thread/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs)
+
+- **Prioridade**: P3 — Baixo
+
+- **Situação Atual**:
+  O `impl Drop for NamClapMainThread` em [`mod.rs:226-230`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs#L226-L230) apenas chama `self.drain_gc_final()`. Não há nenhum log registrando a destruição da instância do plugin — nem mesmo um `log::debug!`. Em cenários de suporte onde o usuário reporta travamentos ou crashes durante o fechamento de projeto na DAW, a ausência de um log de "plugin destroying" dificulta a distinção entre:
+
+  1. Crash durante o processamento de áudio (main_thread vivo)
+  2. Crash durante a destruição da instância (Drop em execução)
+
+  O `impl Drop for NamClapShared` em [`shared.rs:318-320`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs#L318-L320) tem o mesmo gap.
+
+- **Proposta de Solução**:
+  Adicionar um `log::info!` no início de `fn drop()` de `NamClapMainThread` e, opcionalmente, um `log::debug!` em `NamClapShared::drop()`:
+
+  ```rust
+  impl<'a> Drop for NamClapMainThread<'a> {
+      fn drop(&mut self) {
+          log::info!("NAM-rs: Plugin instance destroying — draining GC.");
+          self.drain_gc_final();
+      }
+  }
+  ```
+
+  **Atenção ao contexto de Drop**: O `Drop` de `NamClapMainThread` ocorre na main thread, portanto `log::*` é seguro. O `Drop` de `NamClapShared` pode ocorrer em qualquer thread; verificar se ocorre sempre off-RT antes de adicionar log ali.
+
+  **Critério de aceite**:
+  - Log de destruição visível no `LogBuffer` e no console da DAW após fechar o plugin.
+  - Nenhuma regressão em testes de GC drain (`processor_gc_stress_test.rs`).
+
+---
+
+### Finding 12: Ausência de Log de Confirmação no State Save CLAP (P3 — Baixo)
+
+- **Componentes Afetados**: [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)
+
+- **Prioridade**: P3 — Baixo
+
+- **Situação Atual**:
+  A função `fn save()` em [`state.rs:74-85`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs#L74-L85) serializa o envelope de parâmetros e escreve no stream de saída sem emitir nenhum log de confirmação. Em contraste, o caminho de `fn load()` possui múltiplos logs de `warn!` e `info!` cobrindo caminhos de erro e sucesso de restauração.
+
+  A assimetria é relevante: em suporte remoto, quando um usuário reporta que um preset foi salvo mas não restaurou corretamente, não há evidência no `LogBuffer` de que o save chegou a ser executado, nem do tamanho do blob serializado. Isso obriga análise de código para diagnosticar o problema.
+
+- **Proposta de Solução**:
+  Adicionar um `log::debug!` (ou `log::info!`) ao final da função `save()`, após a escrita bem-sucedida, registrando o tamanho do blob serializado em bytes:
+
+  ```rust
+  fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError> {
+      debug_assert_main_thread(&self.host);
+      self.snapshot_params();
+
+      let serialized = serialize_envelope(&self.params)?;
+      let blob_len = serialized.len();
+
+      output
+          .write_all(&serialized)
+          .map_err(|e| PluginError::Error(Box::new(StateError::WriteStream(e))))?;
+
+      log::debug!("[State] Save completed: {} bytes serialized.", blob_len);
+      Ok(())
+  }
+  ```
+
+  **Critério de aceite**:
+  - Ao salvar o estado do plugin (ex.: salvar projeto na DAW), o `LogBuffer` contém a confirmação do save com o tamanho do blob.
+  - Nenhuma regressão nos testes de state save/load.
+
+---
+
+### Finding 13: Mudanças de Latência e Cauda CabSim Reportadas ao Host sem Log (P3 — Baixo)
+
+- **Componentes Afetados**: [`src/clap/plugin/main_thread/housekeeping.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs)
+
+- **Prioridade**: P3 — Baixo
+
+- **Situação Atual**:
+  A função `housekeeping()` em [`housekeeping.rs:311-321`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs#L311-L321) detecta mudanças em `current_latency` (latência total do plugin, em samples) e notifica o host via `latency_ext.changed()`. Da mesma forma, o bloco seguinte (linhas ~324-345) monitora `cabsim_tail_samples` e notifica o host via `tail_ext.changed()`.
+
+  Nenhum desses blocos emite `log::*` ao detectar a mudança. Isso tem impacto direto no suporte:
+
+  1. **Latência incorreta na DAW**: quando um usuário reporta que a compensação de latência da DAW está errada (offset de áudio), não há rastro no `LogBuffer` do valor de latência que foi reportado ao host — dificultando a comparação com o valor esperado.
+  2. **Tail length incorreta**: quando o CabSim está ativo e o tail muda (ao trocar o IR), a ausência de log impede verificar se o host recebeu o novo valor correto.
+
+- **Proposta de Solução**:
+  Adicionar `log::info!` em cada bloco de detecção de mudança:
+
+  ```rust
+  // Latency Monitoring
+  if current_latency != self.last_reported_latency {
+      self.last_reported_latency = current_latency;
+      log::info!(
+          "[Housekeeping] Latency changed: {} samples reported to host.",
+          current_latency
+      );
+      if let Some(latency_ext) = self.host.get_extension::<HostLatency>() {
+          latency_ext.changed(&mut self.host);
+      }
+  }
+
+  // Tail Monitoring
+  if cabsim_tail != self.last_reported_cabsim_tail {
+      self.last_reported_cabsim_tail = cabsim_tail;
+      log::info!(
+          "[Housekeeping] CabSim tail changed: {} samples reported to host.",
+          cabsim_tail
+      );
+      // ...
+  }
+  ```
+
+  **Critério de aceite**:
+  - Ao trocar modelo (mudança de oversampling → latência) ou IR (mudança de tail), o `LogBuffer` registra o novo valor comunicado ao host.
+  - Nenhuma regressão nos testes de latência/parâmetros.
+
+---
+
+### Finding 14: Formato de Timestamp no stderr do Modo Standalone Ilegível para Humanos (P4 — Cosmético)
+
+- **Componentes Afetados**: [`src/common/diagnostics/logger.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger.rs)
+
+- **Prioridade**: P4 — Cosmético
+
+- **Situação Atual**:
+  No modo standalone, o `NamLogger` emite logs para `stderr` com o formato:
+
+  ```text
+  [1753376451] INFO nam_rs::loader::build: [Loader] Loading model from "..."
+  ```
+
+  O timestamp é um inteiro UNIX (segundos desde epoch), o que é excelente para correlação automática entre arquivos de log, mas inelegante para leitura humana direta no terminal. Ferramentas como `env_logger` (substituída) utilizavam o formato `HH:MM:SS` combinado com o módulo — muito mais legível durante debugging interativo.
+
+  **Situação atual em [`logger.rs:355-364`](file:///home/fabio/nam-rs/src/common/diagnostics/logger.rs#L355-L364)**:
+
+  ```rust
+  eprintln!(
+      "[{ts}] {level} {target}: {message}",
+      level = level_str(level)
+  );
+  ```
+
+- **Proposta de Solução**:
+  Enriquecer o formato para incluir ambos: o timestamp legível (`HH:MM:SS`) e manter o UNIX timestamp como campo secundário, ou adotar exclusivamente o formato `HH:MM:SS.mmm` (horas:minutos:segundos.milissegundos):
+
+  ```rust
+  // Opção A: HH:MM:SS + UNIX (melhor correlação)
+  eprintln!(
+      "[{ts}] {time} {level} {target}: {message}",
+      time = format_wall_clock_time(),   // "14:32:07"
+      level = level_str(level)
+  );
+
+  // Opção B: apenas HH:MM:SS.mmm (mais legível, sem redundância)
+  eprintln!(
+      "{time} {level:5} {target}: {message}",
+      time = format_wall_clock_ms(),     // "14:32:07.412"
+      level = level_str(level)
+  );
+  ```
+
+  A função auxiliar `format_wall_clock_time()` pode ser implementada a partir de `SystemTime::now()` + decomposição manual (sem dependências externas), ou usando `chrono` (já presente no `Cargo.toml` se utilizada no projeto). **Verificar se `chrono` já é dependência antes de adicioná-la**; caso não seja, implementar via aritmética direta sobre `UNIX_EPOCH` para preservar a política de dependências mínimas.
+
+  **Restrição**: Esta mudança afeta **exclusivamente** o modo standalone (branch `if self.standalone_mode`). O `LogBuffer` e o encaminhamento aos sinks CLAP continuam armazenando o timestamp UNIX cru (em `LogRecord::timestamp_secs`), que é o formato correto para machine-readable.
+
+  **Critério de aceite**:
+  - Output do terminal em modo standalone exibe `HH:MM:SS` ou `HH:MM:SS.mmm` legível.
+  - `LogRecord::timestamp_secs` permanece como `u64` UNIX (sem alteração).
+  - `utils/lints.sh` e `utils/tests-quick.sh` sem regressões.
+
+---
+
+## 7. Épico de Implementação — Achados Residuais
+
+### Épico 04: Completude do `LogBuffer` e Qualidade do Output de Log
+
+- **Objetivo**: Fechar as 5 lacunas residuais identificadas na auditoria pós-implementação, garantindo que o `LogBuffer` capture a totalidade dos eventos de diagnóstico relevantes (incluindo eventos RT drenados off-RT) e melhorar a legibilidade do output no modo standalone.
+- **Achados Cobertos**: Finding 10, Finding 11, Finding 12, Finding 13, Finding 14.
+- **Prioridade Geral**: Baixa-Média (nenhum bloqueador funcional, mas impacto direto na qualidade de suporte).
+- **Sequência Recomendada**:
+  1. **F10** primeiro — maior impacto prático (eventos RT críticos visíveis em crash reports).
+  2. **F13** — complementa F10 (latência e tail também ficam no LogBuffer).
+  3. **F12** — fecha a assimetria save/load no CLAP state.
+  4. **F11** — log de destruição (baixo risco, alto valor em debugging).
+  5. **F14** por último — puramente cosmético, zero impacto funcional.

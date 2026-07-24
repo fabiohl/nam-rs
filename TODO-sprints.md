@@ -361,19 +361,165 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-### Sprint 3.3: Auditoria Final de RT-Safety, Zero-Log em Hot-Path e Validação Completa
+## Épico 04: Completude do `LogBuffer` e Qualidade do Output de Log
 
-#### Task 3.3.1: Auditoria de RT-Safety e Validação Automatizada do Épico 03 [DONE]
+- **Objetivo**: Fechar as 5 lacunas residuais identificadas na auditoria pós-implementação dos Épicos 01–03, garantindo que o `LogBuffer` capture a totalidade dos eventos de diagnóstico relevantes (incluindo eventos RT drenados off-RT pela main thread) e melhorar a legibilidade do output de log no modo standalone.
+- **Achados Cobertos em `TODO-findings.md`**:
+  - [Finding 10](file:///home/fabio/nam-rs/TODO-findings.md#finding-10-eventos-rt-críticos-do-emit_pending_logs-não-alimentam-o-logbuffer-p2--médio) — Eventos RT críticos do `emit_pending_logs()` encaminhados ao `LogBuffer` via facade `log::*`.
+  - [Finding 11](file:///home/fabio/nam-rs/TODO-findings.md#finding-11-ausência-de-log-na-destruição-da-instância-do-plugin-clap-p3--baixo) — Log de ciclo de vida na destruição (`Drop`) de `NamClapMainThread` e `NamClapShared`.
+  - [Finding 12](file:///home/fabio/nam-rs/TODO-findings.md#finding-12-ausência-de-log-de-confirmação-no-state-save-clap-p3--baixo) — Log de confirmação e tamanho do blob no state save CLAP.
+  - [Finding 13](file:///home/fabio/nam-rs/TODO-findings.md#finding-13-mudanças-de-latência-e-cauda-cabsim-reportadas-ao-host-sem-log-p3--baixo) — Logs de telemetria de mudanças de latência e cauda do CabSim reportadas ao host via `housekeeping()`.
+  - [Finding 14](file:///home/fabio/nam-rs/TODO-findings.md#finding-14-formato-de-timestamp-no-stderr-do-modo-standalone-ilegível-para-humanos-p4--cosmético) — Formato de timestamp no `stderr` do modo standalone legível para humanos (`HH:MM:SS` / `HH:MM:SS.mmm`).
 
-- **Descrição**: Realizar verificação automatizada e estática para garantir 100% de conformidade com as regras de RT-Safety de logging no projeto (conforme diretriz `testing.md`).
+---
+
+### Sprint 4.1: Captura de Eventos RT e Telemetria de Host no `LogBuffer`
+
+#### Task 4.1.1: Encaminhamento de Eventos RT Drenados para a Facade `log::*` e `LogBuffer`
+
+- **Descrição**: Modificar a rotina `emit_pending_logs()` em [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs) para que, além de emitir mensagens para a extensão `HostLog` do host CLAP, cada uma das 9 flags atômicas de status real-time dadas por `RtStatusFlags` seja espelhada via chamadas `log::warn!` ou `log::error!`.
 - **Direcionamento Técnico**:
-  - Verificar presenças dos cabeçalhos SPDX Apache-2.0 e Copyright 2026 em todos os arquivos editados.
-  - Garantir zero chamadas `log::*` na thread de áudio real-time.
-  - Executar os scripts `utils/lints.sh` e `utils/tests-quick.sh` (permitido uma única vez ao final).
-- **Especialista**: Lead QA & Revisor Auditor.
-- **Criticidade / Risco**: **Médio-Alto**.
+  - Em [`logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs), após cada invocação `log.log(&shared, severity, &msg)`, emitir a chamada `log::*` correspondente. Como `emit_pending_logs()` é executado exclusivamente na thread principal (off-RT), a chamada a macros `log::*` é 100% segura.
+  - Garantir a cobertura completa das 9 flags drenadas:
+    1. `RT_STATUS_HAS_CLIPPED`: `log::warn!("NAM-rs: Output clipping detected!");`
+    2. `RT_STATUS_GC_OVERFLOW`: `log::error!("NAM-rs: GC channel overflow! Possible memory leak.");`
+    3. `RT_STATUS_GC_TIER3`: `log::warn!("NAM-rs: GC cascade reached Tier 3 (overflow buffer). Sustained GC pressure.");`
+    4. `RT_STATUS_GC_CORRUPTED`: `log::error!("NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB.");`
+    5. `RT_STATUS_HEAP_ALLOC`: `log::error!("NAM-rs: Heap allocation detected in audio thread during process()!");`
+    6. `RT_STATUS_MODEL_LOAD_FAILED`: `log::error!("NAM-rs: Critical failure! No active model for processing.");`
+    7. `RT_STATUS_SLIMMABLE_SLICE_FAILED`: `log::error!("NAM-rs: WaveNet slimmable slice_channels rebuild failed.");`
+    8. Flags adicionais de falha de amostragem / estado RT registradas no bitmask.
+  - Com essa alteração, se o plugin reportar clipping ou GC overflow e logo em seguida ocorrer um crash, o rastro do evento crítico estará preservado no `LogBuffer` e visível no `DiagnosticBundle::render()` e nos crash reports.
+- **Especialista**: Engenheiro de Plugins CLAP & Diagnóstico Off-RT.
+- **Criticidade / Risco**: **Médio-Alto (P2 / Finding 10)**. Alta relevância técnica para diagnóstico de falhas graves em suporte remoto.
 - **Arquivos Afetados**:
-  - Todos os arquivos do Épico 03.
+  - `[MODIFY]` [`src/clap/plugin/main_thread/logging.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/logging.rs)
 - **Critérios de Aceite**:
-  - `utils/lints.sh` sem avisos ou erros.
-  - `utils/tests-quick.sh` com 100% de aprovação.
+  - Todos os 9 eventos RT drenados por `emit_pending_logs()` são gravados no `LogBuffer` global e aparecem no snapshot renderizado do `DiagnosticBundle`.
+  - Nenhuma chamada `log::*` é feita dentro do audio thread (mantida a garantia de RT-safety, pois `emit_pending_logs()` é invocado apenas na main thread).
+
+---
+
+#### Task 4.1.2: Logging de Telemetria para Mudanças de Latência e Cauda CabSim em Housekeeping
+
+- **Descrição**: Adicionar registros de log via `log::info!` no método `housekeeping()` em [`src/clap/plugin/main_thread/housekeeping.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs) quando forem detectadas e comunicadas ao host CLAP alterações na latência do plugin ou na cauda (tail length) do CabSim.
+- **Direcionamento Técnico**:
+  - No bloco de monitoramento de latência (`if current_latency != self.last_reported_latency`):
+
+    ```rust
+    self.last_reported_latency = current_latency;
+    log::info!("[Housekeeping] Latency changed: {} samples reported to host.", current_latency);
+    ```
+
+  - No bloco de monitoramento do CabSim tail (`if cabsim_tail != self.last_reported_cabsim_tail`):
+
+    ```rust
+    self.last_reported_cabsim_tail = cabsim_tail;
+    log::info!("[Housekeeping] CabSim tail changed: {} samples reported to host.", cabsim_tail);
+    ```
+
+  - Isso garante que a auditoria possa correlacionar a latência informada à DAW com a troca de fatores de oversampling ou alteração da resposta ao impulso (IR) do CabSim.
+- **Especialista**: Engenheiro de Plugins de Áudio CLAP.
+- **Criticidade / Risco**: **Baixo (P3 / Finding 13)**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/plugin/main_thread/housekeeping.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/housekeeping.rs)
+- **Critérios de Aceite**:
+  - Alterações no valor de latência em amostras e no tail length do CabSim geram entradas claras de `log::info!` no `LogBuffer`.
+
+---
+
+### Sprint 4.2: Ciclo de Vida, Persistência de Estado e Formatação Standalone
+
+#### Task 4.2.1: Log de Ciclo de Vida na Destruição do Plugin CLAP
+
+- **Descrição**: Incluir logs de ciclo de vida nos destrutores (`Drop`) das estruturas principais do plugin CLAP em [`src/clap/plugin/main_thread/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs) e [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs).
+- **Direcionamento Técnico**:
+  - Em `impl<'a> Drop for NamClapMainThread<'a>` em [`src/clap/plugin/main_thread/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs):
+
+    ```rust
+    fn drop(&mut self) {
+        log::info!("NAM-rs: Plugin instance destroying — draining GC.");
+        self.drain_gc_final();
+    }
+    ```
+
+  - Em `impl Drop for NamClapShared` em [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs), adicionar `log::debug!("NAM-rs: NamClapShared dropped.");` garantindo que o log ocorra fora do caminho crítico de áudio.
+  - Isso permite distinguir se um crash ocorreu com a instância em pleno processamento ou durante o desmantelamento final do plugin pelo host.
+- **Especialista**: Engenheiro de Arquitetura de Sistemas Rust.
+- **Criticidade / Risco**: **Baixo (P3 / Finding 11)**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/plugin/main_thread/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs)
+  - `[MODIFY]` [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs)
+- **Critérios de Aceite**:
+  - A destruição da instância do plugin gera mensagens informativas de log capturadas no `LogBuffer`.
+
+---
+
+#### Task 4.2.2: Log de Confirmação e Tamanho do Blob no State Save CLAP
+
+- **Descrição**: Adicionar log de confirmação e telemetria de tamanho serializado na função `save()` da extensão de estado CLAP em [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs).
+- **Direcionamento Técnico**:
+  - Na função `fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError>`:
+
+    ```rust
+    let blob_len = serialized.len();
+    output.write_all(&serialized)...?;
+    log::debug!("[State] Save completed: {} bytes serialized.", blob_len);
+    ```
+
+  - Elimina a assimetria entre `save()` (que não emitia log) e `load()` (que contava com logs detalhados), facilitando o diagnóstico de persistência de projetos na DAW.
+- **Especialista**: Engenheiro de Plugins CLAP & Serialização.
+- **Criticidade / Risco**: **Baixo (P3 / Finding 12)**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)
+- **Critérios de Aceite**:
+  - Salvamentos de estado com sucesso registram o tamanho do blob serializado em bytes no `LogBuffer`.
+
+---
+
+#### Task 4.2.3: Formatação Legível de Timestamp Wall-Clock no Modo Standalone
+
+- **Descrição**: Atualizar a saída para `stderr` do `NamLogger` no modo standalone em [`src/common/diagnostics/logger.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger.rs) para incluir horário legível em formato wall-clock (`HH:MM:SS` ou `HH:MM:SS.mmm`).
+- **Direcionamento Técnico**:
+  - Criar função auxiliar off-RT `format_wall_clock_time()` que converte `SystemTime::now()` em `HH:MM:SS` (ou `HH:MM:SS.mmm`) via aritmética pura de tempo/epoch ou utilizando dependências leves já presentes no projeto.
+  - Atualizar o `eprintln!` no branch `if self.standalone_mode`:
+
+    ```rust
+    eprintln!(
+        "{time} {level:5} {target}: {message}",
+        time = format_wall_clock_time(),
+        level = level_str(level),
+        target = record.target(),
+        message = record.args()
+    );
+    ```
+
+  - **Restrição Importante**: O `LogRecord::timestamp_secs` em `LogBuffer` deve permanecer **estritamente como `u64` UNIX epoch**, assegurando parsing limpo por ferramentas automatizadas e diagnósticos máquina-a-máquina.
+- **Especialista**: Engenheiro CLI/Standalone & Rust.
+- **Criticidade / Risco**: **Cosmético (P4 / Finding 14)**. Melhora substancial na DX (developer experience) em execuções de terminal.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/common/diagnostics/logger.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger.rs)
+- **Critérios de Aceite**:
+  - Saída no terminal em modo standalone exibe timestamps legíveis (`HH:MM:SS` ou `HH:MM:SS.mmm`).
+  - O `LogBuffer` e `DiagnosticBundle` continuam retendo timestamps `u64` sem quebra de contrato.
+
+---
+
+### Sprint 4.3: Suíte de Testes e Validação Automatizada de Diagnóstico
+
+#### Task 4.3.1: Cobertura de Testes Unitários de Diagnóstico e Validação do Épico 04
+
+- **Descrição**: Desenvolver testes unitários para validar o comportamento das novas emissões de log e garantir conformidade com os critérios de RT-safety e lints.
+- **Direcionamento Técnico**:
+  - Em [`src/clap/processor_state_test.rs`](file:///home/fabio/nam-rs/src/clap/processor_state_test.rs): Adicionar teste unitário que simula a ativação de `RtStatusFlags` e verifica se a invocação de `emit_pending_logs()` grava com sucesso as entradas correspondentes no `LogBuffer`.
+  - Em [`src/common/diagnostics/logger_test.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger_test.rs): Testar a formatação de wall-clock e garantir que a estrutura de `LogRecord` retém a integridade do timestamp UNIX epoch.
+  - Em [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs) (ou arquivo de teste associado): Validar que a rotina `save()` emite o log de confirmação.
+  - Executar `utils/lints.sh` e `utils/tests-quick.sh` para assegurar conformidade total.
+- **Especialista**: Lead QA & Revisor Auditor.
+- **Criticidade / Risco**: **Médio**.
+- **Arquivos Afetados**:
+  - `[MODIFY]` [`src/clap/processor_state_test.rs`](file:///home/fabio/nam-rs/src/clap/processor_state_test.rs)
+  - `[MODIFY]` [`src/common/diagnostics/logger_test.rs`](file:///home/fabio/nam-rs/src/common/diagnostics/logger_test.rs)
+- **Critérios de Aceite**:
+  - Testes unitários do `LogBuffer` e `emit_pending_logs()` aprovados.
+  - `utils/lints.sh` e `utils/tests-quick.sh` sem nenhuma regressão.
