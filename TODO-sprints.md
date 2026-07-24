@@ -455,7 +455,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ---
 
-#### Task 4.2.2: Log de Confirmação e Tamanho do Blob no State Save CLAP
+#### Task 4.2.2: Log de Confirmação e Tamanho do Blob no State Save CLAP [DONE]
 
 - **Descrição**: Adicionar log de confirmação e telemetria de tamanho serializado na função `save()` da extensão de estado CLAP em [`src/clap/extensions/state.rs`](file:///home/fabio/nam-rs/src/clap/extensions/state.rs).
 - **Direcionamento Técnico**:

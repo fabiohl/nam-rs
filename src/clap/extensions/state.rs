@@ -76,10 +76,13 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
         self.snapshot_params();
 
         let serialized = serialize_envelope(&self.params)?;
+        let blob_len = serialized.len();
 
         output
             .write_all(&serialized)
             .map_err(|e| PluginError::Error(Box::new(StateError::WriteStream(e))))?;
+
+        log::debug!("[State] Save completed: {} bytes serialized.", blob_len);
 
         Ok(())
     }
