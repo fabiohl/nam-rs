@@ -191,11 +191,7 @@ impl LogBuffer {
     /// lock could not be acquired).
     ///
     /// Designed for zero-alloc use in panic hooks and crash-report paths.
-    pub fn try_render_trace_into(
-        &self,
-        writer: &mut impl std::fmt::Write,
-        limit: usize,
-    ) -> usize {
+    pub fn try_render_trace_into(&self, writer: &mut impl std::fmt::Write, limit: usize) -> usize {
         let inner = match self.inner.try_lock() {
             Ok(guard) => guard,
             Err(_) => return 0,

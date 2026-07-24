@@ -80,9 +80,10 @@ const MAX_CRASH_FILES: usize = 10;
 /// All I/O errors are silently swallowed — this runs inside the panic hook and
 /// must never escalate into a new panic.
 fn prune_old_crash_files(cache_dir: &std::path::Path) {
-    let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> = match std::fs::read_dir(cache_dir) {
-        Ok(iter) => {
-            iter.filter_map(|e| e.ok())
+    let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> =
+        match std::fs::read_dir(cache_dir) {
+            Ok(iter) => iter
+                .filter_map(|e| e.ok())
                 .filter(|e| {
                     e.path()
                         .file_name()
@@ -94,10 +95,9 @@ fn prune_old_crash_files(cache_dir: &std::path::Path) {
                     let mtime = e.metadata().ok()?.modified().ok()?;
                     Some((e.path(), mtime))
                 })
-                .collect()
-        }
-        Err(_) => return,
-    };
+                .collect(),
+            Err(_) => return,
+        };
 
     if entries.len() <= MAX_CRASH_FILES {
         return;
