@@ -225,6 +225,7 @@ impl<'a> NamClapMainThread<'a> {
 
 impl<'a> Drop for NamClapMainThread<'a> {
     fn drop(&mut self) {
+        log::info!("NAM-rs: Plugin instance destroying — draining GC.");
         self.drain_gc_final();
     }
 }

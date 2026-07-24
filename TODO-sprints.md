@@ -430,7 +430,7 @@ Este documento detalha o plano de execução ágil (Épicos, Sprints e Tarefas T
 
 ### Sprint 4.2: Ciclo de Vida, Persistência de Estado e Formatação Standalone
 
-#### Task 4.2.1: Log de Ciclo de Vida na Destruição do Plugin CLAP
+#### Task 4.2.1: Log de Ciclo de Vida na Destruição do Plugin CLAP [DONE]
 
 - **Descrição**: Incluir logs de ciclo de vida nos destrutores (`Drop`) das estruturas principais do plugin CLAP em [`src/clap/plugin/main_thread/mod.rs`](file:///home/fabio/nam-rs/src/clap/plugin/main_thread/mod.rs) e [`src/clap/plugin/shared.rs`](file:///home/fabio/nam-rs/src/clap/plugin/shared.rs).
 - **Direcionamento Técnico**:

@@ -317,6 +317,7 @@ impl<'a> PluginShared<'a> for NamClapShared {}
 
 impl Drop for NamClapShared {
     fn drop(&mut self) {
+        log::debug!("NAM-rs: NamClapShared dropped.");
         self.cold.alive_fence.store(false, Ordering::Release); // pairs with Acquire load em gui/window/state.rs:190
         crate::common::panic_hook::set_shutdown_in_progress();
     }
