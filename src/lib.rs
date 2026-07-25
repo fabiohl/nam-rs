@@ -8,7 +8,9 @@
 //! [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) neural network models
 //! (WaveNet A1 and A2, LSTM, ConvNet, Linear) and impulse response (.wav) convolutions.
 //!
-//! > **Notice:** The public crate functionality of `nam-rs` is currently in **public alpha**.
+//! > **Notice:** The public crate is published on crates.io as [**`NeuralAmpModeler-rs`**](https://crates.io/crates/NeuralAmpModeler-rs) since some dude took my name during the phase na-rs wa in development.
+//! > It's currently in **public alpha** stage (despite the version number).
+//! > In Rust code, import modules via `use nam_rs::...`, and run the standalone CLI binary as `nam-rs`.
 //! > Feedback, bug reports, suggestions and testing are very welcome!
 //! > Official project repository & issues: <https://github.com/fabiohl/nam-rs>
 //!
@@ -38,19 +40,19 @@
 //! **Pure Core DSP & Model Inference (Recommended for third-party crates):**
 //! ```toml
 //! [dependencies]
-//! nam-rs = { version = "3.0.0", default-features = false }
+//! NeuralAmpModeler-rs = { version = "3.0.0", default-features = false }
 //! ```
 //!
 //! **Adding Off-RT Testing & Audio Signal Generators:**
 //! ```toml
 //! [dependencies]
-//! nam-rs = { version = "3.0.0", default-features = false, features = ["testing"] }
+//! NeuralAmpModeler-rs = { version = "3.0.0", default-features = false, features = ["testing"] }
 //! ```
 //!
 //! **Building Native PipeWire Standalone Audio Clients:**
 //! ```toml
 //! [dependencies]
-//! nam-rs = { version = "3.0.0", features = ["standalone"] }
+//! NeuralAmpModeler-rs = { version = "3.0.0", features = ["standalone"] }
 //! ```
 //!
 //! ### Feature Flags Summary Table

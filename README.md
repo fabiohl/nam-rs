@@ -5,11 +5,20 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # 🎸 NAM-rs 3.0
 
-![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
+[![crates.io](https://img.shields.io/crates/v/NeuralAmpModeler-rs.svg)](https://crates.io/crates/NeuralAmpModeler-rs) ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
 **NAM-rs** is a cutting-edge, high-fidelity, high-performance, real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) core and client written in pure Rust. Designed for guitar amplifiers, pedals, and studio gear simulation on Linux, it operates both as a **native PipeWire standalone application** and as a **CLAP plugin with an integrated GUI** for digital audio workstations (DAWs).
 
-> ⚠️ **NAM-rs is public beta now!** It's taking steps from *"works in my machine"* towards *"used and loved by the community"*.
+> ⚠️ **NAM-rs is published on [crates.io](https://crates.io/crates/NeuralAmpModeler-rs) as [`NeuralAmpModeler-rs`](https://crates.io/crates/NeuralAmpModeler-rs)**  since some dude took my name during the phase nam-rs was in development.
+>
+> 📦 **Cargo Dependency:**
+>
+> ```toml
+> [dependencies]
+> NeuralAmpModeler-rs = { version = "3.0.0", default-features = false }
+> ```
+>
+> *(Import in Rust code as `use nam_rs::*;`. Binary standalone CLI name is `nam-rs`.)*
 >
 > ❤️‍🔥 Feedback, bug reports, suggestions, and testing are very welcome (and needed)!
 

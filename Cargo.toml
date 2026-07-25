@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 [package]
-name = "nam-rs"
+name = "NeuralAmpModeler-rs"
 version = "3.0.0"
 edition = "2024"
 license = "Apache-2.0"
