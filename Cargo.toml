@@ -28,8 +28,7 @@ include = [
 keywords = ["audio", "dsp", "nam", "neural-amp-modeler", "guitar"]
 categories = [
     "multimedia::audio",
-    "multimedia::audio::analysis",
-    "multimedia::audio::effects",
+    "multimedia",
 ]
 
 [dependencies]
