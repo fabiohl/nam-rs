@@ -34,6 +34,7 @@ const DATA_ID: [u8; 4] = *b"data";
 // WAV format tags.
 const WAV_FORMAT_PCM: u16 = 1;
 const WAV_FORMAT_IEEE_FLOAT: u16 = 3;
+const WAV_FORMAT_EXTENSIBLE: u16 = 65534; // 0xFFFE
 
 /// Minimum IR sample rate to guard against catastrophic upsampling and OOM (4 kHz).
 const MIN_IR_SAMPLE_RATE: u32 = 4_000;
@@ -188,7 +189,7 @@ impl CabSimIr {
             ));
         }
 
-        let audio_format = u16::from_le_bytes([data[fmt_offset], data[fmt_offset + 1]]);
+        let raw_audio_format = u16::from_le_bytes([data[fmt_offset], data[fmt_offset + 1]]);
         let num_channels = u16::from_le_bytes([data[fmt_offset + 2], data[fmt_offset + 3]]);
         let sample_rate = u32::from_le_bytes([
             data[fmt_offset + 4],
@@ -197,6 +198,18 @@ impl CabSimIr {
             data[fmt_offset + 7],
         ]);
         let bits_per_sample = u16::from_le_bytes([data[fmt_offset + 14], data[fmt_offset + 15]]);
+
+        let audio_format = if raw_audio_format == WAV_FORMAT_EXTENSIBLE {
+            if fmt_offset + 26 > data.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "IR WAV: 'fmt ' chunk too small for extensible format",
+                ));
+            }
+            u16::from_le_bytes([data[fmt_offset + 24], data[fmt_offset + 25]])
+        } else {
+            raw_audio_format
+        };
 
         if num_channels != 1 {
             return Err(io::Error::new(
@@ -222,6 +235,7 @@ impl CabSimIr {
         let bytes_per_sample = match (audio_format, bits_per_sample) {
             (WAV_FORMAT_PCM, 16) => 2usize,
             (WAV_FORMAT_PCM, 24) => 3,
+            (WAV_FORMAT_PCM, 32) => 4,
             (WAV_FORMAT_IEEE_FLOAT, 32) => 4,
             (fmt, bits) => {
                 return Err(io::Error::new(
@@ -248,11 +262,12 @@ impl CabSimIr {
             WAV_FORMAT_PCM => match bits_per_sample {
                 16 => Self::read_pcm16(&data[data_start..], data_size),
                 24 => Self::read_pcm24(&data[data_start..], data_size),
+                32 => Self::read_pcm32(&data[data_start..], data_size),
                 _ => {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         format!(
-                            "IR WAV: unsupported PCM bit depth {} (only 16 and 24 supported)",
+                            "IR WAV: unsupported PCM bit depth {} (only 16, 24, and 32 supported)",
                             bits_per_sample
                         ),
                     ));
@@ -272,10 +287,15 @@ impl CabSimIr {
             }
         };
 
-        let fmt_label = match (audio_format, bits_per_sample) {
-            (WAV_FORMAT_PCM, 16) => "PCM16",
-            (WAV_FORMAT_PCM, 24) => "PCM24",
-            (WAV_FORMAT_IEEE_FLOAT, 32) => "float32",
+        let fmt_label = match (raw_audio_format, audio_format, bits_per_sample) {
+            (WAV_FORMAT_EXTENSIBLE, WAV_FORMAT_PCM, 16) => "extensible-PCM16",
+            (WAV_FORMAT_EXTENSIBLE, WAV_FORMAT_PCM, 24) => "extensible-PCM24",
+            (WAV_FORMAT_EXTENSIBLE, WAV_FORMAT_PCM, 32) => "extensible-PCM32",
+            (WAV_FORMAT_EXTENSIBLE, WAV_FORMAT_IEEE_FLOAT, 32) => "extensible-float32",
+            (_, WAV_FORMAT_PCM, 16) => "PCM16",
+            (_, WAV_FORMAT_PCM, 24) => "PCM24",
+            (_, WAV_FORMAT_PCM, 32) => "PCM32",
+            (_, WAV_FORMAT_IEEE_FLOAT, 32) => "float32",
             _ => "unknown",
         };
         debug!(
@@ -308,7 +328,8 @@ impl CabSimIr {
             if id == chunk_id {
                 return Some((pos + 8, size));
             }
-            pos = pos.saturating_add(8 + size as usize);
+            let padded_size = (size as usize + 1) & !1;
+            pos = pos.saturating_add(8 + padded_size);
         }
         None
     }
@@ -384,6 +405,26 @@ impl CabSimIr {
             } else {
                 raw as f32 / 8_388_608.0
             };
+            samples.push(f);
+        }
+        samples
+    }
+
+    /// Reads PCM32 mono samples as f32 in [-1.0, 1.0).
+    fn read_pcm32(data: &[u8], data_size: u32) -> Vec<f32> {
+        let num_samples = (data_size as usize) / 4;
+        let available = data.len() / 4;
+        let n = num_samples.min(available);
+        let mut samples = Vec::with_capacity(n);
+        for i in 0..n {
+            let offset = i * 4;
+            let raw = i32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
+            let f = raw as f32 / 2_147_483_648.0;
             samples.push(f);
         }
         samples

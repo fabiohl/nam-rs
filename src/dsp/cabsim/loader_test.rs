@@ -295,3 +295,115 @@ fn write_pcm16_wav(
 
     std::fs::write(path, &buf)
 }
+
+/// Helper function to write WAVE_FORMAT_EXTENSIBLE (0xFFFE / 65534) mono WAV files for testing.
+fn write_extensible_wav(
+    path: &std::path::Path,
+    samples_f32: &[f32],
+    sample_rate: u32,
+    subformat_pcm: bool,
+    bits_per_sample: u16,
+) -> std::io::Result<()> {
+    let bytes_per_sample = (bits_per_sample / 8) as usize;
+    let data_size = (samples_f32.len() * bytes_per_sample) as u32;
+    let fmt_chunk_size = 40u32; // Standard WAVEFORMATEXTENSIBLE size
+    let file_size: u32 = 12 + (8 + fmt_chunk_size) + (8 + data_size);
+    let byte_rate = sample_rate * (bits_per_sample as u32 / 8);
+    let block_align = bits_per_sample / 8;
+
+    let mut buf = Vec::with_capacity(file_size as usize + 8);
+
+    buf.extend_from_slice(b"RIFF");
+    buf.extend_from_slice(&(file_size - 8).to_le_bytes());
+    buf.extend_from_slice(b"WAVE");
+
+    buf.extend_from_slice(b"fmt ");
+    buf.extend_from_slice(&fmt_chunk_size.to_le_bytes());
+    buf.extend_from_slice(&65534u16.to_le_bytes()); // WAV_FORMAT_EXTENSIBLE
+    buf.extend_from_slice(&1u16.to_le_bytes()); // mono
+    buf.extend_from_slice(&sample_rate.to_le_bytes());
+    buf.extend_from_slice(&byte_rate.to_le_bytes());
+    buf.extend_from_slice(&block_align.to_le_bytes());
+    buf.extend_from_slice(&bits_per_sample.to_le_bytes());
+    buf.extend_from_slice(&22u16.to_le_bytes()); // cbSize (extension size)
+    buf.extend_from_slice(&bits_per_sample.to_le_bytes()); // wValidBitsPerSample
+    buf.extend_from_slice(&0u32.to_le_bytes()); // dwChannelMask
+
+    // SubFormat GUID: first 2 bytes are subformat code (1 for PCM, 3 for IEEE Float)
+    let subformat_code: u16 = if subformat_pcm { 1 } else { 3 };
+    buf.extend_from_slice(&subformat_code.to_le_bytes());
+    // Remainder of KSDATAFORMAT_SUBTYPE_PCM / IEEE_FLOAT GUID (14 bytes):
+    // 00-00-00-00-10-80-00-00-AA-00-38-9B-71-00
+    buf.extend_from_slice(&[
+        0x00, 0x00, 0x00, 0x00, 0x10, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71, 0x00,
+    ]);
+
+    buf.extend_from_slice(b"data");
+    buf.extend_from_slice(&data_size.to_le_bytes());
+
+    if subformat_pcm && bits_per_sample == 24 {
+        for &s in samples_f32 {
+            let clamped = s.clamp(-1.0, 0.999999);
+            let raw = if clamped >= 0.0 {
+                (clamped * 8_388_607.0) as i32
+            } else {
+                (clamped * 8_388_608.0) as i32
+            };
+            let b0 = (raw & 0xFF) as u8;
+            let b1 = ((raw >> 8) & 0xFF) as u8;
+            let b2 = ((raw >> 16) & 0xFF) as u8;
+            buf.extend_from_slice(&[b0, b1, b2]);
+        }
+    } else if !subformat_pcm && bits_per_sample == 32 {
+        for &s in samples_f32 {
+            buf.extend_from_slice(&s.to_le_bytes());
+        }
+    }
+
+    std::fs::write(path, &buf)
+}
+
+/// Tests loading a 24-bit PCM WAVE_FORMAT_EXTENSIBLE IR (format 65534).
+#[test]
+fn test_load_extensible_pcm24_wav() {
+    let samples: Vec<f32> = (0..512).map(|i| (i as f32 * 0.005).sin()).collect();
+    let path = std::path::Path::new("/tmp/nam_rs_test_ext_pcm24.wav");
+
+    write_extensible_wav(path, &samples, 48_000, true, 24)
+        .expect("failed to write extensible PCM24 WAV");
+
+    let ir = CabSimIr::load(path, 0, false).expect("failed to load extensible PCM24 WAV");
+    assert_eq!(ir.sample_rate, 48_000);
+    assert_eq!(ir.samples.len(), 512);
+
+    for (orig, read) in samples.iter().zip(ir.samples.iter()) {
+        assert!(
+            (orig - read).abs() < 1e-4,
+            "sample mismatch: orig={}, read={}",
+            orig,
+            read
+        );
+    }
+
+    std::fs::remove_file(path).ok();
+}
+
+/// Tests loading a 32-bit Float WAVE_FORMAT_EXTENSIBLE IR (format 65534).
+#[test]
+fn test_load_extensible_float32_wav() {
+    let samples: Vec<f32> = (0..512).map(|i| (i as f32 * 0.005).cos()).collect();
+    let path = std::path::Path::new("/tmp/nam_rs_test_ext_float32.wav");
+
+    write_extensible_wav(path, &samples, 48_000, false, 32)
+        .expect("failed to write extensible Float32 WAV");
+
+    let ir = CabSimIr::load(path, 0, false).expect("failed to load extensible Float32 WAV");
+    assert_eq!(ir.sample_rate, 48_000);
+    assert_eq!(ir.samples.len(), 512);
+
+    for (orig, read) in samples.iter().zip(ir.samples.iter()) {
+        assert!((orig - read).abs() < 1e-6);
+    }
+
+    std::fs::remove_file(path).ok();
+}
