@@ -24,9 +24,9 @@
 //!     latency. Until the first partition is fully accumulated, output is
 //!     silence.
 
+use super::conv::ConvEngine;
 use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
-use super::conv::ConvEngine;
 
 /// RT-safe adapter that bridges fixed-partition [`ConvEngine`] to
 /// variable-size sub-blocks (as produced by CLAP sample-accurate events).
@@ -111,8 +111,7 @@ impl CabSimAdapter {
         if self.engine.is_passthrough() {
             return 0;
         }
-        self.engine.num_partitions().saturating_mul(self.partition)
-            + self.partition // one extra block for adapter fifo accumulator
+        self.engine.num_partitions().saturating_mul(self.partition) + self.partition // one extra block for adapter fifo accumulator
     }
 
     /// Processes a variable-size sub-block through the convolution engine.
@@ -140,8 +139,7 @@ impl CabSimAdapter {
         }
 
         if sub_n > 0 {
-            self.input_buf[self.input_count..self.input_count + sub_n]
-                .copy_from_slice(input);
+            self.input_buf[self.input_count..self.input_count + sub_n].copy_from_slice(input);
             self.input_count += sub_n;
         }
 
@@ -176,9 +174,7 @@ impl CabSimAdapter {
         let available = self.output_write - self.output_read;
         let n = sub_n.min(available);
         if n > 0 {
-            output[..n].copy_from_slice(
-                &self.output_buf[self.output_read..self.output_read + n],
-            );
+            output[..n].copy_from_slice(&self.output_buf[self.output_read..self.output_read + n]);
             self.output_read += n;
         }
         output[n..].fill(0.0);

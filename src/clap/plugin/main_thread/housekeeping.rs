@@ -304,7 +304,10 @@ impl<'a> NamClapMainThread<'a> {
                             e.into_inner()
                         });
                     *raw_guard = None;
-                    self.shared.cold.ir_raw_sample_rate.store(0, Ordering::Relaxed);
+                    self.shared
+                        .cold
+                        .ir_raw_sample_rate
+                        .store(0, Ordering::Relaxed);
                 }
             }
         }

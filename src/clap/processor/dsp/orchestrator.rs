@@ -477,23 +477,12 @@ fn process_sub_block(
 
     if let Some(ref mut conv) = ctx.conv {
         if !conv.is_passthrough() {
-            conv.process_variable(
-                &buf_out_l[..n_out],
-                &mut buf_model_l[..n_out],
-            );
+            conv.process_variable(&buf_out_l[..n_out], &mut buf_model_l[..n_out]);
             unsafe {
-                core::ptr::copy_nonoverlapping(
-                    buf_model_l.as_ptr(),
-                    buf_out_l.as_mut_ptr(),
-                    n_out,
-                );
+                core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), n_out);
             }
             unsafe {
-                core::ptr::copy_nonoverlapping(
-                    buf_out_l.as_ptr(),
-                    buf_out_r.as_mut_ptr(),
-                    n_out,
-                );
+                core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), n_out);
             }
         }
     }
@@ -562,21 +551,10 @@ fn process_tail_drain(
 
     if let Some(ref mut conv) = ctx.conv {
         if !conv.is_passthrough() {
-            conv.process_variable(
-                &buf_out_l[..drain],
-                &mut buf_model_l[..drain],
-            );
+            conv.process_variable(&buf_out_l[..drain], &mut buf_model_l[..drain]);
             unsafe {
-                core::ptr::copy_nonoverlapping(
-                    buf_model_l.as_ptr(),
-                    buf_out_l.as_mut_ptr(),
-                    drain,
-                );
-                core::ptr::copy_nonoverlapping(
-                    buf_out_l.as_ptr(),
-                    buf_out_r.as_mut_ptr(),
-                    drain,
-                );
+                core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), drain);
+                core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), drain);
             }
         }
     }
@@ -682,10 +660,7 @@ fn process_crossfade_sub_block(
             if let Some(ref mut conv) = ctx.conv {
                 if !conv.is_passthrough() {
                     buf_out_l[..drain].fill(0.0);
-                    conv.process_variable(
-                        &buf_out_l[..drain],
-                        &mut buf_model_l[..drain],
-                    );
+                    conv.process_variable(&buf_out_l[..drain], &mut buf_model_l[..drain]);
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             buf_model_l.as_ptr(),
@@ -747,10 +722,7 @@ fn process_crossfade_sub_block(
 
         if let Some(ref mut conv) = ctx.conv {
             if !conv.is_passthrough() {
-                conv.process_variable(
-                    &buf_out_l[..n_o],
-                    &mut buf_model_l[..n_o],
-                );
+                conv.process_variable(&buf_out_l[..n_o], &mut buf_model_l[..n_o]);
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         buf_model_l.as_ptr(),
@@ -759,11 +731,7 @@ fn process_crossfade_sub_block(
                     );
                 }
                 unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        buf_out_l.as_ptr(),
-                        buf_out_r.as_mut_ptr(),
-                        n_o,
-                    );
+                    core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), n_o);
                 }
             }
         }
@@ -915,6 +883,8 @@ fn apply_iir_gain_ramp_sub_block(
         for i in 0..n {
             let gain = target + bp * diff;
             unsafe {
+                let s = slice_l.get_unchecked(i).to_f32() * gain;
+                *slice_l.get_unchecked_mut(i) = AlignedF32(s);
                 *slice_l.get_unchecked_mut(i) *= gain;
                 *slice_r.get_unchecked_mut(i) *= gain;
             }
@@ -926,6 +896,7 @@ fn apply_iir_gain_ramp_sub_block(
     }
     #[cfg(not(feature = "stereo"))]
     {
+        let _ = &slice_r;
         let _ = buf_r;
         for i in 0..n {
             let gain = target + bp * diff;

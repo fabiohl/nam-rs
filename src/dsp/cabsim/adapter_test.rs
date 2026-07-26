@@ -44,7 +44,8 @@ fn synth_ir(len: usize, freq: f32, decay: f32, sample_rate: u32) -> Vec<f32> {
 }
 
 fn adapter_from_ir(ir: &[f32], partition_size: usize) -> CabSimAdapter {
-    let engine = Box::new(ConvEngine::new(ir, partition_size).expect("construction should succeed"));
+    let engine =
+        Box::new(ConvEngine::new(ir, partition_size).expect("construction should succeed"));
     CabSimAdapter::new(engine).expect("adapter construction should succeed")
 }
 
@@ -120,8 +121,7 @@ fn process_full_with_prefix(
         output.extend_from_slice(&buf_out);
     }
 
-    let expected_output =
-        (signal.len().div_ceil(p) + adapter.num_partitions()) * p;
+    let expected_output = (signal.len().div_ceil(p) + adapter.num_partitions()) * p;
     if output.len() > expected_output {
         output.truncate(expected_output);
     }
@@ -145,7 +145,9 @@ fn passthrough_on_empty_ir() {
         let mut out = Vec::new();
         let mut pos = 0;
         while pos < signal.len() {
-            let n = sub_size.min(adapter2.partition_size()).min(signal.len() - pos);
+            let n = sub_size
+                .min(adapter2.partition_size())
+                .min(signal.len() - pos);
             let mut buf = vec![0.0f32; n];
             adapter2.process_variable(&signal[pos..pos + n], &mut buf);
             for (i, &s) in buf.iter().enumerate() {
@@ -184,7 +186,11 @@ fn regular_blocks_parity() {
 
     let min_len = fixed_out.len().min(var_out.len());
     let esr = compute_esr(&fixed_out[..min_len], &var_out[..min_len]);
-    assert!(esr < 1e-5, "ESR = {:.2e} for regular P-sized sub-blocks", esr);
+    assert!(
+        esr < 1e-5,
+        "ESR = {:.2e} for regular P-sized sub-blocks",
+        esr
+    );
 }
 
 #[test]
@@ -213,13 +219,18 @@ fn variable_sub_blocks_parity() {
             let take = s.min(partition);
             sub_list.push(take);
             covered += take;
-            if covered >= signal.len() { break; }
+            if covered >= signal.len() {
+                break;
+            }
         }
     }
 
     let (var_out, prefix) = process_full_with_prefix(&mut adapter, &signal, &sub_list);
 
-    assert!(prefix > 0, "variable sub-blocks should have zero prefix before first partition");
+    assert!(
+        prefix > 0,
+        "variable sub-blocks should have zero prefix before first partition"
+    );
 
     let fixed_slice = &fixed_out[0..fixed_out.len().min(var_out.len() - prefix)];
     let var_slice = &var_out[prefix..prefix + fixed_slice.len()];
@@ -255,7 +266,9 @@ fn parity_with_direct_convolution() {
             let take = s.min(partition);
             sub_list.push(take);
             covered += take;
-            if covered >= signal.len() { break; }
+            if covered >= signal.len() {
+                break;
+            }
         }
     }
 
@@ -331,7 +344,10 @@ fn single_sample_sub_blocks() {
     let sub_sizes: Vec<usize> = (0..signal.len()).map(|_| 1).collect();
     let (var_out, prefix) = process_full_with_prefix(&mut adapter, &signal, &sub_sizes);
 
-    assert!(prefix > 0, "single-sample sub-blocks should have zero prefix");
+    assert!(
+        prefix > 0,
+        "single-sample sub-blocks should have zero prefix"
+    );
 
     let fixed_slice = &fixed_out[0..fixed_out.len().min(var_out.len() - prefix)];
     let var_slice = &var_out[prefix..prefix + fixed_slice.len()];
@@ -359,7 +375,9 @@ fn non_power_of_two_partition_size() {
             let take = s.min(partition);
             sub_list.push(take);
             covered += take;
-            if covered >= signal.len() { break; }
+            if covered >= signal.len() {
+                break;
+            }
         }
     }
 
@@ -403,7 +421,9 @@ fn single_sample_ir() {
             let take = s.min(partition);
             sub_list.push(take);
             covered += take;
-            if covered >= signal.len() { break; }
+            if covered >= signal.len() {
+                break;
+            }
         }
     }
 

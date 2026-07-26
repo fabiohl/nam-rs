@@ -341,3 +341,102 @@ fn deterministic_output() {
         assert!((a - b).abs() < 1e-10, "Non-deterministic output");
     }
 }
+
+// ── f64 Oracle Validation (S3-E3-T05) ──
+
+/// Direct convolution in f64 precision — ground-truth oracle.
+fn direct_convolve_f64(ir: &[f32], input: &[f32]) -> Vec<f64> {
+    let out_len = input.len() + ir.len() - 1;
+    let mut output = vec![0.0f64; out_len];
+    let ir_f64: Vec<f64> = ir.iter().map(|&v| v as f64).collect();
+    let input_f64: Vec<f64> = input.iter().map(|&v| v as f64).collect();
+    for (n, out) in output.iter_mut().enumerate() {
+        let mut acc = 0.0f64;
+        for (m, &ir_val) in ir_f64.iter().enumerate() {
+            let x_idx = n as isize - m as isize;
+            if x_idx >= 0 && x_idx < input_f64.len() as isize {
+                acc += ir_val * input_f64[x_idx as usize];
+            }
+        }
+        *out = acc;
+    }
+    output
+}
+
+/// ESR: f32 UPOLS output vs f64 oracle reference.
+fn compute_esr_f64_oracle(reference_f64: &[f64], computed_f32: &[f32]) -> f64 {
+    assert_eq!(reference_f64.len(), computed_f32.len());
+    let mut ref_energy = 0.0f64;
+    let mut err_energy = 0.0f64;
+    for (r, c) in reference_f64.iter().zip(computed_f32.iter()) {
+        let c_f64 = *c as f64;
+        let diff = *r - c_f64;
+        ref_energy += *r * *r;
+        err_energy += diff * diff;
+    }
+    if ref_energy < 1e-60 {
+        return 0.0;
+    }
+    err_energy / ref_energy
+}
+
+fn run_f64_oracle_test(ir_len: usize, partition_size: usize, signal_len: usize) {
+    let ir = synth_ir(ir_len, 500.0, 8.0, 48000);
+    let signal: Vec<f32> = (0..signal_len)
+        .map(|i| {
+            let t = i as f32 / 48000.0;
+            (std::f32::consts::TAU * 220.0 * t).sin()
+                + 0.5 * (std::f32::consts::TAU * 660.0 * t).sin()
+                + 0.3 * (std::f32::consts::TAU * 110.0 * t).sin()
+        })
+        .collect();
+
+    let ref_f64 = direct_convolve_f64(&ir, &signal);
+
+    let mut engine = ConvEngine::new(&ir, partition_size)
+        .expect("construction should succeed for test-sized buffers");
+    let upols_out = process_full_signal(&mut engine, &signal);
+
+    let min_len = ref_f64.len().min(upols_out.len());
+    let esr = compute_esr_f64_oracle(&ref_f64[..min_len], &upols_out[..min_len]);
+    assert!(
+        esr < 1e-10,
+        "ESR = {:.2e} exceeds 1e-10 — IR={ir_len} taps, P={partition_size}, signal={signal_len}",
+        esr
+    );
+}
+
+#[test]
+fn f64_oracle_ir_64() {
+    run_f64_oracle_test(64, 32, 256);
+}
+
+#[test]
+fn f64_oracle_ir_128() {
+    run_f64_oracle_test(128, 64, 256);
+}
+
+#[test]
+fn f64_oracle_ir_256() {
+    run_f64_oracle_test(256, 128, 512);
+}
+
+#[test]
+fn f64_oracle_ir_512() {
+    run_f64_oracle_test(512, 128, 1024);
+}
+
+#[test]
+fn f64_oracle_ir_1024() {
+    run_f64_oracle_test(1024, 128, 2048);
+}
+
+#[test]
+fn f64_oracle_ir_2048() {
+    run_f64_oracle_test(2048, 256, 4096);
+}
+
+#[test]
+fn f64_oracle_ir_4096() {
+    run_f64_oracle_test(4096, 256, 8192);
+}

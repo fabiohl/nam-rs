@@ -268,9 +268,7 @@ impl<'a> NamClapMainThread<'a> {
         })?);
 
         self.param_tx
-            .push(ClapParamPayload::LoadCabIr {
-                adapter,
-            })
+            .push(ClapParamPayload::LoadCabIr { adapter })
             .map_err(|_| {
                 Box::new(
                     NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)

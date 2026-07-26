@@ -218,24 +218,23 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
             // CabSimAdapter: rebuild if buffer size OR sample rate changed.
             // Rate changes require resampling ir_raw_samples to the new host rate.
-            let cabsim_adapter = if deact.cabsim_adapter.is_some()
-                && (!buf_matches || !rate_matches)
-            {
-                #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-                {
-                    build_cab_sim_from_raw_samples(
-                        shared,
-                        audio_config.max_frames_count as usize,
-                        host_rate,
-                    )?
-                }
-                #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
-                {
-                    None
-                }
-            } else {
-                deact.cabsim_adapter
-            };
+            let cabsim_adapter =
+                if deact.cabsim_adapter.is_some() && (!buf_matches || !rate_matches) {
+                    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+                    {
+                        build_cab_sim_from_raw_samples(
+                            shared,
+                            audio_config.max_frames_count as usize,
+                            host_rate,
+                        )?
+                    }
+                    #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
+                    {
+                        None
+                    }
+                } else {
+                    deact.cabsim_adapter
+                };
 
             // Oversample engines: always reusable (constructed at Off factor).
             // Model weights: always reusable (independent of rates/buffers).
@@ -244,7 +243,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 resampler,
                 deact.os_l,
                 deact.os_r,
-            cabsim_adapter,
+                cabsim_adapter,
                 deact.model_input_mult_adj,
                 deact.model_output_mult_adj,
             )
@@ -365,9 +364,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // ownership back for processor construction. Guard Drop is now a no-op.
         let channels = rollback.defuse();
 
-        let cabsim_tail_initial = cabsim_adapter
-            .as_ref()
-            .map_or(0, |a| a.tail_samples());
+        let cabsim_tail_initial = cabsim_adapter.as_ref().map_or(0, |a| a.tail_samples());
 
         Ok(Self {
             model_l,
@@ -584,13 +581,12 @@ fn build_cab_sim_from_raw_samples(
         return Ok(None);
     }
 
-    let engine =
-        crate::dsp::cabsim::conv::ConvEngine::new(&resolved_samples, partition_size)
-            .map_err(|e| {
-                PluginError::Message(Box::leak(
-                    format!("ConvEngine allocation failed: {e:?}").into_boxed_str(),
-                ))
-            })?;
+    let engine = crate::dsp::cabsim::conv::ConvEngine::new(&resolved_samples, partition_size)
+        .map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("ConvEngine allocation failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
 
     Ok(Some(
         crate::dsp::cabsim::adapter::CabSimAdapter::new(Box::new(engine)).map_err(|e| {

@@ -183,10 +183,11 @@ graph TD
   - **Critério de Aceite:** IR carregado em 44.1 kHz resambla perfeitamente ao operar em sessão de 96 kHz sem alteração de tom ou espectro.
   - **Conclusão:** `ir_raw_sample_rate: AtomicU32` adicionado a `ColdShared` — armazena taxa dos samples brutos. `load_cabsim()` persiste a taxa via `ColdShared`. Função `build_cab_sim_from_raw_samples()` (free function em `mod.rs`) resampla IR de `stored_rate → host_rate` via `CabSimIr::resample()` quando as taxas divergem, e reconstrói `ConvEngine` com `partition_size` correto. Ambas as rotas de `activate()` (deactivated e fresh build) usam esta função. Buffer size change rebuild já existia, agora unificado com rate change rebuild. 93/96 testes CLAP passam.
 
-- [ ] **S3-E3-T05 [Média] — Validação contra Oráculo C++ e Direct Convolution**
+- [x] **S3-E3-T05 [Média] — Validação contra Oráculo C++ e Direct Convolution**
   - **Origem:** E3-T05, CLAP-F001 | **Perfis:** DSP QA Scientist
   - **Escopo:** Criar teste de paridade comparando a saída do `ConvEngine` CLAP contra convolução direta em `f64` e oráculo NAMcore para todos os tamanhos de IR suportados (até 4.096 taps).
   - **Critério de Aceite:** ESR < 1e-10 em relação ao oráculo de convolução direta.
+  - **Conclusão:** Funções `direct_convolve_f64` (oráculo f64) e `compute_esr_f64_oracle` adicionadas a `conv_test.rs`. 7 testes paramétricos cobrindo IR de 64 a 4096 taps com partições proporcionais e sinal multissenoide. Todos passam com ESR < 1e-10.
 
 ---
 
