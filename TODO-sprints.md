@@ -36,7 +36,7 @@ graph TD
 
 ### Tarefas Técnicas S0
 
-- [ ] **S0-E0-T01 [Crítico / TDD] — Suite TDD Vermelha de Contenção e Regressão de Estado**
+- [x] **S0-E0-T01 [Crítico / TDD] — Suite TDD Vermelha de Contenção e Regressão de Estado**
   - **Origem:** E0-T01, CLAP-F001, CLAP-F004, CLAP-F009, CLAP-F014 | **Perfis:** Engenheiro de Testes CLAP & QA RT
   - **Escopo:** Criar `tests/clap_e0_containment_test.rs` com testes que falhem com a base atual: PDC vs CabSim inativo, falha transacional em restore de asset corrompido/ausente, preservação de state na transição offline->realtime e sanidade de blocos atípicos (8.193 amostras) com bypass.
   - **Critério de Aceite:** Testes falham deterministicamente reproduzindo a regressão; zero alocação no hot-path.
