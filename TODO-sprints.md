@@ -41,7 +41,7 @@ graph TD
   - **Escopo:** Criar `tests/clap_e0_containment_test.rs` com testes que falhem com a base atual: PDC vs CabSim inativo, falha transacional em restore de asset corrompido/ausente, preservação de state na transição offline->realtime e sanidade de blocos atípicos (8.193 amostras) com bypass.
   - **Critério de Aceite:** Testes falham deterministicamente reproduzindo a regressão; zero alocação no hot-path.
 
-- [ ] **S0-E0-T02 [Crítico] — Contenção de PDC Enganoso e Status de Ativação do CabSim**
+- [x] **S0-E0-T02 [Crítico] — Contenção de PDC Enganoso e Status de Ativação do CabSim**
   - **Origem:** E0-T04, CLAP-F001 | **Perfis:** Engenheiro DSP Real-Time & Arquiteto CLAP
   - **Escopo:** Em `orchestrator.rs` e `events.rs`, impedir que a latência do IR seja somada a `current_latency` via `HostLatency` enquanto a convolução de bloco flexível não estiver aplicando o IR no áudio CLAP.
   - **Critério de Aceite:** Latência informada à DAW coincide exatamente com o atraso de fase medido no áudio de saída.

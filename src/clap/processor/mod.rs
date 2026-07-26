@@ -226,14 +226,18 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         );
 
         // 5. Report initial latency to shared state
+        // CabSim latency excluded from current_latency in the CLAP path:
+        // the convolution engine is NOT wired into run_inference() yet
+        // (see CLAP-F001, S0-E0-T02). Re-enable when CabSim is integrated
+        // into the CLAP audio pipeline (Sprint S3).
         let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);
         initial_latency += os_l.latency_samples() as u32;
-        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-        {
-            if let Some(ref conv) = conv_engine {
-                initial_latency += conv.latency_samples() as u32;
-            }
-        }
+        // #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        // {
+        //     if let Some(ref conv) = conv_engine {
+        //         initial_latency += conv.latency_samples() as u32;
+        //     }
+        // }
         shared
             .rt_to_ui
             .current_latency

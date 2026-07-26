@@ -161,11 +161,17 @@ fn test_f001_cabsim_loaded_but_not_applied_to_audio() {
     }
 
     // ── Assertions ──
-    assert!(
-        ir_latency > baseline_latency,
-        "CLAP-F001: current_latency ({ir_latency}) must exceed baseline ({baseline_latency}) when IR is loaded — PDC must account for CabSim delay"
+
+    // CLAP-F001 containment (S0-E0-T02): latency must NOT include CabSim
+    // delay while the convolution is not wired into run_inference().
+    // The standalone path tracks its own latency via DspBridge.
+    assert_eq!(
+        ir_latency, baseline_latency,
+        "CLAP-F001: S0-E0-T02 containment — current_latency must be identical with/without IR ({ir_latency} vs {baseline_latency}) while CabSim is not applied in the CLAP audio path."
     );
 
+    // CLAP-F001 red (audio): IR is loaded but run_inference() never calls
+    // conv.process(). Output with IR equals output without IR.
     let diff = max_abs_diff(&ir_out_l, &baseline_l);
     assert!(
         diff > 1e-4,

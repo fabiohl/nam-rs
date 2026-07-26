@@ -81,12 +81,17 @@ impl<'a> NamClapProcessor<'a> {
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let mut effective_latency = self.resampler.latency_samples(host_rate);
         effective_latency += self.os_l.latency_samples() as u32;
-        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-        {
-            if let Some(ref conv) = self.conv_engine {
-                effective_latency += conv.latency_samples() as u32;
-            }
-        }
+        // CabSim latency excluded from current_latency in the CLAP path:
+        // the convolution engine is NOT wired into run_inference() yet
+        // (see CLAP-F001, S0-E0-T02). The standalone path tracks its own
+        // latency separately via DspBridge. When CabSim is integrated into
+        // the CLAP audio pipeline (Sprint S3), re-enable this contribution.
+        // #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        // {
+        //     if let Some(ref conv) = self.conv_engine {
+        //         effective_latency += conv.latency_samples() as u32;
+        //     }
+        // }
         if effective_latency != self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed) {
             self.shared
                 .rt_to_ui
