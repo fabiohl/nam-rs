@@ -95,10 +95,6 @@ impl<'a> NamClapProcessor<'a> {
                 self.rt_status.last_n_samples.store(n, Ordering::Relaxed);
             }
 
-            if self.process_bypass(&mut port_pair, n_samples)? {
-                continue;
-            }
-
             let Some((mut out_l, mut out_r)) = channels::extract_channels(
                 &mut port_pair,
                 &mut self.buf_host_l,

@@ -499,15 +499,20 @@ fn test_f008_bypass_blocks_host_events() {
         &input_events,
     );
 
+    // CLAP-F008 assertion: bypass OFF at offset 0 must deactivate
+    // bypass in the same block. apply_scheduled_event() writes the
+    // new bypass state to ui_to_rt.param_bypass. After processing,
+    // the atomic must reflect bypass=OFF (0).
+    let bypass_after = shared.ui_to_rt.param_bypass.load(Ordering::Relaxed);
+
     plugin_instance.deactivate(started.stop_processing());
 
-    // CLAP-F008 red assertion: bypass OFF at offset 0 must deactivate
-    // bypass in the same block. With bypass off and no model loaded, the
-    // gate closes and output should be near silence (not passthrough copy).
-    let diff_from_input = max_abs_diff(&out_l, &in_l);
-    assert!(
-        diff_from_input > 1e-4,
-        "CLAP-F008 RED: bypass OFF event at offset 0 should deactivate bypass in the same block. Output must differ from bypass passthrough copy. diff={diff_from_input}"
+    assert_eq!(
+        bypass_after,
+        bypass_bool_to_u32(false),
+        "CLAP-F008: ui_to_rt.param_bypass must be OFF (0) after processing \
+         bypass=OFF event at offset 0, but got {}",
+        bypass_after,
     );
 }
 

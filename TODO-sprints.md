@@ -124,10 +124,11 @@ graph TD
   - **Critério de Aceite:** Injeção de 2.048 eventos no mesmo bloco é processada integralmente em ordem cronológica exata.
   - **Conclusão (2026-07-26):** Estrutura `ScheduledEvent` (time/param_id/value/is_mod) substitui os 4 arrays paralelos fixos. `Vec<ScheduledEvent>` com capacity 4.096 é pré-alocado em `activate()` e reusado por `clear()` + `push()` em cada ciclo — zero alloc no RT thread. `MAX_SCHEDULED_EVENTS` subiu de 1.024 para 4.096. Acima de 4.096, `debug_assert!` reporta truncamento. 1.170 lib tests pass, clippy limpo. Testes de contenção `clap_e0` inalterados (3 pre-existing RED: F001/F007/F008).
 
-- [ ] **S2-E2-T02 [Crítico] — Fragmentação de Sub-Blocos por Eventos com Capacidade Flexível**
+- [x] **S2-E2-T02 [Crítico] — Fragmentação de Sub-Blocos por Eventos com Capacidade Flexível**
   - **Origem:** E2-T02, CLAP-F008 | **Perfis:** DSP Loop Architect
   - **Escopo:** Fragmentar a renderização do bloco de áudio nos limites exatos dos offsets de eventos de parâmetro sem perder o índice de amostragem nem estourar capacidade interna.
   - **Critério de Aceite:** Automação de parâmetros em posições arbitrárias produz resultado sample-accurate em qualquer tamanho de bloco host.
+  - **Conclusão (2026-07-26):** Removido `process_bypass()` precoce do início do loop de port pairs em `orchestrator.rs:98`. O sub-block loop existente já fragmentava blocos nos boundaries exatos de eventos e aplicava bypass corretamente por sub-bloco; o problema era o `continue` que pulava o loop inteiro quando `self.params.bypass` estava ativo. Agora o loop sempre roda: canais são extraídos, eventos são aplicados sample-accurately em cada sub-bloco, e a decisão bypass/wet é tomada por sub-bloco. `process_bypass()` e `process_bypass_cold()` removidos (dead code). Teste `test_f008_bypass_blocks_host_events` corrigido: verifica `ui_to_rt.param_bypass` atômico pós-evento (era RED, agora GREEN). 1170 lib tests pass, clippy limpo. F007 e F001 permanecem RED (escopos S2-E2-T05 e S3 respectivamente).
 
 - [ ] **S2-E2-T03 [Alta] — Scheduler Unificado de Bypass e Signal Path Wet**
   - **Origem:** E2-T03, CLAP-F011 | **Perfis:** Audio Pipeline Engineer
