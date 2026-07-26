@@ -690,6 +690,8 @@ vida própria e impedir qualquer caminho de thread detached com acesso ao plugin
 floating/set_transient/close-WM/reopen repetidas, com thread-check e contagem de
 threads/FD/RSS. Testar também host que chama destroy sem hide.
 
+> Nota do PO: Tenho observado que o tamanho fixo da janela gera situações em que elementos ficam fora da tela. Corrigir isto, mesmo que seja usando barras de scroll.
+
 ---
 
 ## CLAP-F020 — File picker pode travar loading e teardown
@@ -912,7 +914,7 @@ activate permite retry bem-sucedido.
 Os epics abaixo ordenam a correção para minimizar retrabalho. Não constituem
 `TODO-sprints.md`; são agrupamentos de findings para planejamento posterior.
 
-### Épico E0 — Contenção imediata de comportamento enganoso
+### Épico E0 — Contenção imediata de comportamento enganoso [DOING]
 
 **Findings:** CLAP-F001, CLAP-F004, CLAP-F009, CLAP-F014 e CLAP-F021.
 

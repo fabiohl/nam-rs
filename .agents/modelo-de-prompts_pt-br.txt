@@ -1,8 +1,8 @@
 Procedimentos a cada release: cargo login <CRATES_IO_TOKEN> ; cargo publish --dry-run ; cargo publish ;; git tag -a v3.0.0 -m "v3.0.0 Arquitetura A2" ; git push origin v3.0.0 ; utils/mod-update.sh
 
 /revisor-auditor Caça bugs focado no NeuralAmpModeler-rs enquanto crate pública disponível aos desenvolvedores ( https://crates.io/crates/NeuralAmpModeler-rs e https://docs.rs/NeuralAmpModeler-rs/latest/nam_rs/ ).
-Analise criticamente o código, como um especialista em esperiência do desenvolvedor Rust.
-Assegure que ele está simples e pronto para que o desenvolvedor possa embuti-lo em seus projetos.
+Acesse estes sites, analise-os como um desenvolvedor interessado o usaria na prática e identifique melhorias na sua jornada.
+Analise criticamente o código-fonte do nam-rs tornando-o correto para ser consumido por terceiros. Assegure que ele está simples e pronto para que o desenvolvedor possa embuti-lo em seus projetos.
 Ativar a skill "pesquisador-inovador" para ir além. Mas tenha muito cuidado para não fugir do escopo do projeto e trazer complexidade. Tire proveito do que já temos.
 Não é necessário aprofundamentos no código de inferência em si - a menos que seja algo óbvio e grave, ou diretamente relacionado às suas interfaces com o pacote público no crates.io ou sua documentação em si.
 
