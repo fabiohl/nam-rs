@@ -16,6 +16,7 @@ mod gc;
 #[cfg(feature = "heap-audit")]
 mod heap_audit;
 mod params;
+mod rollback;
 mod state;
 
 pub(crate) use deactivated::DeactivatedDspState;
@@ -54,6 +55,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             }
         }
         // 1. SPSC channel extraction from Shared (ownership transfer)
+        // S1-E1-T04: extracted resources are held in a rollback guard.
+        // If any later allocation fails, Drop restores everything into ColdShared.
         let param_rx = shared
             .cold
             .param_rx
@@ -62,6 +65,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .take()
             .ok_or_else(|| PluginError::Message("param_rx consumer has already been extracted"))?;
 
+        let mut rollback = rollback::ActivateRollbackGuard::new(shared);
+        rollback.param_rx = Some(param_rx);
+
         let gc_tx = shared
             .cold
             .gc_tx
@@ -69,6 +75,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .unwrap_or_else(|e| e.into_inner())
             .take()
             .ok_or_else(|| PluginError::Message("gc_tx producer has already been extracted"))?;
+        rollback.gc_tx = Some(gc_tx);
 
         let slimmable_rx = shared
             .cold
@@ -79,6 +86,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .ok_or_else(|| {
                 PluginError::Message("slimmable_rx consumer has already been extracted")
             })?;
+        rollback.slimmable_rx = Some(slimmable_rx);
 
         // 2. Intermediate buffer pre-allocation (Disjoint Stages)
         let buf_capacity = (audio_config.max_frames_count as usize)
@@ -159,12 +167,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // available, validating sample rate and buffer size invariants. Model
         // weights are always reusable; resampler and conv-engine require
         // matching audio configuration.
-        let deactivated = shared
+        //
+        // S1-E1-T04: DeactivatedDspState is extracted into the rollback guard
+        // immediately after `.take()`. If any later allocation fails, the
+        // guard restores it — avoiding loss of expensive model/engine state.
+        rollback.deactivated = shared
             .cold
             .deactivated_dsp
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
+        let deactivated = rollback.deactivated.take();
         let (
             model_l,
             resampler,
@@ -373,6 +386,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // This calls set_max_buffer_size on the main thread before process() starts.
         main_thread.flush_pending_model()?;
 
+        // S1-E1-T04: defuse the rollback guard — transfers SPSC channel
+        // ownership back for processor construction. Guard Drop is now a no-op.
+        let channels = rollback.defuse();
+
         Ok(Self {
             model_l,
             conv_engine,
@@ -404,9 +421,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             smoother_out,
             model_input_mult_adj,
             model_output_mult_adj,
-            param_rx,
-            gc_tx,
-            slimmable_rx,
+            param_rx: channels.param_rx,
+            gc_tx: channels.gc_tx,
+            slimmable_rx: channels.slimmable_rx,
             gc_overflow: Arc::clone(&shared.cold.gc_overflow),
             parking_lot: Default::default(),
             mod_input_gain: 0.0,

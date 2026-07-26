@@ -89,10 +89,11 @@ graph TD
   - **Critério de Aceite:** Ativação inicial garante sincronia instantânea entre atômicos e estado interno dos smoothers.
   - **Conclusão (2026-07-26):** `params.input_gain_db` e `params.output_gain_db` agora são inicializados diretamente dos atômicos `UiToRt.param_input_gain/param_output_gain` em `activate()`, substituindo `RtPluginParams::default()` via struct update syntax. Dois `debug_assert!` validam o invariante: `smoother_in.current_value()` e `smoother_out.current_value()` coincidem com os valores lineares correspondentes (tolerância EPSILON×10). Parâmetros de controle (bypass, gate, adaptive_compute, etc.) mantêm defaults — serão sincronizados no primeiro `process_events()` via SPSC drain ou host events. O snapshot completo de todos os parâmetros foi evitado porque dispararia `AdaptiveCompute::set_mode` no audio thread com `log::info!()` — violação RT pré-existente rastreada como S5-E5-T02. Tests: 1257 pass (0 fail), tests-quick.sh 18/18, stress tests com heap-audit zeram alocações.
 
-- [ ] **S1-E1-T04 [Alta] — Rollback de Recurso em Erro de Activate**
+- [x] **S1-E1-T04 [Alta] — Rollback de Recurso em Erro de Activate**
   - **Origem:** E1-T04, CLAP-F026 | **Perfis:** Rust Safety Engineer
   - **Escopo:** Adicionar RAII rollback guards em `activate()`. Se a alocação de qualquer estágio (CabSim, resampler, oversampling) falhar, desfazer pontes e restaurar o estado desativado seguro.
   - **Critério de Aceite:** Falha de memória/alocação em `activate()` deixa o plugin em estado limpo desativado com retorno de erro `false`.
+  - **Conclusão (2026-07-26):** `ActivateRollbackGuard` implementado em `src/clap/processor/rollback.rs`. Guard captura SPSC channels (`param_rx`, `gc_tx`, `slimmable_rx`) e `DeactivatedDspState` à medida que são extraídos de `ColdShared`. Em qualquer `?` de erro nos 22 pontos de falha de `activate()` (alocação de buffers, construção de resampler/ConvEngine/OversampleEngine, flush de modelo deferido), o Drop restaura todos os recursos nos mutexes de `ColdShared`. No sucesso, `defuse()` transfere ownership dos SPSC channels para `NamClapProcessor`. Design segue padrões RAII existentes (`ActivationPrecisionGuard`, `TrackingGuard`) sem dependências externas. 1257 lib tests pass, stress tests com heap-audit zeram alocações. Impacto: resolve CLAP-F026 — falha em `activate()` nunca corrompe o estado compartilhado.
 
 - [ ] **S1-E1-T05 [Média] — Matriz de Testes Deactivate/Reactivate**
   - **Origem:** E1-T05, CLAP-F002, CLAP-F003 | **Perfis:** Integration Test Specialist
