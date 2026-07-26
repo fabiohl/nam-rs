@@ -1,0 +1,31 @@
+Procedimentos a cada release: cargo login <CRATES_IO_TOKEN> ; cargo publish --dry-run ; cargo publish ;; git tag -a v3.0.0 -m "v3.0.0 Arquitetura A2" ; git push origin v3.0.0 ; utils/mod-update.sh
+
+/revisor-auditor Caça bugs focado no NeuralAmpModeler-rs enquanto crate pública disponível aos desenvolvedores ( https://crates.io/crates/NeuralAmpModeler-rs e https://docs.rs/NeuralAmpModeler-rs/latest/nam_rs/ ).
+Analise criticamente o código, como um especialista em esperiência do desenvolvedor Rust.
+Assegure que ele está simples e pronto para que o desenvolvedor possa embuti-lo em seus projetos.
+Ativar a skill "pesquisador-inovador" para ir além. Mas tenha muito cuidado para não fugir do escopo do projeto e trazer complexidade. Tire proveito do que já temos.
+Não é necessário aprofundamentos no código de inferência em si - a menos que seja algo óbvio e grave, ou diretamente relacionado às suas interfaces com o pacote público no crates.io ou sua documentação em si.
+
+/revisor-auditor Caça bugs focado no modo [[[ Plugin CLAP ( @docs/clap_integration.md e @docs/functional-tests.md) ]]] [[[ Standalone Pipewire ]]]
+Analise criticamente o código, como um especialista em UX. Imagine como este código vai funcionar na prática, na [[[ DAW  ]]] [[[ Linha de comando ]]] do usuário final.
+Assegure um funcionamento intuitivo, simples e livre de bugs para o usuário final. Muito como prevê a role "Resilience and Robustness Specialist".
+Ativar a skill "pesquisador-inovador" para ir além. Mas tenha muito cuidado para não fugir do escopo do projeto e trazer complexidade. Tire proveito do que já temos.
+Não é necessário aprofundamentos no código de inferência em si - a menos que seja algo óbvio e grave, ou diretamente relacionado às suas integrações e interfaces com os modos [[[ CLAP / Standalone ]]].
+
+/revisor-auditor Skill "revisor-auditor" totalmente focada na role "Resilience and Robustness Specialist". Além disto também siga estas diretrizes:
+Analise meticulosamente os logs dos testes registrados em `testes.log` atrás de insights ocultos nas entrelinhas. Não precisa rodar novamente estes testes. Tire proveito das informações aqui registradas.
+Ainda não lide com as questões documentadas em "TODO-*.md" (exceto se forem instruções do "revisor-auditor"!). Elas são muito complexas e serão lidadas à parte. Se você descobrir algo que ajude a aprofundar o conhecimento sobre ele, ótimo documente-o. Mas ainda não adentre neste "pântano" perigoso neste momento!
+Ativar a skill "pesquisador-inovador" para ir além. Mas tenha muito cuidado para não fugir do escopo do projeto e trazer complexidade. Tire proveito do que já temos.
+Por política de compliance, no momento não estamos trabalhando com ferramentas que não sejam "stable". Então abstenha-se de indicar atividades que façam uso delas.
+Ao final acione a skill "planejador-arquiteto" para gerar um "/TODO-findings.md" ricamente detalhado com os achados. Eles devem estar bem explicados e claros para facilitar a implementação correta e segura pela equipe.
+
+/revisor-auditor Skill "revisor-auditor" totalmente focada na role "Performance and Low-Latency Master". Além disto também siga estas diretrizes:
+Analise meticulosamente os logs dos testes registrados em `testes.log` atrás de insights ocultos nas entrelinhas. Não precisa rodar novamente estes testes. Tire proveito das informações aqui registradas.
+Analise o "target/dsp_hotpath.asm" gerado pelo "utils/build-release.sh" atrás de insights de performance!
+É terminantemente PROIBIDO qualquer regressão de paridade com o NAMcore ou qualquer penalização da fidelidade e correção sonora (ferramentas de defesa: `utils/quality-dashboard.sh` e `utils/tests-performance-regression.sh`).
+Focar exclusivamente no baseline x86-64-v3. Explore-o ao máximo, mega otimizado e universal em TODO o código (não apenas no áudio). Outros ISA's multiversioning serão trabalhados oportunamente, não são foco aqui.
+Analise também se o NAM-rs está tirando extremo proveito das funcionalidades disponibilizada pela stack moderna do Kernel Linux (7.0), CLAP (1.2.x) e Pipewire (1.6.x). Naturalmente, aplique um filtro crítico para identificar apenas o que realmente pode trazer benefícios palpáveis ao caso de uso realista NAM-rs.
+Ainda não lide com as questões documentadas em "TODO-*.md" (exceto se forem instruções do "revisor-auditor"!). Elas são muito complexas e serão lidadas à parte. Se você descobrir algo que ajude a aprofundar o conhecimento sobre ele, ótimo documente-o. Mas ainda não adentre neste "pântano" perigoso neste momento!
+Ativar a skill "pesquisador-inovador" para ir além. Mas tenha muito cuidado para não fugir do escopo do projeto e trazer complexidade. Tire proveito do que já temos.
+Por política de compliance, no momento não estamos trabalhando com ferramentas que não sejam "stable". Então abstenha-se de indicar atividades que façam uso delas.
+Ao final acione a skill "planejador-arquiteto" para gerar um "/TODO-findings.md" ricamente detalhado com os achados. Eles devem estar bem explicados e claros para facilitar a implementação correta e segura pela equipe.
