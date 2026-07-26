@@ -242,6 +242,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                 if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
                     *raw_guard = None;
                 }
+                self.shared.cold.ir_raw_sample_rate.store(0, Ordering::Relaxed);
                 self.params.ir_path = None;
             } else if loaded_params.ir_path.is_none() {
                 let _ = self

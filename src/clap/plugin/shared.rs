@@ -243,6 +243,10 @@ pub struct ColdShared {
     pub ui_clear_ir: AtomicBool,
     /// Raw IR samples stored for adaptive partition rebuild without WAV reload.
     pub ir_raw_samples: Mutex<Option<Vec<f32>>>,
+    /// Sample rate of the stored `ir_raw_samples` — tracks the host rate
+    /// at which the IR was last loaded. When the host rate changes during
+    /// re-activation, the samples are resampled to the new rate.
+    pub ir_raw_sample_rate: AtomicU32,
     /// SPSC channel: Main Thread -> Audio Thread (Slimmable model producer).
     pub slimmable_tx: Mutex<Option<Producer<Option<Box<StaticModel>>>>>,
     /// SPSC channel: Main Thread -> Audio Thread (Slimmable model consumer).

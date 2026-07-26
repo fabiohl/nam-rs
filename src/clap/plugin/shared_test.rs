@@ -88,6 +88,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             ui_ir_load_error_msg: Mutex::new(String::new()),
             ui_clear_ir: AtomicBool::new(false),
             ir_raw_samples: Mutex::new(None),
+            ir_raw_sample_rate: AtomicU32::new(0),
             slimmable_tx: Mutex::new(Some(slimmable_tx)),
             slimmable_rx: Mutex::new(Some(slimmable_rx)),
             full_wavenet_model: Mutex::new(None),

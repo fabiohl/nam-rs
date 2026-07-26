@@ -216,43 +216,18 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 )
             };
 
-            // CabSimAdapter: reuse if buffer size matches, else rebuild from raw IR.
-            let cabsim_adapter = if deact.cabsim_adapter.is_some() && !buf_matches {
+            // CabSimAdapter: rebuild if buffer size OR sample rate changed.
+            // Rate changes require resampling ir_raw_samples to the new host rate.
+            let cabsim_adapter = if deact.cabsim_adapter.is_some()
+                && (!buf_matches || !rate_matches)
+            {
                 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
                 {
-                    if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
-                        if let Some(ref samples) = *raw_guard {
-                            let partition_size = audio_config.max_frames_count as usize;
-                            if partition_size > 0 {
-                                Some(
-                                    crate::dsp::cabsim::adapter::CabSimAdapter::new(Box::new(
-                                        crate::dsp::cabsim::conv::ConvEngine::new(
-                                            samples,
-                                            partition_size,
-                                        )
-                                        .map_err(|e| {
-                                            PluginError::Message(Box::leak(
-                                                format!("ConvEngine allocation failed: {e:?}")
-                                                    .into_boxed_str(),
-                                            ))
-                                        })?,
-                                    ))
-                                    .map_err(|e| {
-                                        PluginError::Message(Box::leak(
-                                            format!("CabSimAdapter allocation failed: {e:?}")
-                                                .into_boxed_str(),
-                                        ))
-                                    })?,
-                                )
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
+                    build_cab_sim_from_raw_samples(
+                        shared,
+                        audio_config.max_frames_count as usize,
+                        host_rate,
+                    )?
                 }
                 #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
                 {
@@ -285,39 +260,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             let cabsim_adapter = {
-                if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
-                    if let Some(ref samples) = *raw_guard {
-                        let partition_size = audio_config.max_frames_count as usize;
-                        if partition_size > 0 {
-                            Some(
-                                crate::dsp::cabsim::adapter::CabSimAdapter::new(Box::new(
-                                    crate::dsp::cabsim::conv::ConvEngine::new(
-                                        samples,
-                                        partition_size,
-                                    )
-                                    .map_err(|e| {
-                                        PluginError::Message(Box::leak(
-                                            format!("ConvEngine allocation failed: {e:?}")
-                                                .into_boxed_str(),
-                                        ))
-                                    })?,
-                                ))
-                                .map_err(|e| {
-                                    PluginError::Message(Box::leak(
-                                        format!("CabSimAdapter allocation failed: {e:?}")
-                                            .into_boxed_str(),
-                                    ))
-                                })?,
-                            )
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+                build_cab_sim_from_raw_samples(
+                    shared,
+                    audio_config.max_frames_count as usize,
+                    host_rate,
+                )?
             };
             #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
             let cabsim_adapter = None;
@@ -595,6 +542,63 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // Host parameter events are handled sample-accurately via block-splitting.
         self.process_dsp_audio(&mut audio, events.input, start_nanos)
     }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+fn build_cab_sim_from_raw_samples(
+    shared: &NamClapShared,
+    partition_size: usize,
+    host_rate: u32,
+) -> Result<Option<crate::dsp::cabsim::adapter::CabSimAdapter>, PluginError> {
+    use crate::dsp::cabsim::loader::CabSimIr;
+    use std::sync::atomic::Ordering;
+
+    let raw_guard = shared.cold.ir_raw_samples.lock().map_err(|e| {
+        PluginError::Message(Box::leak(
+            format!("ir_raw_samples lock poisoned: {e}").into_boxed_str(),
+        ))
+    })?;
+    let Some(ref samples) = *raw_guard else {
+        return Ok(None);
+    };
+
+    let stored_rate = shared.cold.ir_raw_sample_rate.load(Ordering::Relaxed);
+
+    let resolved_samples: std::borrow::Cow<'_, Vec<f32>> =
+        if stored_rate > 0 && stored_rate != host_rate {
+            let resampled = CabSimIr::resample(samples, stored_rate, host_rate).map_err(|e| {
+                PluginError::Message(Box::leak(
+                    format!(
+                        "IR resample failed: {} Hz → {} Hz: {e}",
+                        stored_rate, host_rate
+                    )
+                    .into_boxed_str(),
+                ))
+            })?;
+            std::borrow::Cow::Owned(resampled)
+        } else {
+            std::borrow::Cow::Borrowed(samples)
+        };
+
+    if partition_size == 0 {
+        return Ok(None);
+    }
+
+    let engine =
+        crate::dsp::cabsim::conv::ConvEngine::new(&resolved_samples, partition_size)
+            .map_err(|e| {
+                PluginError::Message(Box::leak(
+                    format!("ConvEngine allocation failed: {e:?}").into_boxed_str(),
+                ))
+            })?;
+
+    Ok(Some(
+        crate::dsp::cabsim::adapter::CabSimAdapter::new(Box::new(engine)).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("CabSimAdapter allocation failed: {e:?}").into_boxed_str(),
+            ))
+        })?,
+    ))
 }
 
 #[cfg(test)]

@@ -177,10 +177,11 @@ graph TD
   - **Critério de Aceite:** A cauda da resposta ao impulso é renderizada até o fim em silêncio sem truncamento; `tail_get()` reporta extensão exata em frames.
   - **Conclusão:** Adicionados `needs_flush()`, `tail_samples()` e `engine_mut()` ao `CabSimAdapter`. Campo `cabsim_tail_remaining` em `NamClapProcessor`, inicializado em `activate()` e `cold_load_cabsim()`. Nova função `process_tail_drain` no orquestrador: quando `GateState::Closed` e `cabsim_tail_remaining > 0`, alimenta o adaptador com blocos de zeros, processa pelo `process_variable`, aplica output stage e smoother_out, decrementa contador. Cauda esgotada → silêncio verdadeiro. `tail_get()` já reportava `current_latency + cabsim_tail_samples` ao host. 93/96 testes CLAP passam.
 
-- [ ] **S3-E3-T04 [Alta] — Reconstrução de IR em Mudanças de Sample Rate e Buffer**
+- [x] **S3-E3-T04 [Alta] — Reconstrução de IR em Mudanças de Sample Rate e Buffer**
   - **Origem:** E3-T04, CLAP-F014 | **Perfis:** Audio Resampling & Asset Specialist
   - **Escopo:** Resamblar o arquivo de IR para a taxa nativa da sessão durante o carregamento/ativação e reajustar partições do engine quando `max_buffer_size` mudar.
   - **Critério de Aceite:** IR carregado em 44.1 kHz resambla perfeitamente ao operar em sessão de 96 kHz sem alteração de tom ou espectro.
+  - **Conclusão:** `ir_raw_sample_rate: AtomicU32` adicionado a `ColdShared` — armazena taxa dos samples brutos. `load_cabsim()` persiste a taxa via `ColdShared`. Função `build_cab_sim_from_raw_samples()` (free function em `mod.rs`) resampla IR de `stored_rate → host_rate` via `CabSimIr::resample()` quando as taxas divergem, e reconstrói `ConvEngine` com `partition_size` correto. Ambas as rotas de `activate()` (deactivated e fresh build) usam esta função. Buffer size change rebuild já existia, agora unificado com rate change rebuild. 93/96 testes CLAP passam.
 
 - [ ] **S3-E3-T05 [Média] — Validação contra Oráculo C++ e Direct Convolution**
   - **Origem:** E3-T05, CLAP-F001 | **Perfis:** DSP QA Scientist

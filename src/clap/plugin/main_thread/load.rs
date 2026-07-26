@@ -250,10 +250,14 @@ impl<'a> NamClapMainThread<'a> {
             *ir_guard = Some(path.to_string_lossy().to_string());
         }
 
-        // Store raw IR samples for adaptive partition rebuild without WAV reload
+        // Store raw IR samples and their sample rate for adaptive rebuild
         if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
             *raw_guard = Some(cabsim.samples.clone());
         }
+        self.shared
+            .cold
+            .ir_raw_sample_rate
+            .store(cabsim.sample_rate, Ordering::Relaxed);
 
         let adapter = Some(CabSimAdapter::new(Box::new(engine)).map_err(|e| {
             Box::new(

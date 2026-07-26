@@ -453,7 +453,7 @@ impl CabSimIr {
     ///
     /// This is a batch/offline operation: feeds the entire IR through `NamResampler`
     /// and pads with zeros to flush the filter’s delay line.
-    fn resample(input: &[f32], input_rate: u32, output_rate: u32) -> io::Result<Vec<f32>> {
+    pub(crate) fn resample(input: &[f32], input_rate: u32, output_rate: u32) -> io::Result<Vec<f32>> {
         let mut resampler =
             NamResampler::new(input_rate, output_rate, MAX_RESAMP_BUF).map_err(|e| {
                 io::Error::other(format!(
