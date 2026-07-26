@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 [package]
 name = "NeuralAmpModeler-rs"
-version = "3.0.1"
+version = "3.0.2"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/fabiohl/nam-rs"
@@ -197,5 +197,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 allow_attributes = "warn"
 
 [package.metadata.docs.rs]
-features = ["clap-plugin"]
+no-default-features = true
+features = ["clap-plugin", "stereo", "testing"]
 rustdoc-args = ["--cfg", "docsrs"]

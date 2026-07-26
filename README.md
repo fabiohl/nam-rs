@@ -148,7 +148,7 @@ Run diagnostic self-checks or output support telemetry:
 
 ```toml
 [dependencies]
-NeuralAmpModeler-rs = { version = "3.0.1", default-features = false }
+NeuralAmpModeler-rs = { version = "3.0.2", default-features = false }
 ```
 
 ---
