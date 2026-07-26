@@ -42,7 +42,7 @@
 #   golden_lstm_1x16.bin, golden_lstm_2x8.bin, golden_lstm_official.bin
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (A2 goldens are cross-reference Rust↔C++ v0.5.4 via ESR/SNR scale-invariant
-#    gate — self-goldens removed in T2.6. See TODO-sprints.md Épico 2.)
+#    gate — self-goldens removed in T2.6.)
 #   golden_convnet_test.bin, golden_wavenet_dyn_free.bin, golden_lstm_dyn_test.bin
 #   (ConvNet and dynamic model goldens from Sprint B.1.2 fixtures — sample_rate=48000)
 #   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,

@@ -147,7 +147,6 @@ fn test_wavenet_silence_soak() {
 /// //   Total residue:        3.58e-5  (−89 dBFS)
 /// //   Conv1D bias contrib:  3.58e-5  (−89 dBFS) ← 100% of total
 /// //   Quantization drift:   0.00     (zero — 0×weight = 0 regardless of F16 error)
-/// // Confirms TODO-sprints.md P4 diagnosis: tanh(bias) propagation, not bug.
 #[test]
 fn test_wavenet_silence_decomposition() {
     let input = vec![0.0f32; 64];

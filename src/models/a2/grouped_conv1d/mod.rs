@@ -196,8 +196,7 @@ impl A2GroupedConv1d {
         // drives an offset into `layer_buffer` computed via
         // signed-then-unsigned arithmetic that wraps to a huge value if
         // `frame_idx` is too small). Must be `assert!`, not `debug_assert!`
-        // — confirmed to cause a SIGSEGV in release when elided (see
-        // TODO-findings.md Achado A2).
+        // — confirmed to cause a SIGSEGV in release when elided.
         assert!(
             out_frame.len() >= self.out_ch,
             "out_frame len {} < out_ch {}",
@@ -259,7 +258,7 @@ impl A2GroupedConv1d {
         // SAFETY-CRITICAL: gates the per-frame slicing below, which feeds
         // directly into the unsafe SIMD kernel's raw pointer arithmetic.
         // Must be `assert!`, not `debug_assert!` — see note in
-        // `process_single_frame` above / TODO-findings.md Achado A2.
+        // `process_single_frame` above.
         assert!(
             block.len() >= num_frames * self.out_ch,
             "process_block: block len {} < num_frames {} * out_ch {}",

@@ -26,7 +26,7 @@ three test_oracle_vs_python_anchor_* tests un-ignored.
 ANCHOR REGENERATION POLICY (docs/cpp_parity_map.md §4.5.1):
 A f64 anchor may only be regenerated when (a) a C++ golden exists AND
 test_summary_table passes before regeneration; OR (b) no C++ golden exists
-and the regeneration is documented in the commit + TODO-sprints.md with
+and the regeneration is documented in the commit with
 before/after numbers. Regenerating from the oracle itself is circular.
 
 Usage:

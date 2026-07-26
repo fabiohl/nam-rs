@@ -64,11 +64,10 @@ operações do C++, mesmo sendo menos precisa.
   da zona vermelha; nenhum relato ou evidência perceptual.
 * ConvNet é raro no ecossistema NAM real (WaveNet domina os captures publicados).
 * O esforço de bissecção C++↔Rust por camada é desproporcional ao ganho enquanto existirem
-  itens de correção de áudio em zona audível (ver `TODO-findings.md` F1).
+  itens de correção de áudio em zona audível.
 
 ## Gatilhos para repriorizar
 
 * Surgimento de modelos ConvNet reais relevantes na comunidade.
-* Fechamento do EP-A do `TODO-findings.md` (libera a metodologia de triangulação e o oráculo
-  plenamente confiável para servir de instrumento na bissecção).
+* Fechamento do EP-A (libera a metodologia de triangulação e o oráculo plenamente confiável para servir de instrumento na bissecção).
 * Qualquer medição futura do ConvNet pior que SNR 40 dB (hoje o gate é 35 dB — margem 10.9 dB).

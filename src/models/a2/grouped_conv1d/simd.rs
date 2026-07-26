@@ -24,9 +24,7 @@ pub(crate) unsafe fn load_mixin_4(
     // SAFETY-CRITICAL: this precondition gates unchecked slice access
     // (`get_unchecked`) below. Must be `assert!`, not `debug_assert!` — the
     // latter is elided in release builds, turning an out-of-bounds `mixin`
-    // into silent UB (out-of-bounds read) instead of a clean panic. See
-    // TODO-findings.md Achado A2 for the release-mode SIGSEGV this exact
-    // class of bug caused in the sibling `grouped_conv1d_single_frame_simd`.
+    // into silent UB (out-of-bounds read) instead of a clean panic.
     assert!(
         mixin.is_none_or(|m| m.len() >= out_ch),
         "load_mixin_4: mixin len {:?} < out_ch {}",
@@ -79,8 +77,7 @@ pub(crate) unsafe fn process_single_frame_depthwise_avx2(
     // huge offset if `frame_idx` is too small). Must be `assert!`, not
     // `debug_assert!` — eliding this check in release does not fail cleanly,
     // it produces an out-of-bounds pointer dereference (confirmed SIGSEGV in
-    // the sibling `grouped_conv1d_single_frame_simd`, same pattern; see
-    // TODO-findings.md Achado A2).
+    // the sibling `grouped_conv1d_single_frame_simd`, same pattern.
     assert!(
         out_frame.len() >= conv.out_ch,
         "depthwise: out_frame len {} < out_ch {}",
@@ -218,8 +215,7 @@ pub unsafe fn grouped_conv1d_single_frame_simd(
     // from `frame_idx` via signed-then-unsigned arithmetic that wraps to a
     // huge offset if `frame_idx` is too small). Must be `assert!`, not
     // `debug_assert!` — confirmed to cause a SIGSEGV in release when this
-    // check was elided (see TODO-findings.md Achado A2,
-    // `should_panic_simd_kernel_frame_idx_too_low`).
+    // check was elided.
     assert!(
         out_frame.len() >= conv.out_ch,
         "simd: out_frame len {} < out_ch {}",

@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# TODO-findings.md — Achado Focado: `wavenet_a2_max.nam` Ativamente Quebrado
+# Achado Focado: `wavenet_a2_max.nam` Ativamente Quebrado
 
 Agente de IA: Ainda não tente resolve-lo. É lícito tomar conhecimento dele e contribuir com novos aprendizados.
 Mas ele só será atacado em momento oportuno por decisão do Product Owner do NAM-rs.

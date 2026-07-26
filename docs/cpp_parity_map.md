@@ -999,8 +999,7 @@ show up as nonzero numbers in the tables throughout this document, but they are 
 
 ### 7.3 🟠 Test-infrastructure caveats — parity coverage that can silently vanish
 
-These do not produce wrong audio, but they can make the *evidence* for parity evaporate
-without failing CI (audited 2026-07-11; remediation tracked in `TODO-findings.md`):
+These do not produce wrong audio, but they can make the *evidence* for parity evaporate without failing CI:
 
 - **Silent SKIP in v1 live cross-validation.** `tests/parity/cpp_parity.rs::run_v1`
   now delegates to `run_v1_hf` (Standard/exact activation is the universal default),
@@ -1023,6 +1022,6 @@ without failing CI (audited 2026-07-11; remediation tracked in `TODO-findings.md
 
 - [audio_fidelity_map.md](docs/audio_fidelity_map.md) — off-spec DSP factors; §3 (LSTM recurrent drift) pairs with §2.5/§2.7 here
 - [perceptual_validation.md](docs/perceptual_validation.md) — metrics and gate-calibration policy
-- [TODO-wavenet_a2_max.md](../TODO-wavenet_a2_max.md) — live status and fix plan for the open A2 flagship investigation (§4.4); [TODO-findings.md](../TODO-findings.md) — current audit findings
+- [TODO-wavenet_a2_max.md](../TODO-wavenet_a2_max.md) — live status and fix plan for the open A2 flagship investigation (§4.4).
 - [tests/cpp_parity.rs](tests/cpp_parity.rs) — live cross-validation against the C++ `render` tool
 - [tests/reference_oracle_f64.rs](tests/reference_oracle_f64.rs) + [validate_oracle_f64.py](tests/fixtures/scripts/validate_oracle_f64.py) — f64 oracle and independent NumPy anchor (decomposition tools, §1.2)
