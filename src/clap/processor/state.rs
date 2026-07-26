@@ -4,13 +4,13 @@
 //! Processor state (struct definition).
 
 use crate::clap::plugin::{ClapParamPayload, NamClapShared};
+use crate::clap::processor::dsp::orchestrator::ScheduledEvent;
 use crate::common::params::{ActivationPrecision, RtPluginParams};
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::cabsim::conv::ConvEngine;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::oversample::OversampleEngine;
-use crate::clap::processor::dsp::orchestrator::ScheduledEvent;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;

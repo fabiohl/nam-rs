@@ -154,7 +154,9 @@ impl<'a> NamClapProcessor<'a> {
             self.bypass_xfade.trigger(self.params.bypass);
 
             while block_offset < n_samples {
-                while event_idx < event_count && self.scheduled_events[event_idx].time < block_offset {
+                while event_idx < event_count
+                    && self.scheduled_events[event_idx].time < block_offset
+                {
                     event_idx += 1;
                 }
 
@@ -693,10 +695,7 @@ fn apply_iir_gain_ramp_sub_block(
                     *input_clipped = true;
                 }
             } else {
-                crate::math::dsp::gain::apply_gain_simd(
-                    &mut buf_l[offset..offset + n],
-                    start,
-                );
+                crate::math::dsp::gain::apply_gain_simd(&mut buf_l[offset..offset + n], start);
             }
         }
         return;
@@ -723,9 +722,7 @@ fn apply_iir_gain_ramp_sub_block(
                 *slice_r.get_unchecked_mut(i) *= gain;
             }
             bp *= beta;
-            if detect_clip
-                && (slice_l[i].abs() > 1.0 || slice_r[i].abs() > 1.0)
-            {
+            if detect_clip && (slice_l[i].abs() > 1.0 || slice_r[i].abs() > 1.0) {
                 *input_clipped = true;
             }
         }
@@ -735,7 +732,9 @@ fn apply_iir_gain_ramp_sub_block(
         let _ = buf_r;
         for i in 0..n {
             let gain = target + bp * diff;
-            unsafe { *slice_l.get_unchecked_mut(i) *= gain; }
+            unsafe {
+                *slice_l.get_unchecked_mut(i) *= gain;
+            }
             bp *= beta;
             if detect_clip && slice_l[i].abs() > 1.0 {
                 *input_clipped = true;

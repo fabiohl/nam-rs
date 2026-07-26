@@ -159,10 +159,11 @@ graph TD
 
 ### Tarefas Técnicas S3
 
-- [ ] **S3-E3-T01 [Crítico] — Adaptador RT de Blocos Variáveis para ConvEngine**
+- [x] **S3-E3-T01 [Crítico] — Adaptador RT de Blocos Variáveis para ConvEngine**
   - **Origem:** E3-T01, CLAP-F001 | **Perfis:** Convolution & DSP Scientist
   - **Escopo:** Implementar o adaptador RT-safe com FIFO/Accumulator pré-alocado que ajusta partições fixas de convolução para sub-blocos variáveis gerados por eventos CLAP, preservando saída causal.
   - **Critério de Aceite:** Convolução funciona perfeitamente com sub-blocos arbitrários (e.g. 17, 63, 128 amostras); latência fixa mensurável.
+  - **Conclusão:** `CabSimAdapter` implementado em `src/dsp/cabsim/adapter.rs`. Acumula sub-blocos via FIFO de entrada de 2×P, processa partições completas pelo `ConvEngine`, e serve saída via FIFO de saída de 2×P com compactação. 11 testes unitários cobrindo passthrough, blocos regulares, sub-blocos variáveis (17/63/48, single-sample, non-power-of-2), latência de acumulação, IR de amostra única e determinismo. Integração no pipeline CLAP segue em S3-E3-T02.
 
 - [ ] **S3-E3-T02 [Crítico] — Integração Monofônica Estrita do CabSim no Pipeline CLAP**
   - **Origem:** E3-T02, CLAP-F001 | **Perfis:** Audio Engine Specialist
