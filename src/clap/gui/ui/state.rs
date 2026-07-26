@@ -106,8 +106,14 @@ pub struct UiState {
     pub telem_budget_ns: u64,
     /// Expiration of the visual error loading banner (None if not active).
     pub error_expiration: Option<Instant>,
-    /// Short/summary error message.
+    /// Short/summary model error message.
     pub error_msg: String,
+    /// Expiration of the visual IR error loading banner (None if not active).
+    /// Separated from `error_expiration` so model and IR errors don't
+    /// overwrite each other (CLAP-F021, S0-E0-T05).
+    pub ir_error_expiration: Option<Instant>,
+    /// Short/summary IR error message.
+    pub ir_error_msg: String,
     /// Expiration of the visual toast notification banner (None if not active).
     pub toast_expiration: Option<Instant>,
     /// Cached status bar strings (SR, Lat, DSP%, Cycles, Last N, RT Prio, Overloads, Flags).
@@ -170,6 +176,7 @@ impl std::fmt::Debug for UiState {
             .field("telem_cycle_ns", &self.telem_cycle_ns)
             .field("telem_budget_ns", &self.telem_budget_ns)
             .field("error_expiration", &self.error_expiration)
+            .field("ir_error_expiration", &self.ir_error_expiration)
             .field("cached_metadata", &self.cached_metadata)
             .field("model_display_name", &self.model_display_name)
             .field("ir_display_name", &self.ir_display_name)
@@ -206,6 +213,8 @@ impl Default for UiState {
             telem_budget_ns: 0,
             error_expiration: None,
             error_msg: String::new(),
+            ir_error_expiration: None,
+            ir_error_msg: String::new(),
             toast_expiration: None,
             status_strings: Default::default(),
             status_tooltips: [

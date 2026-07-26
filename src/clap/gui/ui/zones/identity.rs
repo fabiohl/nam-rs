@@ -25,7 +25,7 @@ pub(crate) fn draw_zone1_identity(
 ) -> (Option<egui::Id>, Option<egui::Id>) {
     let mut load_btn_id = None;
     let mut load_ir_btn_id = None;
-    ui.allocate_ui(egui::vec2(135.0, 280.0), |ui| {
+    ui.allocate_ui(egui::vec2(135.0, 230.0), |ui| {
         ui.vertical(|ui| {
             ui.add_space(8.0);
 
@@ -67,7 +67,7 @@ pub(crate) fn draw_zone1_identity(
                 ));
             });
 
-            ui.add_space(14.0);
+            ui.add_space(8.0);
 
             ui.label(
                 egui::RichText::new("MODEL")
@@ -210,7 +210,7 @@ pub(crate) fn draw_zone1_identity(
                 frame_res.response.on_hover_text(model_name);
             }
 
-            ui.add_space(12.0);
+            ui.add_space(6.0);
 
             ui.label(
                 egui::RichText::new("CAB SIM IR")
@@ -321,11 +321,12 @@ pub(crate) fn draw_zone1_identity(
             ui.add_space(4.0);
 
             // IR file name display
-            let ir_is_error = if let Some(expiration) = state.error_expiration {
+            let ir_is_error = if let Some(expiration) = state.ir_error_expiration {
                 if Instant::now() < expiration {
                     ui.ctx().request_repaint();
                     state.ir_display_name == "⚠ IR load failed"
                 } else {
+                    state.ir_error_expiration = None;
                     false
                 }
             } else {
@@ -397,7 +398,7 @@ pub(crate) fn draw_zone1_identity(
                 });
 
             if ir_is_error {
-                ir_frame_res.response.on_hover_text(&state.error_msg);
+                ir_frame_res.response.on_hover_text(&state.ir_error_msg);
             } else {
                 ir_frame_res.response.on_hover_text(ir_name);
             }

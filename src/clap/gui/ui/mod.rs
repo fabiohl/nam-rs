@@ -75,11 +75,11 @@ pub fn draw_ui(
     }
 
     if shared.cold.ui_ir_load_error.swap(false, Ordering::Relaxed) {
-        state.error_expiration = Some(Instant::now() + Duration::from_secs(3));
+        state.ir_error_expiration = Some(Instant::now() + Duration::from_secs(3));
         if let Ok(msg_guard) = shared.cold.ui_ir_load_error_msg.lock() {
-            state.error_msg = msg_guard.clone();
+            state.ir_error_msg = msg_guard.clone();
         } else {
-            state.error_msg = "IR load failed".to_string();
+            state.ir_error_msg = "IR load failed".to_string();
         }
     }
 

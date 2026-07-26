@@ -17,7 +17,7 @@ pub(crate) fn draw_zone3_meters(
     state: &mut UiState,
     current_bypass: bool,
 ) {
-    ui.allocate_ui(egui::vec2(80.0, 210.0), |ui| {
+    ui.allocate_ui(egui::vec2(80.0, 205.0), |ui| {
         if current_bypass {
             ui.disable();
         }

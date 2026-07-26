@@ -19,7 +19,7 @@ pub(crate) fn draw_zone2_controls(
     current_bypass: bool,
     accent_color: egui::Color32,
 ) {
-    ui.allocate_ui(egui::vec2(240.0, 250.0), |ui| {
+    ui.allocate_ui(egui::vec2(240.0, 230.0), |ui| {
         if current_bypass {
             ui.disable();
         }

@@ -56,7 +56,7 @@ graph TD
   - **Escopo:** Salvar snapshot imutável `RtActivationSnapshot` ao entrar em `RenderMode::Offline` e restaurá-lo ao voltar a `Realtime`. Remover logs de áudio que afirmam `oversample=max quality` sem engine 4x ativo.
   - **Critério de Aceite:** Parâmetros de tempo real preservados 100% após bounce offline; logs condizentes com a realidade.
 
-- [ ] **S0-E0-T05 [Média / UX] — Layout egui 275px, Clipboard X11 e Separação de Erros de Assets**
+- [x] **S0-E0-T05 [Média / UX] — Layout egui 275px, Clipboard X11 e Separação de Erros de Assets**
   - **Origem:** E0-T03, CLAP-F021 | **Perfis:** Especialista GUI egui / UX & Rust Developer
   - **Escopo:** Ajustar altura de zonas em `identity.rs` e `mod.rs` para caber em 275px. Tratar `OutputCommand::CopyText` no handler do window. Separar flags de erro entre modelo (`model_error`) e IR (`ir_error`).
   - **Critério de Aceite:** Footer visível em 600x275px; clique em "Copy" copia diagnóstico para X11; erros de IR e Modelo isolados.

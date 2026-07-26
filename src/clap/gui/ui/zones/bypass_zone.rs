@@ -14,7 +14,7 @@ pub(crate) fn draw_zone4_bypass(
     host: &HostSharedHandle,
     accent_color: egui::Color32,
 ) {
-    ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
+    ui.allocate_ui(egui::vec2(60.0, 205.0), |ui| {
         ui.vertical(|ui| {
             ui.add_space(18.0);
             let ind_bypass = shared.cold.param_indication

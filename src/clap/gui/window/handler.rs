@@ -66,6 +66,28 @@ impl WindowHandler for NamPluginWindow {
                 });
             });
 
+            // Handle CopyText platform command (egui's "Copy" button output).
+            // Writes the copied text to the system clipboard via arboard.
+            for cmd in &full_output.platform_output.commands {
+                if let egui::OutputCommand::CopyText(text) = cmd {
+                    use arboard::Clipboard;
+                    match Clipboard::new() {
+                        Ok(mut clipboard) => {
+                            if let Err(e) = clipboard.set_text(text.clone()) {
+                                log::warn!("NAM-rs: Clipboard set_text failed: {e}");
+                            } else {
+                                self.state.toast_expiration = Some(
+                                    std::time::Instant::now() + std::time::Duration::from_secs(5),
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("NAM-rs: Failed to open clipboard: {e}");
+                        }
+                    }
+                }
+            }
+
             // Determine whether a full paint cycle is needed. Skip when all of:
             // (a) egui requested a long (or no) repaint delay — no pending animations,
             // (b) no input events arrived since last paint (`dirty` is false),

@@ -67,6 +67,8 @@ rfd       = { version = "0.17.2",  optional = true }
 keyboard-types = { version = "0.6", default-features = false, optional = true }
 # clack-host is only needed here to satisfy state (de)serialization round-trip types shared with the plugin.
 clack-host = { version = "0.1", features = ["clack-plugin"], optional = true }
+# System clipboard integration for CopyText commands (X11/Wayland).
+arboard = { version = "3", optional = true }
 
 [dev-dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
@@ -138,7 +140,7 @@ harness = false
 [features]
 default = ["standalone"]
 standalone = ["dep:pipewire", "stereo"]
-clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types", "dep:clack-host"]
+clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:clack-common", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types", "dep:clack-host", "dep:arboard"]
 stereo = []
 testing = []
 heap-audit = []
