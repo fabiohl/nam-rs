@@ -71,10 +71,11 @@ graph TD
 
 ### Tarefas Técnicas S1
 
-- [ ] **S1-E1-T01 [Crítico] — Design do DeactivatedDspState e Ownership de Recursos Off-RT**
+- [x] **S1-E1-T01 [Crítico] — Design do DeactivatedDspState e Ownership de Recursos Off-RT**
   - **Origem:** E1-T01, CLAP-F002 | **Perfis:** Arquiteto de Sistemas Rust & DSP Engineer
   - **Escopo:** Projetar struct `DeactivatedDspState` na main thread para manter ownership do modelo ativo, resampler, engines de oversampling, calibração e CabSim durante o estado desativado (`deactivate`).
   - **Critério de Aceite:** `deactivate` move recursos para `DeactivatedDspState` sem destruí-los; `activate` os reinstala deterministicamente sem recarregar do disco.
+  - **Conclusão (2026-07-26):** `DeactivatedDspState` implementado em `src/clap/processor/deactivated.rs`, armazenado em `ColdShared::deactivated_dsp`. `deactivate()` move model_l, conv_engine, resampler, os_l, os_r e calibração para o struct. `activate()` restaura com validação de invariantes: resampler reutilizado se `sample_rate` coincide, ConvEngine reconstruído apenas se `buffer_size` mudou. Lints (clippy/core/standalone/CLAP) e `tests-quick.sh` passam limpos. Impacto em T02: modelo agora sobrevive a ciclos deactivate/activate, reduzindo necessidade de recarga do disco no restore pré-ativação.
 
 - [ ] **S1-E1-T02 [Crítico] — Restore Pré-Ativação Declarativo e Alocação Exclusiva em Activate**
   - **Origem:** E1-T02, CLAP-F003 | **Perfis:** Engenheiro de Plugin CLAP & State Specialist

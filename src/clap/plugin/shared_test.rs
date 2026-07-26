@@ -92,6 +92,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             slimmable_rx: Mutex::new(Some(slimmable_rx)),
             full_wavenet_model: Mutex::new(None),
             pending_model: Mutex::new(None),
+            deactivated_dsp: Mutex::new(None),
             dialog_state: None,
             ir_dialog_state: None,
             dialog_handle_sink: Mutex::new(None),

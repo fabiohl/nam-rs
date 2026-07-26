@@ -9,6 +9,7 @@
 //! - `state`: Processor struct definition.
 //! - `gc`: Garbage collection (safe disposal from audio thread).
 
+mod deactivated;
 mod dsp;
 mod events;
 mod gc;
@@ -17,6 +18,7 @@ mod heap_audit;
 mod params;
 mod state;
 
+pub(crate) use deactivated::DeactivatedDspState;
 pub(crate) use state::NamClapProcessor;
 
 use crate::clap::plugin::{NamClapMainThread, NamClapShared};
@@ -150,15 +152,148 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // 3. DSP component initialization
         let model_rate = shared.cold.model_sample_rate.load(Ordering::Relaxed);
         let model_rate = if model_rate == 0 { 48000 } else { model_rate };
-        let resampler = Box::new(
-            NamResampler::new(audio_config.sample_rate as u32, model_rate, buf_capacity).map_err(
-                |e| {
+        let host_rate = audio_config.sample_rate as u32;
+        let host_buffer = audio_config.max_frames_count;
+
+        // S1-E1-T01: Restore heavy DSP resources from DeactivatedDspState if
+        // available, validating sample rate and buffer size invariants. Model
+        // weights are always reusable; resampler and conv-engine require
+        // matching audio configuration.
+        let deactivated = shared
+            .cold
+            .deactivated_dsp
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let (
+            model_l,
+            resampler,
+            os_l,
+            os_r,
+            conv_engine,
+            model_input_mult_adj,
+            model_output_mult_adj,
+        ) = if let Some(deact) = deactivated {
+            let rate_matches = deact.sample_rate == host_rate;
+            let buf_matches = deact.buffer_size == host_buffer;
+
+            // Resampler: reuse only if host sample rate matches the preserved rate.
+            let resampler = if rate_matches {
+                deact.resampler
+            } else {
+                Box::new(
+                    NamResampler::new(host_rate, model_rate, buf_capacity).map_err(|e| {
+                        PluginError::Message(Box::leak(
+                            format!("Failed to create NamResampler: {:?}", e).into_boxed_str(),
+                        ))
+                    })?,
+                )
+            };
+
+            // ConvEngine: reuse if buffer size matches, else rebuild from raw IR.
+            let conv_engine = if deact.conv_engine.is_some() && !buf_matches {
+                #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+                {
+                    if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
+                        if let Some(ref samples) = *raw_guard {
+                            let partition_size = audio_config.max_frames_count as usize;
+                            if partition_size > 0 {
+                                Some(Box::new(
+                                    crate::dsp::cabsim::conv::ConvEngine::new(
+                                        samples,
+                                        partition_size,
+                                    )
+                                    .map_err(|e| {
+                                        PluginError::Message(Box::leak(
+                                            format!("ConvEngine allocation failed: {e:?}")
+                                                .into_boxed_str(),
+                                        ))
+                                    })?,
+                                ))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
+                {
+                    None
+                }
+            } else {
+                deact.conv_engine
+            };
+
+            // Oversample engines: always reusable (constructed at Off factor).
+            // Model weights: always reusable (independent of rates/buffers).
+            (
+                deact.model_l,
+                resampler,
+                deact.os_l,
+                deact.os_r,
+                conv_engine,
+                deact.model_input_mult_adj,
+                deact.model_output_mult_adj,
+            )
+        } else {
+            // Fresh build: construct all DSP resources from scratch.
+            let resampler = Box::new(
+                NamResampler::new(host_rate, model_rate, buf_capacity).map_err(|e| {
                     PluginError::Message(Box::leak(
                         format!("Failed to create NamResampler: {:?}", e).into_boxed_str(),
                     ))
-                },
-            )?,
-        );
+                })?,
+            );
+
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            let conv_engine = {
+                if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
+                    if let Some(ref samples) = *raw_guard {
+                        let partition_size = audio_config.max_frames_count as usize;
+                        if partition_size > 0 {
+                            Some(Box::new(
+                                crate::dsp::cabsim::conv::ConvEngine::new(samples, partition_size)
+                                    .map_err(|e| {
+                                        PluginError::Message(Box::leak(
+                                            format!("ConvEngine allocation failed: {e:?}")
+                                                .into_boxed_str(),
+                                        ))
+                                    })?,
+                            ))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
+            let conv_engine = None;
+
+            let os_l = Box::new(
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
+                    PluginError::Message(Box::leak(
+                        format!("Failed to create oversample engine (L): {:?}", e).into_boxed_str(),
+                    ))
+                })?,
+            );
+            let os_r = Box::new(
+                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
+                    PluginError::Message(Box::leak(
+                        format!("Failed to create oversample engine (R): {:?}", e).into_boxed_str(),
+                    ))
+                })?,
+            );
+
+            (None, resampler, os_l, os_r, conv_engine, 1.0, 1.0)
+        };
 
         let silence_hyst = DynamicHysteresis::new();
         let mono_hyst = DynamicHysteresis::new();
@@ -178,51 +313,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             gain_lut.db_to_linear(output_db),
             audio_config.sample_rate as f32,
             20.0,
-        );
-
-        // Rebuild ConvEngine from stored raw IR samples with the new partition size
-        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-        let conv_engine = {
-            if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
-                if let Some(ref samples) = *raw_guard {
-                    let partition_size = audio_config.max_frames_count as usize;
-                    if partition_size > 0 {
-                        Some(Box::new(
-                            crate::dsp::cabsim::conv::ConvEngine::new(samples, partition_size)
-                                .map_err(|e| {
-                                    PluginError::Message(Box::leak(
-                                        format!("ConvEngine allocation failed: {e:?}")
-                                            .into_boxed_str(),
-                                    ))
-                                })?,
-                        ))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-        #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
-        let conv_engine = None;
-
-        // 4b. Oversample engines (Off by default, swapped on factor change).
-        let os_l = Box::new(
-            OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
-                PluginError::Message(Box::leak(
-                    format!("Failed to create oversample engine (L): {:?}", e).into_boxed_str(),
-                ))
-            })?,
-        );
-        let os_r = Box::new(
-            OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
-                PluginError::Message(Box::leak(
-                    format!("Failed to create oversample engine (R): {:?}", e).into_boxed_str(),
-                ))
-            })?,
         );
 
         // 5. Report initial latency to shared state
@@ -256,7 +346,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         main_thread.flush_pending_model()?;
 
         Ok(Self {
-            model_l: None,
+            model_l,
             conv_engine,
             resampler,
             os_l,
@@ -284,8 +374,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             shared,
             smoother_in,
             smoother_out,
-            model_input_mult_adj: 1.0,
-            model_output_mult_adj: 1.0,
+            model_input_mult_adj,
+            model_output_mult_adj,
             param_rx,
             gc_tx,
             slimmable_rx,
@@ -333,6 +423,28 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         *slimmable_rx_guard = Some(self.slimmable_rx);
+
+        // S1-E1-T01: Preserve heavy DSP resources across deactivate/activate
+        // cycles to avoid I/O, filter-bank recompute, and FFT setup on the
+        // next activate(). Resources are validated on restore against the
+        // current audio configuration.
+        let deactivated = DeactivatedDspState {
+            model_l: self.model_l,
+            conv_engine: self.conv_engine,
+            resampler: self.resampler,
+            os_l: self.os_l,
+            os_r: self.os_r,
+            sample_rate: self.shared.cold.sample_rate.load(Ordering::Relaxed),
+            buffer_size: self.shared.cold.buffer_size.load(Ordering::Relaxed),
+            model_input_mult_adj: self.model_input_mult_adj,
+            model_output_mult_adj: self.model_output_mult_adj,
+        };
+        *self
+            .shared
+            .cold
+            .deactivated_dsp
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(deactivated);
 
         _main_thread.drain_gc_final();
     }

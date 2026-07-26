@@ -3,6 +3,7 @@
 
 //! Lock-free shared state between the audio thread and the main thread.
 
+use crate::clap::processor::DeactivatedDspState;
 use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::resampler::NamResampler;
@@ -254,6 +255,12 @@ pub struct ColdShared {
     /// deferred to avoid heap allocation on the audio thread (F3 fix).
     /// See `flush_pending_model()` in load.rs and housekeeping.rs.
     pub pending_model: Mutex<Option<PendingModel>>,
+    /// Heavy DSP resources preserved across deactivate/activate cycles.
+    /// When the host deactivates a plugin instance, model weights, resampler,
+    /// oversampling engines, and convolution partitions are moved here instead
+    /// of being dropped. On the next `activate()`, they are reinstalled
+    /// deterministically — avoiding I/O and recompute. See [`DeactivatedDspState`].
+    pub(crate) deactivated_dsp: Mutex<Option<DeactivatedDspState>>,
     /// Dialog state for model file-dialog (Arc-backed, UAF-safe). Initialized on main thread.
     pub(crate) dialog_state:
         Option<Arc<crate::clap::gui::ui::zones::dialog_state::DialogSharedState>>,
