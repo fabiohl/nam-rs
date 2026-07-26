@@ -8,7 +8,7 @@ use crate::clap::processor::dsp::orchestrator::ScheduledEvent;
 use crate::common::params::{ActivationPrecision, RtPluginParams};
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
-use crate::dsp::cabsim::conv::ConvEngine;
+use crate::dsp::cabsim::adapter::CabSimAdapter;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::oversample::OversampleEngine;
 use crate::dsp::resampler::NamResampler;
@@ -84,8 +84,8 @@ impl BypassCrossfader {
 pub struct NamClapProcessor<'a> {
     /// Active model for the left channel (None = bypass).
     pub(crate) model_l: Option<Box<StaticModel>>,
-    /// Active cab-sim convolution engine (None = bypass, zero cost).
-    pub(crate) conv_engine: Option<Box<ConvEngine>>,
+    /// Active cab-sim convolution adapter (None = bypass, zero cost).
+    pub(crate) cabsim_adapter: Option<CabSimAdapter>,
     /// Polyphase sinc resampler (bypass when sample_rate == 48000).
     /// Held in Box for RT-safe disposal without allocation.
     pub(crate) resampler: Box<NamResampler>,

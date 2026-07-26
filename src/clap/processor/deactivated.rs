@@ -13,7 +13,7 @@
 //! audio configuration. If the host changed either, the affected resources are
 //! discarded and rebuilt from scratch. Model weights are always reusable.
 
-use crate::dsp::cabsim::conv::ConvEngine;
+use crate::dsp::cabsim::adapter::CabSimAdapter;
 use crate::dsp::oversample::OversampleEngine;
 use crate::dsp::resampler::NamResampler;
 use crate::models::StaticModel;
@@ -23,10 +23,10 @@ pub(crate) struct DeactivatedDspState {
     /// Active neural model (L channel). Always reusable — model weights
     /// are independent of host sample rate and buffer size.
     pub(crate) model_l: Option<Box<StaticModel>>,
-    /// Cab-sim convolution engine. Reusable only if `partition_size` matches
+    /// Cab-sim convolution adapter. Reusable only if `partition_size` matches
     /// the current `max_frames_count` (all FFT plans and FDL are sized by
     /// partition size at construction time).
-    pub(crate) conv_engine: Option<Box<ConvEngine>>,
+    pub(crate) cabsim_adapter: Option<CabSimAdapter>,
     /// Polyphase sinc resampler. Reusable only if `pw_rate` matches the
     /// current host sample rate (phase interpolation banks are rate-dependent).
     pub(crate) resampler: Box<NamResampler>,

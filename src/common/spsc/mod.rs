@@ -52,10 +52,10 @@ pub struct SpscChannels {
     pub resampler_consumer: Consumer<Box<crate::dsp::resampler::NamResampler>>,
     /// Cab-sim IR producer: main thread loads and sends to the RT callback.
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    pub cabsim_producer: Producer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
+    pub cabsim_producer: Producer<Option<crate::dsp::cabsim::adapter::CabSimAdapter>>,
     /// Cab-sim IR consumer: RT callback drains to replace the active IR.
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    pub cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
+    pub cabsim_consumer: Consumer<Option<crate::dsp::cabsim::adapter::CabSimAdapter>>,
     /// Slimmable model producer: main thread builds and sends slimmed model to RT callback.
     pub slimmable_producer: Producer<Option<Box<crate::models::StaticModel>>>,
     /// Slimmable model consumer: RT callback drains to swap the active model.

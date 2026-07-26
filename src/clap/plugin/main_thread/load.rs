@@ -18,6 +18,9 @@ use std::sync::atomic::Ordering;
 use crate::dsp::cabsim::loader::CabSimIr;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::adapter::CabSimAdapter;
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::cabsim::conv::ConvEngine;
 
 impl<'a> NamClapMainThread<'a> {
@@ -252,9 +255,17 @@ impl<'a> NamClapMainThread<'a> {
             *raw_guard = Some(cabsim.samples.clone());
         }
 
+        let adapter = Some(CabSimAdapter::new(Box::new(engine)).map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(e, &self.sys)
+                    .message("Failed to build cab-sim convolution adapter")
+                    .hint("The IR samples require more memory than available."),
+            )
+        })?);
+
         self.param_tx
             .push(ClapParamPayload::LoadCabIr {
-                engine: Some(Box::new(engine)),
+                adapter,
             })
             .map_err(|_| {
                 Box::new(

@@ -130,7 +130,7 @@ define_gc_item! {
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     CabSimIr(crate::dsp::cabsim::loader::CabSimIr) = 3,
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    CabConvEngine(crate::dsp::cabsim::conv::ConvEngine) = 4,
+    CabConvAdapter(crate::dsp::cabsim::adapter::CabSimAdapter) = 4,
     Oversample(crate::dsp::oversample::OversampleEngine) = 5,
     #[cfg(test)]
     Test(std::sync::Arc<std::sync::atomic::AtomicU32>) = 255,

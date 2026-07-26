@@ -217,7 +217,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             // Clear any old IR from the RT thread
             let _ = self
                 .param_tx
-                .push(ClapParamPayload::LoadCabIr { engine: None });
+                .push(ClapParamPayload::LoadCabIr { adapter: None });
             log::error!("NAM-rs: State restore failed — IR not found. Old IR unloaded.");
         }
 
@@ -288,7 +288,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 // No IR requested in new state — bypass cabsim
                 let _ = self
                     .param_tx
-                    .push(ClapParamPayload::LoadCabIr { engine: None });
+                    .push(ClapParamPayload::LoadCabIr { adapter: None });
             }
         }
 

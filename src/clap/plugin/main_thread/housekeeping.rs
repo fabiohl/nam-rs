@@ -289,7 +289,7 @@ impl<'a> NamClapMainThread<'a> {
             if self.shared.cold.ui_clear_ir.swap(false, Ordering::Relaxed) {
                 let _ = self
                     .param_tx
-                    .push(ClapParamPayload::LoadCabIr { engine: None });
+                    .push(ClapParamPayload::LoadCabIr { adapter: None });
                 {
                     let mut ir_guard = self.shared.cold.ir_path.lock().unwrap_or_else(|e| {
                         log::error!("PoisonError in ir_path lock: {e:?}");

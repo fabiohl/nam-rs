@@ -196,7 +196,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             resampler,
             os_l,
             os_r,
-            conv_engine,
+            cabsim_adapter,
             model_input_mult_adj,
             model_output_mult_adj,
         ) = if let Some(deact) = deactivated {
@@ -216,26 +216,34 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 )
             };
 
-            // ConvEngine: reuse if buffer size matches, else rebuild from raw IR.
-            let conv_engine = if deact.conv_engine.is_some() && !buf_matches {
+            // CabSimAdapter: reuse if buffer size matches, else rebuild from raw IR.
+            let cabsim_adapter = if deact.cabsim_adapter.is_some() && !buf_matches {
                 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
                 {
                     if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
                         if let Some(ref samples) = *raw_guard {
                             let partition_size = audio_config.max_frames_count as usize;
                             if partition_size > 0 {
-                                Some(Box::new(
-                                    crate::dsp::cabsim::conv::ConvEngine::new(
-                                        samples,
-                                        partition_size,
-                                    )
+                                Some(
+                                    crate::dsp::cabsim::adapter::CabSimAdapter::new(Box::new(
+                                        crate::dsp::cabsim::conv::ConvEngine::new(
+                                            samples,
+                                            partition_size,
+                                        )
+                                        .map_err(|e| {
+                                            PluginError::Message(Box::leak(
+                                                format!("ConvEngine allocation failed: {e:?}")
+                                                    .into_boxed_str(),
+                                            ))
+                                        })?,
+                                    ))
                                     .map_err(|e| {
                                         PluginError::Message(Box::leak(
-                                            format!("ConvEngine allocation failed: {e:?}")
+                                            format!("CabSimAdapter allocation failed: {e:?}")
                                                 .into_boxed_str(),
                                         ))
                                     })?,
-                                ))
+                                )
                             } else {
                                 None
                             }
@@ -251,7 +259,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     None
                 }
             } else {
-                deact.conv_engine
+                deact.cabsim_adapter
             };
 
             // Oversample engines: always reusable (constructed at Off factor).
@@ -261,7 +269,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 resampler,
                 deact.os_l,
                 deact.os_r,
-                conv_engine,
+            cabsim_adapter,
                 deact.model_input_mult_adj,
                 deact.model_output_mult_adj,
             )
@@ -276,20 +284,31 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             );
 
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            let conv_engine = {
+            let cabsim_adapter = {
                 if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
                     if let Some(ref samples) = *raw_guard {
                         let partition_size = audio_config.max_frames_count as usize;
                         if partition_size > 0 {
-                            Some(Box::new(
-                                crate::dsp::cabsim::conv::ConvEngine::new(samples, partition_size)
+                            Some(
+                                crate::dsp::cabsim::adapter::CabSimAdapter::new(Box::new(
+                                    crate::dsp::cabsim::conv::ConvEngine::new(
+                                        samples,
+                                        partition_size,
+                                    )
                                     .map_err(|e| {
                                         PluginError::Message(Box::leak(
                                             format!("ConvEngine allocation failed: {e:?}")
                                                 .into_boxed_str(),
                                         ))
                                     })?,
-                            ))
+                                ))
+                                .map_err(|e| {
+                                    PluginError::Message(Box::leak(
+                                        format!("CabSimAdapter allocation failed: {e:?}")
+                                            .into_boxed_str(),
+                                    ))
+                                })?,
+                            )
                         } else {
                             None
                         }
@@ -301,7 +320,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 }
             };
             #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
-            let conv_engine = None;
+            let cabsim_adapter = None;
 
             let os_l = Box::new(
                 OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
@@ -318,7 +337,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 })?,
             );
 
-            (None, resampler, os_l, os_r, conv_engine, 1.0, 1.0)
+            (None, resampler, os_l, os_r, cabsim_adapter, 1.0, 1.0)
         };
 
         let silence_hyst = DynamicHysteresis::new();
@@ -370,18 +389,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         );
 
         // 5. Report initial latency to shared state
-        // CabSim latency excluded from current_latency in the CLAP path:
-        // the convolution engine is NOT wired into run_inference() yet
-        // (see CLAP-F001, S0-E0-T02). Re-enable when CabSim is integrated
-        // into the CLAP audio pipeline (Sprint S3).
         let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);
         initial_latency += os_l.latency_samples() as u32;
-        // #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-        // {
-        //     if let Some(ref conv) = conv_engine {
-        //         initial_latency += conv.latency_samples() as u32;
-        //     }
-        // }
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if let Some(ref adapter) = cabsim_adapter {
+                initial_latency += adapter.latency_samples() as u32;
+            }
+        }
         shared
             .rt_to_ui
             .current_latency
@@ -405,7 +420,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         Ok(Self {
             model_l,
-            conv_engine,
+            cabsim_adapter,
             resampler,
             os_l,
             os_r,
@@ -492,7 +507,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // current audio configuration.
         let deactivated = DeactivatedDspState {
             model_l: self.model_l,
-            conv_engine: self.conv_engine,
+            cabsim_adapter: self.cabsim_adapter,
             resampler: self.resampler,
             os_l: self.os_l,
             os_r: self.os_r,

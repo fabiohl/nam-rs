@@ -5,11 +5,11 @@
 //! Replaces the active convolution engine without using memory allocation in the critical path.
 
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
-use crate::dsp::cabsim::conv::ConvEngine;
+use crate::dsp::cabsim::adapter::CabSimAdapter;
 
 use rtrb::Consumer;
 
-/// Drains the cab-sim convolution engine SPSC channel and swaps the active engine atomically.
+/// Drains the cab-sim convolution adapter SPSC channel and swaps the active adapter atomically.
 ///
 /// Follows the same cascade pattern as `drain_resamplers`:
 /// GC channel → parking_lot → overflow buffer.
@@ -17,19 +17,19 @@ use rtrb::Consumer;
 /// An `Option` is used so that `None` can be sent to clear/bypass the convolution.
 #[inline(always)]
 pub fn drain_cabsims(
-    cabsim_consumer: &mut Consumer<Option<Box<ConvEngine>>>,
-    active_cabsim: &mut Option<Box<ConvEngine>>,
+    cabsim_consumer: &mut Consumer<Option<CabSimAdapter>>,
+    active_cabsim: &mut Option<CabSimAdapter>,
     gc_producer: &mut rtrb::Producer<GcItem>,
     parking_lot: &mut [Option<GcItem>; 16],
     gc_overflow_for_process: &GcOverflowBuffer,
     rt_status_for_process: &RtStatusFlags,
 ) {
-    while let Ok(new_engine) = cabsim_consumer.pop() {
-        let old_engine = std::mem::replace(active_cabsim, new_engine);
+    while let Ok(new_adapter) = cabsim_consumer.pop() {
+        let old_adapter = std::mem::replace(active_cabsim, new_adapter);
 
-        if let Some(old) = old_engine {
+        if let Some(old) = old_adapter {
             crate::common::spsc::gc_cascade(
-                Some(GcItem::CabConvEngine(old)),
+                Some(GcItem::CabConvAdapter(Box::new(old))),
                 gc_producer,
                 parking_lot,
                 gc_overflow_for_process,

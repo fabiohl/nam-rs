@@ -190,7 +190,7 @@ impl<'a> NamClapProcessor<'a> {
                             rt_status: &self.rt_status,
                             adaptive: &mut self.adaptive_compute,
                             bridge_writer: None,
-                            conv: self.conv_engine.as_mut().map(|e| e.as_mut()),
+                            conv: self.cabsim_adapter.as_mut(),
                         };
 
                         process_sub_block(
@@ -454,6 +454,29 @@ fn process_sub_block(
         buf_os_model_r,
     );
 
+    if let Some(ref mut conv) = ctx.conv {
+        if !conv.is_passthrough() {
+            conv.process_variable(
+                &buf_out_l[..n_out],
+                &mut buf_model_l[..n_out],
+            );
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    buf_model_l.as_ptr(),
+                    buf_out_l.as_mut_ptr(),
+                    n_out,
+                );
+            }
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    buf_out_l.as_ptr(),
+                    buf_out_r.as_mut_ptr(),
+                    n_out,
+                );
+            }
+        }
+    }
+
     apply_output_stage(
         &mut buf_out_l[..n_out],
         &mut buf_out_r[..n_out],
@@ -570,6 +593,29 @@ fn process_crossfade_sub_block(
             buf_os_model_l,
             buf_os_model_r,
         );
+
+        if let Some(ref mut conv) = ctx.conv {
+            if !conv.is_passthrough() {
+                conv.process_variable(
+                    &buf_out_l[..n_o],
+                    &mut buf_model_l[..n_o],
+                );
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        buf_model_l.as_ptr(),
+                        buf_out_l.as_mut_ptr(),
+                        n_o,
+                    );
+                }
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        buf_out_l.as_ptr(),
+                        buf_out_r.as_mut_ptr(),
+                        n_o,
+                    );
+                }
+            }
+        }
 
         apply_output_stage(
             &mut buf_out_l[..n_o],

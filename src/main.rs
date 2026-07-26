@@ -18,6 +18,7 @@
 //! - **ZERO ALLOCATIONS** in the Audio thread: The audio channel memory (`process()`) is always prepared 100% in advance. Audio never "requests more RAM" out of nowhere.
 
 use nam_rs::diagnostics::{SystemSnapshot, logger::NamLogger};
+use nam_rs::dsp::cabsim::adapter::CabSimAdapter;
 use nam_rs::dsp::cabsim::conv::ConvEngine;
 use nam_rs::dsp::cabsim::loader::CabSimIr;
 use nam_rs::math::activations::set_activation_precision;
@@ -145,15 +146,17 @@ fn main() -> anyhow::Result<()> {
             Ok(cabsim) => {
                 let engine = ConvEngine::new(&cabsim.samples, partition_size)
                     .map_err(|e| anyhow::anyhow!("Cab-sim engine init: {e}"))?;
+                let adapter = CabSimAdapter::new(Box::new(engine))
+                    .map_err(|e| anyhow::anyhow!("Cab-sim adapter init: {e:?}"))?;
                 log::info!(
                     "{} Cab-sim IR loaded: {} ({} partitions, FFT={})",
                     "🎛️".cyan(),
                     cab_path.display(),
-                    engine.num_partitions(),
-                    engine.fft_size(),
+                    adapter.num_partitions(),
+                    adapter.engine().fft_size(),
                 );
                 ir_raw_samples = Some(cabsim.samples);
-                let _ = cabsim_producer.push(Some(Box::new(engine)));
+                let _ = cabsim_producer.push(Some(adapter));
             }
             Err(e) => {
                 log::warn!(

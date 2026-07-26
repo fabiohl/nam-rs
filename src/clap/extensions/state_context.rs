@@ -221,7 +221,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             if ir_load_failed {
                 let _ = self
                     .param_tx
-                    .push(ClapParamPayload::LoadCabIr { engine: None });
+                    .push(ClapParamPayload::LoadCabIr { adapter: None });
                 log::error!(
                     "NAM-rs: State-context restore failed — IR not found. Old IR unloaded."
                 );
@@ -246,7 +246,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             } else if loaded_params.ir_path.is_none() {
                 let _ = self
                     .param_tx
-                    .push(ClapParamPayload::LoadCabIr { engine: None });
+                    .push(ClapParamPayload::LoadCabIr { adapter: None });
             }
         }
 

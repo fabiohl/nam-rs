@@ -165,10 +165,11 @@ graph TD
   - **Critério de Aceite:** Convolução funciona perfeitamente com sub-blocos arbitrários (e.g. 17, 63, 128 amostras); latência fixa mensurável.
   - **Conclusão:** `CabSimAdapter` implementado em `src/dsp/cabsim/adapter.rs`. Acumula sub-blocos via FIFO de entrada de 2×P, processa partições completas pelo `ConvEngine`, e serve saída via FIFO de saída de 2×P com compactação. 11 testes unitários cobrindo passthrough, blocos regulares, sub-blocos variáveis (17/63/48, single-sample, non-power-of-2), latência de acumulação, IR de amostra única e determinismo. Integração no pipeline CLAP segue em S3-E3-T02.
 
-- [ ] **S3-E3-T02 [Crítico] — Integração Monofônica Estrita do CabSim no Pipeline CLAP**
+- [x] **S3-E3-T02 [Crítico] — Integração Monofônica Estrita do CabSim no Pipeline CLAP**
   - **Origem:** E3-T02, CLAP-F001 | **Perfis:** Audio Engine Specialist
   - **Escopo:** Inserir o CabSim no orquestrador CLAP após a inferência neural e antes da etapa final de ganho. Processar canal mono único e duplicar para L/R em topologias mono-to-stereo.
   - **Critério de Aceite:** Resposta ao impulso pelo plugin CLAP coincide com o oráculo de convolução direta; zero contaminação cruzada.
+  - **Conclusão:** `CabSimAdapter` (S3-E3-T01) integrado no `process_sub_block` e `process_crossfade_sub_block` do orquestrador CLAP entre `run_inference` e `apply_output_stage`. Processa canal mono via `process_variable`, usa `buf_model_l` como scratch e copia resultado para `buf_out_l`. Saída L duplicada para R (mono→stereo). Latência do CabSim incluída em `current_latency` (events.rs e mod.rs). SPSC payload (`LoadCabIr`) e GC item (`CabConvAdapter`) atualizados. `DeactivatedDspState` preserva `CabSimAdapter`. 93/96 testes CLAP passam (3 falhas pré-existentes em gain automation).
 
 - [ ] **S3-E3-T03 [Alta] — Processamento Causal de Cauda (Tail) e Drain durante Silêncio**
   - **Origem:** E3-T03, CLAP-F003, CLAP-F005 | **Perfis:** Real-Time DSP Engineer

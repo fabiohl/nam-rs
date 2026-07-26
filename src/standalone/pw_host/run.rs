@@ -47,8 +47,8 @@ pub fn run_pipewire_host(
     gc_overflow: Arc<GcOverflowBuffer>,
     resampler_consumer: Consumer<Box<NamResampler>>,
     mut resampler_producer: rtrb::Producer<Box<NamResampler>>,
-    cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
-    mut cabsim_producer: rtrb::Producer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
+    cabsim_consumer: Consumer<Option<crate::dsp::cabsim::adapter::CabSimAdapter>>,
+    mut cabsim_producer: rtrb::Producer<Option<crate::dsp::cabsim::adapter::CabSimAdapter>>,
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
     mut gc_consumer: Consumer<GcItem>,
@@ -238,17 +238,20 @@ pub fn run_pipewire_host(
                 .load(Ordering::Relaxed) as usize;
             if partition_size > 0 {
                 if let Some(ref samples) = ir_raw_samples {
+                    use crate::dsp::cabsim::adapter::CabSimAdapter;
                     use crate::dsp::cabsim::conv::ConvEngine;
                     let engine = ConvEngine::new(samples, partition_size)
                         .map_err(|e| anyhow::anyhow!("Cab-sim engine: {e}"))?;
+                    let adapter = CabSimAdapter::new(Box::new(engine))
+                        .map_err(|e| anyhow::anyhow!("Cab-sim adapter: {e:?}"))?;
                     log::info!(
                         "{} Cab-sim IR rebuilt: partition_size={} ({} partitions, FFT={})",
                         "🔄".cyan(),
                         partition_size,
-                        engine.num_partitions(),
-                        engine.fft_size(),
+                        adapter.num_partitions(),
+                        adapter.engine().fft_size(),
                     );
-                    if cabsim_producer.push(Some(Box::new(engine))).is_err() {
+                    if cabsim_producer.push(Some(adapter)).is_err() {
                         crate::common::diagnostics::NamDiagnostic::new(
                             crate::common::diagnostics::NamErrorCode::ParamChannelFull,
                             &sys,

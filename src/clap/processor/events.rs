@@ -11,9 +11,6 @@ use crate::models::StaticModel;
 use clack_plugin::prelude::OutputEvents;
 use std::sync::atomic::Ordering;
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-use crate::dsp::cabsim::conv::ConvEngine;
-
 impl<'a> NamClapProcessor<'a> {
     /// Processes SPSC payloads, GUI parameter sync, latency, and render mode.
     /// Host parameter events are handled later via block-splitting in
@@ -39,8 +36,8 @@ impl<'a> NamClapProcessor<'a> {
                     output_mult_adj,
                 } => self.cold_load_model(model_l, new_resampler, input_mult_adj, output_mult_adj),
                 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-                ClapParamPayload::LoadCabIr { engine } => {
-                    self.cold_load_cabsim(engine);
+                ClapParamPayload::LoadCabIr { adapter } => {
+                    self.cold_load_cabsim(adapter);
                 }
                 ClapParamPayload::SetOversample { os_l, os_r } => {
                     self.cold_load_os(os_l, os_r);
@@ -81,17 +78,12 @@ impl<'a> NamClapProcessor<'a> {
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let mut effective_latency = self.resampler.latency_samples(host_rate);
         effective_latency += self.os_l.latency_samples() as u32;
-        // CabSim latency excluded from current_latency in the CLAP path:
-        // the convolution engine is NOT wired into run_inference() yet
-        // (see CLAP-F001, S0-E0-T02). The standalone path tracks its own
-        // latency separately via DspBridge. When CabSim is integrated into
-        // the CLAP audio pipeline (Sprint S3), re-enable this contribution.
-        // #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-        // {
-        //     if let Some(ref conv) = self.conv_engine {
-        //         effective_latency += conv.latency_samples() as u32;
-        //     }
-        // }
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if let Some(ref adapter) = self.cabsim_adapter {
+                effective_latency += adapter.latency_samples() as u32;
+            }
+        }
         if effective_latency != self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed) {
             self.shared
                 .rt_to_ui
@@ -188,14 +180,14 @@ impl<'a> NamClapProcessor<'a> {
 
     #[cold]
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    fn cold_load_cabsim(&mut self, engine: Option<Box<ConvEngine>>) {
-        if let Some(old_engine) = std::mem::replace(&mut self.conv_engine, engine) {
-            self.push_to_gc(GcItem::CabConvEngine(old_engine));
+    fn cold_load_cabsim(&mut self, adapter: Option<crate::dsp::cabsim::adapter::CabSimAdapter>) {
+        if let Some(old_adapter) = std::mem::replace(&mut self.cabsim_adapter, adapter) {
+            self.push_to_gc(GcItem::CabConvAdapter(Box::new(old_adapter)));
         }
         let cabsim_tail = self
-            .conv_engine
-            .as_deref()
-            .map(|conv| (conv.num_partitions() * conv.latency_samples()) as u32)
+            .cabsim_adapter
+            .as_ref()
+            .map(|a| (a.num_partitions() * a.latency_samples()) as u32)
             .unwrap_or(0);
         self.shared
             .rt_to_ui

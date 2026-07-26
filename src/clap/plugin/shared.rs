@@ -29,13 +29,13 @@ pub enum ClapParamPayload {
         /// Model output gain calibration multiplier (from loudness metadata).
         output_mult_adj: f32,
     },
-    /// Loading of a new cab-sim convolution engine via SPSC.
-    /// Follows the same pattern as `LoadModel`: the engine is constructed
+    /// Loading of a new cab-sim convolution adapter via SPSC.
+    /// Follows the same pattern as `LoadModel`: the adapter is constructed
     /// outside the RT thread and swapped atomically in the audio thread.
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     LoadCabIr {
-        /// Pre-built convolution engine (None = bypass cabsim).
-        engine: Option<Box<crate::dsp::cabsim::conv::ConvEngine>>,
+        /// Pre-built convolution adapter (None = bypass cabsim).
+        adapter: Option<crate::dsp::cabsim::adapter::CabSimAdapter>,
     },
     /// Oversampling factor change: carries new pre-built engines for the audio thread.
     SetOversample {
