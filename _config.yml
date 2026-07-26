@@ -1,4 +1,0 @@
-theme: jekyll-theme-architect
-title: nam-rs
-description: An opinionated, high-performance Neural Amp Modeler (NAM) client and core implementation in Rust for Linux/PipeWire and CLAP plugins.
-render_with_liquid: false

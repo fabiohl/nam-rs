@@ -71,7 +71,7 @@ pub struct NamModelMetadata {
 /// Safe wrapper for a NamClapShared pointer passed to the GUI thread.
 ///
 /// Encapsulates a `NonNull<NamClapShared>` privately so the pointer is never
-/// exposed directly. Access is mediated through [`as_ptr`] and [`as_ref`],
+/// exposed directly. Access is mediated through `as_ptr` and `as_ref`,
 /// with the SAFETY contract clearly documented at each call site.
 #[derive(Clone, Copy)]
 pub struct NamClapSharedRef(std::ptr::NonNull<NamClapShared>);

@@ -104,8 +104,8 @@ pub fn generate_farina_sweep(f1: f64, f2: f64, duration_s: f64, sample_rate: u32
 /// Generates the inverse filter for a Farina sweep.
 ///
 /// Computed directly in the frequency domain:
-///   F[k] = conj(S[k]) / (|S[k]|² + ε)
-///   f[n] = IFFT(F[k])  (first n samples)
+///   F\[k\] = conj(S\[k\]) / (|S\[k\]|² + ε)
+///   f\[n\] = IFFT(F\[k\])  (first n samples)
 ///
 /// This is the mathematically exact matched filter, equivalent to the
 /// time-reversed sweep with amplitude compensation.

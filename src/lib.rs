@@ -40,19 +40,19 @@
 //! **Pure Core DSP & Model Inference (Recommended for third-party crates):**
 //! ```toml
 //! [dependencies]
-//! NeuralAmpModeler-rs = { version = "3.0.0", default-features = false }
+//! NeuralAmpModeler-rs = { version = "3.0.1", default-features = false }
 //! ```
 //!
 //! **Adding Off-RT Testing & Audio Signal Generators:**
 //! ```toml
 //! [dependencies]
-//! NeuralAmpModeler-rs = { version = "3.0.0", default-features = false, features = ["testing"] }
+//! NeuralAmpModeler-rs = { version = "3.0.1", default-features = false, features = ["testing"] }
 //! ```
 //!
 //! **Building Native PipeWire Standalone Audio Clients:**
 //! ```toml
 //! [dependencies]
-//! NeuralAmpModeler-rs = { version = "3.0.0", features = ["standalone"] }
+//! NeuralAmpModeler-rs = { version = "3.0.1", features = ["standalone"] }
 //! ```
 //!
 //! ### Feature Flags Summary Table

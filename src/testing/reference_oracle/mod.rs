@@ -72,7 +72,7 @@ pub enum WeightPrecision {
 pub enum ActivationMode {
     /// Exact: `f64::tanh`, `f64` exp-based sigmoid.
     Exact,
-    /// Approximate: Padé [5,4] tanh, minimax degree-17 sigmoid.
+    /// Approximate: Padé \[5,4\] tanh, minimax degree-17 sigmoid.
     PadeMinimax,
 }
 
@@ -114,7 +114,7 @@ impl Default for PrecisionConfig {
 // f64 Activation Functions
 // =============================================================================
 
-/// Padé [5,4] rational approximant for tanh in f64.
+/// Padé \[5,4\] rational approximant for tanh in f64.
 #[inline]
 pub fn pade_tanh_f64(x: f64) -> f64 {
     let x = x.clamp(-4.0, 4.0);
