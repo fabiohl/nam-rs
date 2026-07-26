@@ -597,6 +597,10 @@ mod processor_calibration_test;
 mod processor_automation_test;
 
 #[cfg(test)]
+#[path = "../processor_deactivate_reactivate_test.rs"]
+mod processor_deactivate_reactivate_test;
+
+#[cfg(test)]
 mod diagnostics_logging_tests {
     use crate::clap::test_util;
     use crate::common::spsc::{

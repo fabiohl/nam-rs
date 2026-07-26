@@ -95,10 +95,18 @@ graph TD
   - **Critério de Aceite:** Falha de memória/alocação em `activate()` deixa o plugin em estado limpo desativado com retorno de erro `false`.
   - **Conclusão (2026-07-26):** `ActivateRollbackGuard` implementado em `src/clap/processor/rollback.rs`. Guard captura SPSC channels (`param_rx`, `gc_tx`, `slimmable_rx`) e `DeactivatedDspState` à medida que são extraídos de `ColdShared`. Em qualquer `?` de erro nos 22 pontos de falha de `activate()` (alocação de buffers, construção de resampler/ConvEngine/OversampleEngine, flush de modelo deferido), o Drop restaura todos os recursos nos mutexes de `ColdShared`. No sucesso, `defuse()` transfere ownership dos SPSC channels para `NamClapProcessor`. Design segue padrões RAII existentes (`ActivationPrecisionGuard`, `TrackingGuard`) sem dependências externas. 1257 lib tests pass, stress tests com heap-audit zeram alocações. Impacto: resolve CLAP-F026 — falha em `activate()` nunca corrompe o estado compartilhado.
 
-- [ ] **S1-E1-T05 [Média] — Matriz de Testes Deactivate/Reactivate**
+- [x] **S1-E1-T05 [Média] — Matriz de Testes Deactivate/Reactivate**
   - **Origem:** E1-T05, CLAP-F002, CLAP-F003 | **Perfis:** Integration Test Specialist
   - **Escopo:** Criar suite de testes cobrindo transições `deactivate -> activate` variando sample rate, buffer size, modelo, IR e parâmetros.
   - **Critério de Aceite:** 100% de paridade de saída de áudio antes e depois do ciclo de desativação/reativação.
+  - **Conclusão (2026-07-26):** Suite de 6 testes em `processor_deactivate_reactivate_test.rs`:
+    1. `test_audio_parity_same_config` — paridade bit-exata (tolerância 2e-5) do último bloco após 8 warm-up blocks, modelo BossWN-nano, 48 kHz, buffer 256. Confirma que DeactivatedDspState preserva estado de inferência idêntico.
+    2. `test_no_model_bypass_parity` — bypass sem modelo: RMS de saída idêntico entre ciclos, sinal passa pelo gate.
+    3. `test_sample_rate_change_no_crash` — transição 48 kHz → 44.1 kHz: resampler reconstruído, áudio válido, sem NaN/Inf.
+    4. `test_buffer_size_change_no_crash` — transição buffer 256 → 512: ConvEngine reconstruído, áudio válido.
+    5. `test_multiple_deactivate_reactivate_cycles` — 3 ciclos completos: RMS estável (< 1e-4 drift), sem degradação.
+    6. `test_model_preserved_across_cycle` — `model_load_counter` não incrementa na reativação, confirmando que o modelo NÃO é recarregado do disco.
+    Todos os 6 testes passam. 1263 lib tests pass (0 fail). Lints limpos.
 
 ---
 
