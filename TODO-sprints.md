@@ -136,10 +136,11 @@ graph TD
   - **Critério de Aceite:** Alternar bypass On/Off durante sinal contínuo não produz estouro temporal nem descontinuidade de fase.
   - **Conclusão (2026-07-26):** Implementado `BypassCrossfader` com crossfade linear de 64 amostras (~1,33ms @48kHz) entre dry (bypass) e wet (pipeline). A máquina de estados reside em `NamClapProcessor.bypass_xfade` e é acionada quando `self.params.bypass` diverge de `xfade.target` — seja via host event (sample-accurate no sub-block boundary) ou sync SPSC/GUI. `process_crossfade_sub_block()` salva o sinal dry em `buf_xfade_dry_l/r` (pré-alocados no `activate()`), executa o pipeline completo para obter wet, e faz o blend: `output[i] = dry[i] + (wet[i] - dry[i]) * mix_i`. `mix_i` segue rampa linear de 0↔1 controlada por `step` (±1/64 por amostra). Bypass/Wet permanecem sob o mesmo sub-block scheduler (S2-E2-T02). 1170 lib tests pass, clippy limpo, F008 mantém GREEN. F001 e F007 permanecem RED (escopos futuros).
 
-- [ ] **S2-E2-T04 [Alta] — Smoothing Temporal Vetorizado Único**
+- [x] **S2-E2-T04 [Alta] — Smoothing Temporal Vetorizado Único**
   - **Origem:** E2-T04, CLAP-F012 | **Perfis:** SIMD & DSP Optimization Specialist
   - **Escopo:** Consolidar a suavização de ganho e parâmetros num único pass vetorizado em SIMD (AVX2/FMA baseline) integrado ao processamento de blocos.
   - **Critério de Aceite:** Smoothers rodam de forma branchless e sem degradação de desempenho.
+  - **Conclusão (2026-07-26):** `apply_input_gain_sub_block_inner` e `apply_output_gain_sub_block_inner` substituídas por `apply_iir_gain_ramp_sub_block` unificada. Eliminadas as 3 ramificações (stable/small/large sub-block) em favor de 2: fast-path estável (constante SIMD via `apply_gain_and_detect_clipping_stereo`/`apply_gain_stereo`) e ramp IIR exponencial branchless (escalar autovetorizável). A rampa IIR usa a fórmula fechada `gain[i] = target + (1-α)^(i+1)*(start-target)`, equivalente exata ao `tick()` para qualquer tamanho de bloco. Adicionado `ParamSmoother::alpha()` para expor o coeficiente. 1170 lib tests + 5 smoother tests pass, clippy limpo, F008 mantém GREEN.
 
 - [ ] **S2-E2-T05 [Média] — Property-Based Testing para Block Invariance e Event Flooding**
   - **Origem:** E2-T05, CLAP-F007, CLAP-F008 | **Perfis:** QA Property Testing Specialist

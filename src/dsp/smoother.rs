@@ -108,6 +108,12 @@ impl ParamSmoother {
         self.current
     }
 
+    /// Returns the IIR coefficient α.
+    #[inline]
+    pub fn alpha(&self) -> f32 {
+        self.alpha
+    }
+
     /// Sets the current value.
     #[inline]
     pub fn set(&mut self, val: f32) {

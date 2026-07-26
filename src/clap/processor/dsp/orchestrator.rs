@@ -413,13 +413,13 @@ fn process_sub_block(
         return (n_samples, GateState::Open);
     }
 
-    apply_input_gain_sub_block_inner(
+    apply_iir_gain_ramp_sub_block(
         smoother_in,
-        gain_lut,
         buf_host_l,
         buf_host_r,
         offset,
         n_samples,
+        true,
         input_clipped,
     );
 
@@ -464,7 +464,15 @@ fn process_sub_block(
         shared_sample_rate,
     );
 
-    apply_output_gain_sub_block_inner(smoother_out, buf_out_l, buf_out_r, n_out);
+    apply_iir_gain_ramp_sub_block(
+        smoother_out,
+        buf_out_l,
+        buf_out_r,
+        0,
+        n_out,
+        false,
+        &mut false,
+    );
 
     copy_output_from_sub_block(
         out_l,
@@ -509,7 +517,7 @@ fn process_crossfade_sub_block(
     buf_os_model_r: &mut [f32],
     model_output_mult_adj: f32,
     shared_sample_rate: u32,
-    gain_lut: &crate::math::dsp::gain_lut::GainLUT,
+    _gain_lut: &crate::math::dsp::gain_lut::GainLUT,
 ) -> (usize, GateState) {
     // 1. Save dry input before pipeline modifies buf_host in place
     let dry_n = n_samples.min(buf_xfade_dry_l.len());
@@ -520,13 +528,13 @@ fn process_crossfade_sub_block(
     buf_xfade_dry_r[..dry_n].copy_from_slice(&buf_xfade_dry_l[..dry_n]);
 
     // 2. Run full wet pipeline
-    apply_input_gain_sub_block_inner(
+    apply_iir_gain_ramp_sub_block(
         smoother_in,
-        gain_lut,
         buf_host_l,
         buf_host_r,
         offset,
         n_samples,
+        true,
         input_clipped,
     );
 
@@ -573,7 +581,15 @@ fn process_crossfade_sub_block(
             shared_sample_rate,
         );
 
-        apply_output_gain_sub_block_inner(smoother_out, buf_out_l, buf_out_r, n_o);
+        apply_iir_gain_ramp_sub_block(
+            smoother_out,
+            buf_out_l,
+            buf_out_r,
+            0,
+            n_o,
+            false,
+            &mut false,
+        );
 
         n_o
     };
@@ -626,173 +642,111 @@ fn process_crossfade_sub_block(
 }
 
 #[inline(always)]
-fn apply_input_gain_sub_block_inner(
-    smoother_in: &mut crate::dsp::smoother::ParamSmoother,
-    _gain_lut: &crate::math::dsp::gain_lut::GainLUT,
-    buf_host_l: &mut [f32],
-    buf_host_r: &mut [f32],
+fn apply_iir_gain_ramp_sub_block(
+    smoother: &mut crate::dsp::smoother::ParamSmoother,
+    buf_l: &mut [f32],
+    buf_r: &mut [f32],
     offset: usize,
-    n_samples: usize,
+    n: usize,
+    detect_clip: bool,
     input_clipped: &mut bool,
 ) {
-    #[cfg(feature = "stereo")]
-    {
-        let start = smoother_in.peek();
-        let target = smoother_in.target_value();
-        if (start - target).abs() < 1e-9 {
-            // Fast-path: gain is stable — use SIMD constant-gain with clipping detection.
-            let clipped = unsafe {
-                crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
-                    &mut buf_host_l[offset..offset + n_samples],
-                    &mut buf_host_r[offset..offset + n_samples],
-                    start,
-                )
-            };
-            if clipped {
-                *input_clipped = true;
-            }
-        } else if n_samples < 8 {
-            // Transition path for very small sub-blocks: run the IIR smoother tick-per-sample
-            // to prevent zipper noise when block-splitting fatias the block aggressively (e.g. size 1).
-            let slice_l = &mut buf_host_l[offset..offset + n_samples];
-            let slice_r = &mut buf_host_r[offset..offset + n_samples];
-            for (l, r) in slice_l.iter_mut().zip(slice_r.iter_mut()) {
-                let g = smoother_in.tick();
-                *l *= g;
-                *r *= g;
-                if l.abs() > 1.0 || r.abs() > 1.0 {
-                    *input_clipped = true;
-                }
-            }
-        } else {
-            // For larger sub-blocks, use the efficient linear ramp and snap to target at the end.
-            let step = (target - start) / n_samples as f32;
-            unsafe {
-                crate::math::dsp::gain::apply_ramp_stereo(
-                    &mut buf_host_l[offset..offset + n_samples],
-                    &mut buf_host_r[offset..offset + n_samples],
-                    start,
-                    step,
-                );
-            }
-            smoother_in.set(target);
-            let (peak_l, peak_r) = unsafe {
-                crate::math::dsp::stereo::compute_peak_abs_stereo(
-                    &buf_host_l[offset..offset + n_samples],
-                    &buf_host_r[offset..offset + n_samples],
-                )
-            };
-            if peak_l > 1.0 || peak_r > 1.0 {
-                *input_clipped = true;
-            }
-        }
-    }
-    #[cfg(not(feature = "stereo"))]
-    {
-        let _ = buf_host_r;
-        let start = smoother_in.peek();
-        let target = smoother_in.target_value();
-        if (start - target).abs() < 1e-9 {
-            // Fast-path: gain is stable — use SIMD constant-gain with clipping detection.
-            let clipped = unsafe {
-                crate::math::dsp::gain::apply_gain_and_detect_clipping_mono(
-                    &mut buf_host_l[offset..offset + n_samples],
-                    start,
-                )
-            };
-            if clipped {
-                *input_clipped = true;
-            }
-        } else if n_samples < 8 {
-            // Transition path: run the IIR smoother tick-per-sample.
-            for sample in &mut buf_host_l[offset..offset + n_samples] {
-                let g = smoother_in.tick();
-                *sample *= g;
-                if sample.abs() > 1.0 {
-                    *input_clipped = true;
-                }
-            }
-        } else {
-            let step = (target - start) / n_samples as f32;
-            crate::math::dsp::gain::apply_ramp_simd(
-                &mut buf_host_l[offset..offset + n_samples],
-                start,
-                step,
-            );
-            smoother_in.set(target);
-            for &sample in &buf_host_l[offset..offset + n_samples] {
-                if sample.abs() > 1.0 {
-                    *input_clipped = true;
-                    break;
-                }
-            }
-        }
-    }
-}
+    let start = smoother.peek();
+    let target = smoother.target_value();
 
-#[inline(always)]
-fn apply_output_gain_sub_block_inner(
-    smoother_out: &mut crate::dsp::smoother::ParamSmoother,
-    buf_out_l: &mut [f32],
-    buf_out_r: &mut [f32],
-    n_out: usize,
-) {
+    // Fast path: gain is stable — single SIMD multiply.
+    if (start - target).abs() < 1e-9 {
+        #[cfg(feature = "stereo")]
+        {
+            if detect_clip {
+                let clipped = unsafe {
+                    crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
+                        &mut buf_l[offset..offset + n],
+                        &mut buf_r[offset..offset + n],
+                        start,
+                    )
+                };
+                if clipped {
+                    *input_clipped = true;
+                }
+            } else {
+                unsafe {
+                    crate::math::dsp::gain::apply_gain_stereo(
+                        &mut buf_l[offset..offset + n],
+                        &mut buf_r[offset..offset + n],
+                        start,
+                    );
+                }
+            }
+        }
+        #[cfg(not(feature = "stereo"))]
+        {
+            let _ = buf_r;
+            if detect_clip {
+                let clipped = unsafe {
+                    crate::math::dsp::gain::apply_gain_and_detect_clipping_mono(
+                        &mut buf_l[offset..offset + n],
+                        start,
+                    )
+                };
+                if clipped {
+                    *input_clipped = true;
+                }
+            } else {
+                crate::math::dsp::gain::apply_gain_simd(
+                    &mut buf_l[offset..offset + n],
+                    start,
+                );
+            }
+        }
+        return;
+    }
+
+    // IIR exponential ramp: exactly matches tick() output for all block sizes.
+    // y[i] = target + (1-α)^(i+1) * (start - target)
+    // Single branchless loop replaces the old small-block (< 8 tick path)
+    // and large-block (linear ramp + snap) paths.
+    let alpha = smoother.alpha();
+    let beta = 1.0 - alpha;
+    let diff = start - target;
+    let mut bp = beta;
+
+    let slice_l = &mut buf_l[offset..offset + n];
+    let slice_r = &mut buf_r[offset..offset + n];
+
     #[cfg(feature = "stereo")]
     {
-        let start = smoother_out.peek();
-        let target = smoother_out.target_value();
-        if (start - target).abs() < 1e-9 {
-            // Fast-path: gain is stable — SIMD constant-gain.
+        for i in 0..n {
+            let gain = target + bp * diff;
             unsafe {
-                crate::math::dsp::gain::apply_gain_stereo(
-                    &mut buf_out_l[..n_out],
-                    &mut buf_out_r[..n_out],
-                    start,
-                );
+                *slice_l.get_unchecked_mut(i) *= gain;
+                *slice_r.get_unchecked_mut(i) *= gain;
             }
-        } else if n_out < 8 {
-            // Transition path: IIR tick-per-sample to prevent zipper noise.
-            for (l, r) in buf_out_l[..n_out]
-                .iter_mut()
-                .zip(buf_out_r[..n_out].iter_mut())
+            bp *= beta;
+            if detect_clip
+                && (slice_l[i].abs() > 1.0 || slice_r[i].abs() > 1.0)
             {
-                let g = smoother_out.tick();
-                *l *= g;
-                *r *= g;
+                *input_clipped = true;
             }
-        } else {
-            let step = (target - start) / n_out as f32;
-            unsafe {
-                crate::math::dsp::gain::apply_ramp_stereo(
-                    &mut buf_out_l[..n_out],
-                    &mut buf_out_r[..n_out],
-                    start,
-                    step,
-                );
-            }
-            smoother_out.set(target);
         }
     }
     #[cfg(not(feature = "stereo"))]
     {
-        let _ = buf_out_r;
-        let start = smoother_out.peek();
-        let target = smoother_out.target_value();
-        if (start - target).abs() < 1e-9 {
-            // Fast-path: gain is stable — SIMD constant-gain.
-            crate::math::dsp::gain::apply_gain_simd(&mut buf_out_l[..n_out], start);
-        } else if n_out < 8 {
-            // Transition path: IIR tick-per-sample to prevent zipper noise.
-            for sample in &mut buf_out_l[..n_out] {
-                let g = smoother_out.tick();
-                *sample *= g;
+        let _ = buf_r;
+        for i in 0..n {
+            let gain = target + bp * diff;
+            unsafe { *slice_l.get_unchecked_mut(i) *= gain; }
+            bp *= beta;
+            if detect_clip && slice_l[i].abs() > 1.0 {
+                *input_clipped = true;
             }
-        } else {
-            let step = (target - start) / n_out as f32;
-            crate::math::dsp::gain::apply_ramp_simd(&mut buf_out_l[..n_out], start, step);
-            smoother_out.set(target);
         }
     }
+
+    // After n iterations, bp = beta^(n+1).
+    // The last smoother state is y[n-1] = target + beta^n * diff = target + (bp / beta) * diff.
+    let final_val = target + (bp / beta) * diff;
+    smoother.set(final_val);
 }
 
 #[expect(clippy::too_many_arguments)]
