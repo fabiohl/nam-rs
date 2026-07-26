@@ -46,7 +46,7 @@ graph TD
   - **Escopo:** Em `orchestrator.rs` e `events.rs`, impedir que a latência do IR seja somada a `current_latency` via `HostLatency` enquanto a convolução de bloco flexível não estiver aplicando o IR no áudio CLAP.
   - **Critério de Aceite:** Latência informada à DAW coincide exatamente com o atraso de fase medido no áudio de saída.
 
-- [ ] **S0-E0-T03 [Alta] — State Restore Transacional em 2 Fases e Status Persistente de Erro**
+- [x] **S0-E0-T03 [Alta] — State Restore Transacional em 2 Fases e Status Persistente de Erro**
   - **Origem:** E0-T02, CLAP-F014 | **Perfis:** Engenheiro de Estado Plugin & Rust Concurrency
   - **Escopo:** Em `state.rs` e `state_context.rs`, implementar restore em 2 fases (`prepare` -> `commit`). Ao falhar o carregamento de asset, abortar a troca, descarregar o DSP anterior e registrar o erro em `RtStatusFlags`.
   - **Critério de Aceite:** Restore corrompido não mantém áudio antigo com nome novo; estado de erro visível na telemetria.

@@ -12,12 +12,15 @@ use crate::clap::extensions::params::bypass_bool_to_u32;
 use crate::clap::plugin::debug_assert_main_thread;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::{NamPluginParams, RtPluginParams};
+use crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED;
+use crate::dsp::resampler::NamResampler;
 use clack_common::stream::{InputStream, OutputStream};
 use clack_extensions::params::{HostParams, ParamRescanFlags};
 use clack_extensions::state::PluginStateImpl;
 use clack_plugin::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
+use std::sync::atomic::Ordering;
 
 pub(crate) const CURRENT_STATE_VERSION: u32 = 1;
 
@@ -101,7 +104,149 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
 
         let new_params = load_state(&buffer)?;
 
-        self.params = new_params;
+        // ══════ Phase 1: PREPARE — validate and load assets ══════
+
+        let mut model_load_failed = false;
+
+        let model_resolved = if let Some(ref path) = new_params.model_path {
+            if path.exists() {
+                if let Err(e) = self.load_model(path) {
+                    log::warn!("Failed to restore saved model ({path:?}): {e}");
+                    model_load_failed = true;
+                    false
+                } else {
+                    true
+                }
+            } else if let Some(ref basename) = new_params.model_basename {
+                let found = new_params
+                    .model_search_paths
+                    .clone()
+                    .into_iter()
+                    .find_map(|dir| {
+                        let candidate = dir.join(basename);
+                        if candidate.exists() {
+                            Some(candidate)
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(new_path) = found {
+                    log::info!(
+                        "Model not found at original path ({path:?}), using portable fallback: {new_path:?}"
+                    );
+                    if let Err(e) = self.load_model(&new_path) {
+                        log::warn!("Failed to restore model via fallback ({new_path:?}): {e}");
+                        model_load_failed = true;
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    log::warn!(
+                        "Saved model not found at path: {path:?} and basename {basename:?} not located in search paths"
+                    );
+                    model_load_failed = true;
+                    false
+                }
+            } else {
+                log::warn!("Saved model not found at path: {path:?}");
+                model_load_failed = true;
+                false
+            }
+        } else {
+            // No model in saved state — keep current model
+            true
+        };
+
+        // Restore cab-sim IR if present in state (prepare phase).
+        // A failed IR load must also clean the old IR to avoid hybrid state.
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        let ir_load_failed = {
+            let mut failed = false;
+            if let Some(ref ir_path) = new_params.ir_path {
+                if ir_path.exists() {
+                    if let Err(e) = self.load_cabsim(ir_path) {
+                        log::warn!("Failed to restore saved IR ({ir_path:?}): {e}");
+                        failed = true;
+                    }
+                } else {
+                    log::warn!("Saved IR not found at path: {ir_path:?}");
+                    failed = true;
+                }
+            }
+            // If IR not present in saved state and old IR was loaded,
+            // the "else { push LoadCabIr{None} }" branch below handles cleanup.
+            failed
+        };
+
+        // ══════ Phase 2: COMMIT — publish or rollback ══════
+
+        if model_load_failed {
+            // Unload the old model so no stale DSP persists silently.
+            // Construct a bypass resampler (no I/O needed on main thread)
+            // so the RT thread can safely replace its resampler during
+            // the cold-load swap.
+            let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
+            let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+            let bypass_resampler =
+                Box::new(NamResampler::new(host_rate, host_rate, 0).map_err(|e| {
+                    PluginError::Message(Box::leak(
+                        format!("Failed to create bypass resampler during unload: {e:?}")
+                            .into_boxed_str(),
+                    ))
+                })?);
+            let _ = self.param_tx.push(ClapParamPayload::LoadModel {
+                model_l: None,
+                new_resampler: bypass_resampler,
+                input_mult_adj: 1.0,
+                output_mult_adj: 1.0,
+            });
+            self.shared
+                .cold
+                .rt_status
+                .set_flag(RT_STATUS_MODEL_LOAD_FAILED);
+            // Clear model metadata so the UI shows the error state
+            if let Ok(mut name_guard) = self.shared.cold.ui_model_name.lock() {
+                name_guard.clear();
+            }
+            log::error!("NAM-rs: State restore failed — model not found. Old model unloaded.");
+        }
+
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        if ir_load_failed {
+            // Clear any old IR from the RT thread
+            let _ = self
+                .param_tx
+                .push(ClapParamPayload::LoadCabIr { engine: None });
+            log::error!("NAM-rs: State restore failed — IR not found. Old IR unloaded.");
+        }
+
+        // Commit params to main thread state
+        self.params = new_params.clone();
+
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if !model_resolved || ir_load_failed {
+                // IR must be cleared from cold state if load failed or
+                // was not present in new params. The RT thread was already
+                // told via LoadCabIr{None} above.
+                if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {
+                    *ir_guard = None;
+                }
+                if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
+                    *raw_guard = None;
+                }
+                self.params.ir_path = None;
+            }
+        }
+
+        if !model_resolved && new_params.model_path.is_some() {
+            // Model was requested but could not be loaded. Clear the stale
+            // model metadata so the UI doesn't show the old model name.
+            self.params.model_path = None;
+            self.params.model_basename = None;
+        }
+
         self.shared.ui_to_rt.param_input_gain.store(
             self.params.input_gain_db.to_bits(),
             std::sync::atomic::Ordering::Relaxed,
@@ -136,60 +281,11 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
         );
         self.shared.bump_generation();
 
-        if let Some(path) = self.params.model_path.clone() {
-            if path.exists() {
-                if let Err(e) = self.load_model(&path) {
-                    log::warn!("Failed to restore saved model ({path:?}): {e}");
-                }
-            } else {
-                // Fallback: absolute path does not exist, try portable lookup via basename
-                if let Some(ref basename) = self.params.model_basename {
-                    let found =
-                        self.params
-                            .model_search_paths
-                            .clone()
-                            .into_iter()
-                            .find_map(|dir| {
-                                let candidate = dir.join(basename);
-                                if candidate.exists() {
-                                    Some(candidate)
-                                } else {
-                                    None
-                                }
-                            });
-                    if let Some(new_path) = found {
-                        log::info!(
-                            "Model not found at original path ({path:?}), using portable fallback: {new_path:?}"
-                        );
-                        if let Err(e) = self.load_model(&new_path) {
-                            log::warn!("Failed to restore model via fallback ({new_path:?}): {e}");
-                        }
-                    } else {
-                        log::warn!(
-                            "Saved model not found at path: {path:?} and basename {basename:?} not located in search paths"
-                        );
-                    }
-                } else {
-                    log::warn!("Saved model not found at path: {path:?}");
-                }
-            }
-        }
-
-        // Restore cab-sim IR if present in state.
-        // Follows the same SPSC pattern as model path load.
+        // IR cleanup when no IR in saved state and model may have been unloaded
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         {
-            let ir_path_opt = self.params.ir_path.clone();
-            if let Some(ref ir_path) = ir_path_opt {
-                if ir_path.exists() {
-                    if let Err(e) = self.load_cabsim(ir_path) {
-                        log::warn!("Failed to restore saved IR ({ir_path:?}): {e}");
-                    }
-                } else {
-                    log::warn!("Saved IR not found at path: {ir_path:?}");
-                }
-            } else {
-                // No IR in saved state: bypass cabsim by sending None engine.
+            if new_params.ir_path.is_none() && !ir_load_failed {
+                // No IR requested in new state — bypass cabsim
                 let _ = self
                     .param_tx
                     .push(ClapParamPayload::LoadCabIr { engine: None });

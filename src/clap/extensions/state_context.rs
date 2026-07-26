@@ -10,22 +10,19 @@
 //! See: `clap/ext/state-context.h`
 
 use crate::clap::extensions::params::bypass_bool_to_u32;
+use crate::clap::plugin::ClapParamPayload;
 use crate::clap::plugin::NamClapMainThread;
 use crate::clap::plugin::debug_assert_main_thread;
-use crate::common::diagnostics::NamDiagnostic;
 use crate::common::params::RtPluginParams;
+use crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED;
+use crate::dsp::resampler::NamResampler;
 use clack_common::stream::{InputStream, OutputStream};
 use clack_extensions::state_context::{
     PluginStateContext, PluginStateContextImpl, StateContextType,
 };
 use clack_plugin::prelude::*;
 use std::io::{Read, Write};
-
-#[derive(Debug, thiserror::Error)]
-enum StateContextError {
-    #[error("Failed to restore model from state: {0}")]
-    ModelRestore(#[source] NamDiagnostic),
-}
+use std::sync::atomic::Ordering;
 
 /// Type alias for the CLAP state-context extension registration.
 pub type NamPluginStateContext = PluginStateContext;
@@ -70,6 +67,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         let loaded_params = super::state::load_state(&buffer)?;
 
         if context_type == StateContextType::ForPreset {
+            // ══════ ForPreset: partial param merge + portable model lookup ══════
             self.params.input_gain_db = loaded_params.input_gain_db;
             self.params.output_gain_db = loaded_params.output_gain_db;
             self.params.gate_threshold_db = loaded_params.gate_threshold_db;
@@ -77,6 +75,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             self.params.adaptive_compute = loaded_params.adaptive_compute;
             self.params.slim_override = loaded_params.slim_override;
 
+            let mut model_load_failed = false;
             if let Some(ref basename) = loaded_params.model_basename {
                 let found = loaded_params
                     .model_search_paths
@@ -90,75 +89,164 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                             None
                         }
                     });
-                if let Some(new_path) = found
-                    && let Err(e) = self.load_model(&new_path)
-                {
-                    return Err(PluginError::Error(Box::new(
-                        StateContextError::ModelRestore(*e),
-                    )));
-                }
-            }
-        } else {
-            self.params = loaded_params;
-            if let Some(ref path) = self.params.model_path.clone() {
-                if path.exists() {
-                    if let Err(e) = self.load_model(path) {
-                        return Err(PluginError::Error(Box::new(
-                            StateContextError::ModelRestore(*e),
-                        )));
+                if let Some(new_path) = found {
+                    if let Err(e) = self.load_model(&new_path) {
+                        log::warn!("ForPreset: failed to restore model ({new_path:?}): {e}");
+                        model_load_failed = true;
                     }
                 } else {
-                    if let Some(ref basename) = self.params.model_basename {
-                        let found =
-                            self.params
-                                .model_search_paths
-                                .clone()
-                                .into_iter()
-                                .find_map(|dir| {
-                                    let candidate = dir.join(basename);
-                                    if candidate.exists() {
-                                        Some(candidate)
-                                    } else {
-                                        None
-                                    }
-                                });
-                        if let Some(new_path) = found {
-                            log::info!(
-                                "Model not found at original path ({path:?}), using portable fallback: {new_path:?}"
-                            );
-                            if let Err(e) = self.load_model(&new_path) {
-                                return Err(PluginError::Error(Box::new(
-                                    StateContextError::ModelRestore(*e),
-                                )));
+                    log::warn!("ForPreset: model basename {basename:?} not found in search paths");
+                    model_load_failed = true;
+                }
+            }
+
+            if model_load_failed {
+                let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
+                let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+                let bypass_resampler =
+                    Box::new(NamResampler::new(host_rate, host_rate, 0).map_err(|e| {
+                        PluginError::Message(Box::leak(
+                            format!("Failed to create bypass resampler: {e:?}").into_boxed_str(),
+                        ))
+                    })?);
+                let _ = self.param_tx.push(ClapParamPayload::LoadModel {
+                    model_l: None,
+                    new_resampler: bypass_resampler,
+                    input_mult_adj: 1.0,
+                    output_mult_adj: 1.0,
+                });
+                self.shared
+                    .cold
+                    .rt_status
+                    .set_flag(RT_STATUS_MODEL_LOAD_FAILED);
+                self.params.model_path = None;
+                self.params.model_basename = None;
+                if let Ok(mut name_guard) = self.shared.cold.ui_model_name.lock() {
+                    name_guard.clear();
+                }
+                log::error!(
+                    "NAM-rs: ForPreset restore failed — model not found. Old model unloaded."
+                );
+            }
+        } else {
+            // ══════ Non-ForPreset: full state restore (project, duplicate) ══════
+            let mut model_load_failed = false;
+
+            if let Some(ref path) = loaded_params.model_path.clone() {
+                if path.exists() {
+                    if let Err(e) = self.load_model(path) {
+                        log::warn!("Failed to restore model ({path:?}): {e}");
+                        model_load_failed = true;
+                    }
+                } else if let Some(ref basename) = loaded_params.model_basename {
+                    let found = loaded_params
+                        .model_search_paths
+                        .clone()
+                        .into_iter()
+                        .find_map(|dir| {
+                            let candidate = dir.join(basename);
+                            if candidate.exists() {
+                                Some(candidate)
+                            } else {
+                                None
                             }
-                        } else {
-                            log::warn!(
-                                "Saved model not found at path: {path:?} and basename {basename:?} not located in search paths"
-                            );
+                        });
+                    if let Some(new_path) = found {
+                        log::info!(
+                            "Model not found at original path ({path:?}), using portable fallback: {new_path:?}"
+                        );
+                        if let Err(e) = self.load_model(&new_path) {
+                            log::warn!("Failed to restore model via fallback ({new_path:?}): {e}");
+                            model_load_failed = true;
                         }
                     } else {
-                        log::warn!("Saved model not found at path: {path:?}");
+                        log::warn!(
+                            "Saved model not found at path: {path:?} and basename {basename:?} not located in search paths"
+                        );
+                        model_load_failed = true;
                     }
+                } else {
+                    log::warn!("Saved model not found at path: {path:?}");
+                    model_load_failed = true;
                 }
             }
 
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            {
-                let ir_path_opt = self.params.ir_path.clone();
-                if let Some(ref ir_path) = ir_path_opt {
+            let ir_load_failed = {
+                let mut failed = false;
+                if let Some(ref ir_path) = loaded_params.ir_path {
                     if ir_path.exists() {
                         if let Err(e) = self.load_cabsim(ir_path) {
                             log::warn!("Failed to restore saved IR ({ir_path:?}): {e}");
+                            failed = true;
                         }
                     } else {
                         log::warn!("Saved IR not found at path: {ir_path:?}");
+                        failed = true;
                     }
-                } else {
-                    use crate::clap::plugin::ClapParamPayload;
-                    let _ = self
-                        .param_tx
-                        .push(ClapParamPayload::LoadCabIr { engine: None });
                 }
+                failed
+            };
+
+            // ══════ Commit non-ForPreset ══════
+
+            if model_load_failed {
+                let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
+                let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+                let bypass_resampler =
+                    Box::new(NamResampler::new(host_rate, host_rate, 0).map_err(|e| {
+                        PluginError::Message(Box::leak(
+                            format!("Failed to create bypass resampler: {e:?}").into_boxed_str(),
+                        ))
+                    })?);
+                let _ = self.param_tx.push(ClapParamPayload::LoadModel {
+                    model_l: None,
+                    new_resampler: bypass_resampler,
+                    input_mult_adj: 1.0,
+                    output_mult_adj: 1.0,
+                });
+                self.shared
+                    .cold
+                    .rt_status
+                    .set_flag(RT_STATUS_MODEL_LOAD_FAILED);
+                if let Ok(mut name_guard) = self.shared.cold.ui_model_name.lock() {
+                    name_guard.clear();
+                }
+                log::error!(
+                    "NAM-rs: State-context restore failed — model not found. Old model unloaded."
+                );
+            }
+
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            if ir_load_failed {
+                let _ = self
+                    .param_tx
+                    .push(ClapParamPayload::LoadCabIr { engine: None });
+                log::error!(
+                    "NAM-rs: State-context restore failed — IR not found. Old IR unloaded."
+                );
+            }
+
+            self.params = loaded_params.clone();
+
+            if model_load_failed && self.params.model_path.is_some() {
+                self.params.model_path = None;
+                self.params.model_basename = None;
+            }
+
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            if ir_load_failed {
+                if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {
+                    *ir_guard = None;
+                }
+                if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
+                    *raw_guard = None;
+                }
+                self.params.ir_path = None;
+            } else if loaded_params.ir_path.is_none() {
+                let _ = self
+                    .param_tx
+                    .push(ClapParamPayload::LoadCabIr { engine: None });
             }
         }
 
@@ -188,7 +276,6 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         );
         self.shared.bump_generation();
 
-        use crate::clap::plugin::ClapParamPayload;
         let _ = self.param_tx.push(ClapParamPayload::Params(
             RtPluginParams::from_plugin_params(&self.params),
         ));
