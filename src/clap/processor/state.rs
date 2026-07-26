@@ -10,6 +10,7 @@ use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::cabsim::conv::ConvEngine;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::oversample::OversampleEngine;
+use crate::clap::processor::dsp::orchestrator::ScheduledEvent;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
@@ -65,6 +66,9 @@ pub struct NamClapProcessor<'a> {
     pub(crate) mono_hyst: DynamicHysteresis,
     /// Flag indicating whether we are processing in mono (for optimization).
     pub(crate) process_mono: bool,
+    /// Pre-allocated event buffer for host CLAP parameter events.
+    /// Cleared and refilled each process() cycle — zero alloc on RT thread.
+    pub(crate) scheduled_events: Vec<ScheduledEvent>,
 
     /// Status flags for RT telemetry.
     pub(crate) rt_status: Arc<RtStatusFlags>,

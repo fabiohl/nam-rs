@@ -18,7 +18,15 @@ use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::*;
 use std::sync::atomic::Ordering;
 
-const MAX_SCHEDULED_EVENTS: usize = 1024;
+const MAX_SCHEDULED_EVENTS: usize = 4096;
+
+#[derive(Clone, Copy)]
+pub(crate) struct ScheduledEvent {
+    pub(crate) time: usize,
+    pub(crate) param_id: u32,
+    pub(crate) value: f32,
+    pub(crate) is_mod: bool,
+}
 
 impl<'a> NamClapProcessor<'a> {
     #[inline(always)]
@@ -28,38 +36,44 @@ impl<'a> NamClapProcessor<'a> {
         input_events: &InputEvents,
         start_nanos: u64,
     ) -> Result<ProcessStatus, PluginError> {
-        let mut event_count: usize = 0;
-        let mut event_times: [usize; MAX_SCHEDULED_EVENTS] = [0; MAX_SCHEDULED_EVENTS];
-        let mut event_param_ids: [u32; MAX_SCHEDULED_EVENTS] = [0; MAX_SCHEDULED_EVENTS];
-        let mut event_values: [f32; MAX_SCHEDULED_EVENTS] = [0.0; MAX_SCHEDULED_EVENTS];
-        let mut event_is_mod: [bool; MAX_SCHEDULED_EVENTS] = [false; MAX_SCHEDULED_EVENTS];
+        {
+            let events = &mut self.scheduled_events;
+            events.clear();
 
-        for event in input_events {
-            if event_count >= MAX_SCHEDULED_EVENTS {
-                break;
-            }
-            let time = event.header().time() as usize;
-            if let Some(param_event) = event.as_event::<ParamValueEvent>() {
-                let Some(clap_id) = param_event.param_id() else {
-                    continue;
-                };
-                event_times[event_count] = time;
-                event_param_ids[event_count] = clap_id.get();
-                event_values[event_count] = param_event.value() as f32;
-                event_is_mod[event_count] = false;
-                event_count += 1;
-            } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
-                let Some(clap_id) = mod_event.param_id() else {
-                    continue;
-                };
-                event_times[event_count] = time;
-                event_param_ids[event_count] = clap_id.get();
-                event_values[event_count] = mod_event.amount() as f32;
-                event_is_mod[event_count] = true;
-                event_count += 1;
+            for event in input_events {
+                if events.len() >= MAX_SCHEDULED_EVENTS {
+                    debug_assert!(
+                        false,
+                        "CLAP-F007: event flood > {MAX_SCHEDULED_EVENTS} in one block; truncating"
+                    );
+                    break;
+                }
+                let time = event.header().time() as usize;
+                if let Some(param_event) = event.as_event::<ParamValueEvent>() {
+                    let Some(clap_id) = param_event.param_id() else {
+                        continue;
+                    };
+                    events.push(ScheduledEvent {
+                        time,
+                        param_id: clap_id.get(),
+                        value: param_event.value() as f32,
+                        is_mod: false,
+                    });
+                } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
+                    let Some(clap_id) = mod_event.param_id() else {
+                        continue;
+                    };
+                    events.push(ScheduledEvent {
+                        time,
+                        param_id: clap_id.get(),
+                        value: mod_event.amount() as f32,
+                        is_mod: true,
+                    });
+                }
             }
         }
 
+        let event_count = self.scheduled_events.len();
         let mut event_idx = 0;
 
         for mut port_pair in audio {
@@ -138,12 +152,12 @@ impl<'a> NamClapProcessor<'a> {
             let mut input_clipped = false;
 
             while block_offset < n_samples {
-                while event_idx < event_count && event_times[event_idx] < block_offset {
+                while event_idx < event_count && self.scheduled_events[event_idx].time < block_offset {
                     event_idx += 1;
                 }
 
                 let sub_end = if event_idx < event_count {
-                    let et = event_times[event_idx];
+                    let et = self.scheduled_events[event_idx].time;
                     if et < n_samples { et } else { n_samples }
                 } else {
                     n_samples
@@ -252,11 +266,12 @@ impl<'a> NamClapProcessor<'a> {
                     }
                 }
 
-                while event_idx < event_count && event_times[event_idx] == sub_end {
+                while event_idx < event_count && self.scheduled_events[event_idx].time == sub_end {
+                    let evt = &self.scheduled_events[event_idx];
                     apply_scheduled_event(
-                        event_param_ids[event_idx],
-                        event_values[event_idx],
-                        event_is_mod[event_idx],
+                        evt.param_id,
+                        evt.value,
+                        evt.is_mod,
                         &mut self.params,
                         &mut self.smoother_in,
                         &mut self.smoother_out,

@@ -118,10 +118,11 @@ graph TD
 
 ### Tarefas Técnicas S2
 
-- [ ] **S2-E2-T01 [Crítico] — Streaming Bounded de Eventos CLAP Sem Truncamento de Array Fixo**
+- [x] **S2-E2-T01 [Crítico] — Streaming Bounded de Eventos CLAP Sem Truncamento de Array Fixo**
   - **Origem:** E2-T01, CLAP-F007 | **Perfis:** Real-Time Data Structures Specialist
   - **Escopo:** Substituir o buffer estático de 1.024 eventos por um iterador/ringbuffer streaming pré-alocado que processe múltiplos eventos por frame sem truncar nem descartar automações.
   - **Critério de Aceite:** Injeção de 2.048 eventos no mesmo bloco é processada integralmente em ordem cronológica exata.
+  - **Conclusão (2026-07-26):** Estrutura `ScheduledEvent` (time/param_id/value/is_mod) substitui os 4 arrays paralelos fixos. `Vec<ScheduledEvent>` com capacity 4.096 é pré-alocado em `activate()` e reusado por `clear()` + `push()` em cada ciclo — zero alloc no RT thread. `MAX_SCHEDULED_EVENTS` subiu de 1.024 para 4.096. Acima de 4.096, `debug_assert!` reporta truncamento. 1.170 lib tests pass, clippy limpo. Testes de contenção `clap_e0` inalterados (3 pre-existing RED: F001/F007/F008).
 
 - [ ] **S2-E2-T02 [Crítico] — Fragmentação de Sub-Blocos por Eventos com Capacidade Flexível**
   - **Origem:** E2-T02, CLAP-F008 | **Perfis:** DSP Loop Architect

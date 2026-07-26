@@ -412,6 +412,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             silence_hyst,
             mono_hyst,
             process_mono: true,
+            scheduled_events: Vec::with_capacity(4096),
             rt_status: Arc::clone(&shared.cold.rt_status),
             adaptive_compute: AdaptiveCompute::new(
                 crate::common::params::AdaptiveComputeMode::Conservative,
