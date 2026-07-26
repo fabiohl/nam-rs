@@ -418,6 +418,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // ownership back for processor construction. Guard Drop is now a no-op.
         let channels = rollback.defuse();
 
+        let cabsim_tail_initial = cabsim_adapter
+            .as_ref()
+            .map_or(0, |a| a.tail_samples());
+
         Ok(Self {
             model_l,
             cabsim_adapter,
@@ -472,6 +476,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             last_render_mode: 0,
             realtime_activation: crate::common::params::ActivationPrecision::Standard,
             gain_lut: get_gain_lut(),
+            cabsim_tail_remaining: cabsim_tail_initial,
             host,
         })
     }

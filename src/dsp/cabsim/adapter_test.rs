@@ -441,3 +441,50 @@ fn deterministic_output() {
         );
     }
 }
+
+#[test]
+fn needs_flush_after_partial_input() {
+    let ir = synth_ir(64, 440.0, 10.0, 48000);
+    let mut adapter = adapter_from_ir(&ir, 64);
+
+    assert!(!adapter.needs_flush());
+    assert_eq!(adapter.tail_samples(), 128);
+
+    let signal: Vec<f32> = (0..32).map(|i| (i as f32 * 0.01).sin()).collect();
+    let mut out = vec![0.0f32; 32];
+    adapter.process_variable(&signal, &mut out);
+    assert!(adapter.needs_flush());
+}
+
+#[test]
+fn needs_flush_cleared_when_drained() {
+    let ir = synth_ir(32, 440.0, 10.0, 48000);
+    let mut adapter = adapter_from_ir(&ir, 32);
+
+    let signal: Vec<f32> = (0..64).map(|i| (i as f32 * 0.01).sin()).collect();
+    let mut out = vec![0.0f32; 32];
+    adapter.process_variable(&signal[..32], &mut out);
+    assert!(!adapter.needs_flush());
+
+    let mut out2 = vec![0.0f32; 32];
+    adapter.process_variable(&signal[32..], &mut out2);
+    assert!(!adapter.needs_flush());
+}
+
+#[test]
+fn tail_samples_passthrough_returns_zero() {
+    let engine = Box::new(ConvEngine::new(&[], 64).expect("construction failed"));
+    let adapter = CabSimAdapter::new(engine).expect("adapter construction should succeed");
+    assert!(adapter.is_passthrough());
+    assert_eq!(adapter.tail_samples(), 0);
+    assert!(!adapter.needs_flush());
+}
+
+#[test]
+fn tail_samples_single_partition() {
+    let ir = synth_ir(30, 500.0, 10.0, 48000);
+    let partition = 64;
+    let adapter = adapter_from_ir(&ir, partition);
+    assert_eq!(adapter.tail_samples(), 128);
+    assert_eq!(adapter.num_partitions(), 1);
+}

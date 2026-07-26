@@ -171,10 +171,11 @@ graph TD
   - **Critério de Aceite:** Resposta ao impulso pelo plugin CLAP coincide com o oráculo de convolução direta; zero contaminação cruzada.
   - **Conclusão:** `CabSimAdapter` (S3-E3-T01) integrado no `process_sub_block` e `process_crossfade_sub_block` do orquestrador CLAP entre `run_inference` e `apply_output_stage`. Processa canal mono via `process_variable`, usa `buf_model_l` como scratch e copia resultado para `buf_out_l`. Saída L duplicada para R (mono→stereo). Latência do CabSim incluída em `current_latency` (events.rs e mod.rs). SPSC payload (`LoadCabIr`) e GC item (`CabConvAdapter`) atualizados. `DeactivatedDspState` preserva `CabSimAdapter`. 93/96 testes CLAP passam (3 falhas pré-existentes em gain automation).
 
-- [ ] **S3-E3-T03 [Alta] — Processamento Causal de Cauda (Tail) e Drain durante Silêncio**
+- [x] **S3-E3-T03 [Alta] — Processamento Causal de Cauda (Tail) e Drain durante Silêncio**
   - **Origem:** E3-T03, CLAP-F003, CLAP-F005 | **Perfis:** Real-Time DSP Engineer
   - **Escopo:** Continuar drenando a cauda do `ConvEngine` e dos smoothers após a cessação do sinal de entrada até a cauda zerar completamente. Anunciar a duração exata da cauda ao host.
   - **Critério de Aceite:** A cauda da resposta ao impulso é renderizada até o fim em silêncio sem truncamento; `tail_get()` reporta extensão exata em frames.
+  - **Conclusão:** Adicionados `needs_flush()`, `tail_samples()` e `engine_mut()` ao `CabSimAdapter`. Campo `cabsim_tail_remaining` em `NamClapProcessor`, inicializado em `activate()` e `cold_load_cabsim()`. Nova função `process_tail_drain` no orquestrador: quando `GateState::Closed` e `cabsim_tail_remaining > 0`, alimenta o adaptador com blocos de zeros, processa pelo `process_variable`, aplica output stage e smoother_out, decrementa contador. Cauda esgotada → silêncio verdadeiro. `tail_get()` já reportava `current_latency + cabsim_tail_samples` ao host. 93/96 testes CLAP passam.
 
 - [ ] **S3-E3-T04 [Alta] — Reconstrução de IR em Mudanças de Sample Rate e Buffer**
   - **Origem:** E3-T04, CLAP-F014 | **Perfis:** Audio Resampling & Asset Specialist

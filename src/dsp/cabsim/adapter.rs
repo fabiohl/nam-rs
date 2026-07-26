@@ -90,6 +90,31 @@ impl CabSimAdapter {
         &self.engine
     }
 
+    /// Returns a mutable reference to the inner [`ConvEngine`].
+    #[inline(always)]
+    pub fn engine_mut(&mut self) -> &mut ConvEngine {
+        &mut self.engine
+    }
+
+    /// Returns `true` if the adapter has unprocessed input in its
+    /// accumulator or unconsumed output in its queue.
+    #[inline(always)]
+    pub fn needs_flush(&self) -> bool {
+        self.input_count > 0 || self.output_read < self.output_write
+    }
+
+    /// Returns the estimated number of non-silent output samples remaining
+    /// before the IR tail is fully drained. Blocks the round number of
+    /// partitions needed to flush the FDL plus the accumulated input.
+    #[inline(always)]
+    pub fn tail_samples(&self) -> usize {
+        if self.engine.is_passthrough() {
+            return 0;
+        }
+        self.engine.num_partitions().saturating_mul(self.partition)
+            + self.partition // one extra block for adapter fifo accumulator
+    }
+
     /// Processes a variable-size sub-block through the convolution engine.
     ///
     /// Accumulates samples until a full partition is ready, then runs

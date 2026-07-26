@@ -223,6 +223,7 @@ impl<'a> NamClapProcessor<'a> {
                             model_output_mult_adj,
                             shared_sample_rate,
                             self.gain_lut,
+                            &mut self.cabsim_tail_remaining,
                         )
                     };
 
@@ -369,6 +370,7 @@ fn process_sub_block(
     model_output_mult_adj: f32,
     shared_sample_rate: u32,
     gain_lut: &crate::math::dsp::gain_lut::GainLUT,
+    cabsim_tail_remaining: &mut usize,
 ) -> (usize, GateState) {
     if crossfader.active {
         return process_crossfade_sub_block(
@@ -400,6 +402,7 @@ fn process_sub_block(
             model_output_mult_adj,
             shared_sample_rate,
             gain_lut,
+            cabsim_tail_remaining,
         );
     }
 
@@ -433,6 +436,24 @@ fn process_sub_block(
     );
 
     if gate_state == GateState::Closed {
+        if *cabsim_tail_remaining > 0 {
+            return process_tail_drain(
+                n_samples,
+                out_l,
+                out_r,
+                output_offset,
+                ctx,
+                process_mono,
+                smoother_out,
+                buf_out_l,
+                buf_out_r,
+                buf_model_l,
+                buf_model_r,
+                model_output_mult_adj,
+                shared_sample_rate,
+                cabsim_tail_remaining,
+            );
+        }
         copy_silence_to_output(out_l, out_r, output_offset, n_samples, process_mono);
         return (n_samples, GateState::Closed);
     }
@@ -512,6 +533,90 @@ fn process_sub_block(
     (n_out, gate_state)
 }
 
+/// Drains the cab-sim IR tail ring-out after the noise gate closes.
+///
+/// Feeds zero-input blocks through the convolution adapter and output stage.
+/// The tail counter (`cabsim_tail_remaining`) is decremented until zero, after
+/// which the caller switches to true silence.
+#[inline(always)]
+fn process_tail_drain(
+    n_samples: usize,
+    out_l: &mut Option<&mut [f32]>,
+    out_r: &mut Option<&mut [f32]>,
+    output_offset: usize,
+    ctx: &mut DspPipelineContext<'_>,
+    process_mono: bool,
+    smoother_out: &mut crate::dsp::smoother::ParamSmoother,
+    buf_out_l: &mut [f32],
+    buf_out_r: &mut [f32],
+    buf_model_l: &mut [f32],
+    _buf_model_r: &mut [f32],
+    model_output_mult_adj: f32,
+    shared_sample_rate: u32,
+    cabsim_tail_remaining: &mut usize,
+) -> (usize, GateState) {
+    let drain = n_samples.min(*cabsim_tail_remaining);
+
+    buf_out_l[..drain].fill(0.0);
+    buf_out_r[..drain].fill(0.0);
+
+    if let Some(ref mut conv) = ctx.conv {
+        if !conv.is_passthrough() {
+            conv.process_variable(
+                &buf_out_l[..drain],
+                &mut buf_model_l[..drain],
+            );
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    buf_model_l.as_ptr(),
+                    buf_out_l.as_mut_ptr(),
+                    drain,
+                );
+                core::ptr::copy_nonoverlapping(
+                    buf_out_l.as_ptr(),
+                    buf_out_r.as_mut_ptr(),
+                    drain,
+                );
+            }
+        }
+    }
+
+    apply_output_stage(
+        &mut buf_out_l[..drain],
+        &mut buf_out_r[..drain],
+        drain,
+        model_output_mult_adj,
+        ctx.silence_hysteresis,
+        ctx.rt_status,
+        *ctx.process_mono,
+        ctx.adaptive,
+        shared_sample_rate,
+    );
+
+    apply_iir_gain_ramp_sub_block(
+        smoother_out,
+        buf_out_l,
+        buf_out_r,
+        0,
+        drain,
+        false,
+        &mut false,
+    );
+
+    copy_output_from_sub_block(
+        out_l,
+        out_r,
+        buf_out_l,
+        buf_out_r,
+        drain,
+        output_offset,
+        process_mono,
+    );
+
+    *cabsim_tail_remaining -= drain;
+    (drain, GateState::Closed)
+}
+
 #[inline(always)]
 #[expect(clippy::too_many_arguments)]
 fn process_crossfade_sub_block(
@@ -543,6 +648,7 @@ fn process_crossfade_sub_block(
     model_output_mult_adj: f32,
     shared_sample_rate: u32,
     _gain_lut: &crate::math::dsp::gain_lut::GainLUT,
+    cabsim_tail_remaining: &mut usize,
 ) -> (usize, GateState) {
     // 1. Save dry input before pipeline modifies buf_host in place
     let dry_n = n_samples.min(buf_xfade_dry_l.len());
@@ -571,11 +677,56 @@ fn process_crossfade_sub_block(
     );
 
     let n_out = if gate_state == GateState::Closed {
-        // Gate closed: wet = silence, dry = original input.
-        // Crossfade still blends dry→silence smoothly.
-        buf_out_l[..n_samples].fill(0.0);
-        buf_out_r[..n_samples].fill(0.0);
-        n_samples
+        if *cabsim_tail_remaining > 0 {
+            let drain = n_samples.min(*cabsim_tail_remaining);
+            if let Some(ref mut conv) = ctx.conv {
+                if !conv.is_passthrough() {
+                    buf_out_l[..drain].fill(0.0);
+                    conv.process_variable(
+                        &buf_out_l[..drain],
+                        &mut buf_model_l[..drain],
+                    );
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            buf_model_l.as_ptr(),
+                            buf_out_l.as_mut_ptr(),
+                            drain,
+                        );
+                        core::ptr::copy_nonoverlapping(
+                            buf_out_l.as_ptr(),
+                            buf_out_r.as_mut_ptr(),
+                            drain,
+                        );
+                    }
+                }
+            }
+            apply_output_stage(
+                &mut buf_out_l[..drain],
+                &mut buf_out_r[..drain],
+                drain,
+                model_output_mult_adj,
+                ctx.silence_hysteresis,
+                ctx.rt_status,
+                *ctx.process_mono,
+                ctx.adaptive,
+                shared_sample_rate,
+            );
+            apply_iir_gain_ramp_sub_block(
+                smoother_out,
+                buf_out_l,
+                buf_out_r,
+                0,
+                drain,
+                false,
+                &mut false,
+            );
+            *cabsim_tail_remaining -= drain;
+            drain
+        } else {
+            buf_out_l[..n_samples].fill(0.0);
+            buf_out_r[..n_samples].fill(0.0);
+            n_samples
+        }
     } else {
         let n_o = run_inference(
             &mut buf_host_l[offset..offset + n_samples],

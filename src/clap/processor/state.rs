@@ -198,6 +198,10 @@ pub struct NamClapProcessor<'a> {
     pub(crate) realtime_activation: ActivationPrecision,
     /// Pre-resolved gain LUT reference, hoisted from process_events hot-path.
     pub(crate) gain_lut: &'static GainLUT,
+    /// Remaining cab-sim tail samples to drain after the noise gate closes.
+    /// Decremented by `process_tail_drain` until zero, at which point the
+    /// tail ring-out is complete and true silence can be emitted.
+    pub(crate) cabsim_tail_remaining: usize,
     /// Host audio processor handle, stored for host extension queries on the audio thread.
     #[expect(
         dead_code,
