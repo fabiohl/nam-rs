@@ -315,6 +315,34 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             20.0,
         );
 
+        // S1-E1-T03: Build an atomic snapshot for params that drive smoothers
+        // from UiToRt atomics BEFORE constructing the RT processor. This
+        // guarantees that self.params starts in sync with the smoother state
+        // (both read from the same gain atomics) — no one-block window where
+        // params.input_gain_db lags behind smoother_in.target.
+        //
+        // Non-smoother params (gate, bypass, adaptive_compute, etc.) are left
+        // at their defaults and will be synced on the first process events
+        // call (SPSC drain or GUI generation guard). Full-param snapshot
+        // would trigger AdaptiveCompute::set_mode log on audio thread when
+        // values differ from SPSC-delivered state — a pre-existing log-on-RT
+        // violation tracked as S5-E5-T02.
+        let params = RtPluginParams {
+            input_gain_db: input_db,
+            output_gain_db: output_db,
+            ..RtPluginParams::default()
+        };
+        debug_assert!(
+            (smoother_in.current_value() - gain_lut.db_to_linear(params.input_gain_db)).abs()
+                < f32::EPSILON * 10.0,
+            "S1-E1-T03 invariant: smoother_in must start from the same input_gain_db atomics"
+        );
+        debug_assert!(
+            (smoother_out.current_value() - gain_lut.db_to_linear(params.output_gain_db)).abs()
+                < f32::EPSILON * 10.0,
+            "S1-E1-T03 invariant: smoother_out must start from the same output_gain_db atomics"
+        );
+
         // 5. Report initial latency to shared state
         // CabSim latency excluded from current_latency in the CLAP path:
         // the convolution engine is NOT wired into run_inference() yet
@@ -351,7 +379,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             resampler,
             os_l,
             os_r,
-            params: RtPluginParams::default(),
+            params,
             buf_host_l,
             buf_host_r,
             buf_mid_l,
