@@ -16,6 +16,8 @@ use super::shared::{ClapParamPayload, NamClapShared, PendingModel};
 use crate::common::diagnostics::SystemSnapshot;
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::{self, GcItem};
+use crate::dsp::pipeline::MAX_RESAMP_BUF;
+use crate::dsp::resampler::NamResampler;
 use crate::models::{NamModel, StaticModel};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
@@ -96,10 +98,23 @@ impl<'a> NamClapMainThread<'a> {
 
         let PendingModel {
             model: mut model_l,
-            resampler: new_resampler,
+            model_rate,
             input_mult_adj,
             output_mult_adj,
         } = p;
+
+        let sample_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
+
+        // S1-E1-T02: construct the resampler HERE with the real host sample rate
+        // and buffer capacity — both are known now that activate() has been called.
+        let buf_capacity = buffer_size.max(MAX_RESAMP_BUF).max(1024) * 2;
+        let new_resampler = Box::new(
+            NamResampler::new(sample_rate, model_rate, buf_capacity).map_err(|e| {
+                PluginError::Message(Box::leak(
+                    format!("Failed to create deferred resampler: {:?}", e).into_boxed_str(),
+                ))
+            })?,
+        );
 
         if let Some(ref mut model) = model_l
             && let Err(e) = model.set_max_buffer_size(buffer_size)

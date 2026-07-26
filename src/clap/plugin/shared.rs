@@ -280,13 +280,17 @@ pub struct ColdShared {
 }
 
 /// Model payload deferred from the main thread until `buffer_size` is known
-/// (state-restore-before-activate scenario). Carries all fields of a
-/// `ClapParamPayload::LoadModel` for deferred SPSC delivery.
+/// (state-restore-before-activate scenario). Carries the model and enough
+/// metadata for `flush_pending_model()` to construct the resampler with the
+/// correct host sample rate and buffer capacity — both unknown during pre-activation
+/// state restore. See CLAP-F003, S1-E1-T02.
 pub struct PendingModel {
     /// The encapsulated model for neural inference (Left Channel).
     pub model: Option<Box<StaticModel>>,
-    /// Polyphase sinc resampler.
-    pub resampler: Box<NamResampler>,
+    /// Model native sample rate read from the .nam file metadata.
+    /// Used to construct the polyphase resampler at flush time when
+    /// `activate()` has set the real host `sample_rate`.
+    pub model_rate: u32,
     /// Model input gain calibration multiplier.
     pub input_mult_adj: f32,
     /// Model output gain calibration multiplier.

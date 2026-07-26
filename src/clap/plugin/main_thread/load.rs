@@ -163,13 +163,15 @@ impl<'a> NamClapMainThread<'a> {
                     )
                 })?;
         } else {
-            // F3: defer sending until `buffer_size` becomes known (activate/housekeeping).
-            // Avoids heap alloc + mmap/munmap/memfd_create + drop on the audio thread
-            // (state-restore-before-activate scenario).
+            // F3 / S1-E1-T02: defer sending until `buffer_size` and `sample_rate`
+            // become known in `activate()`. The resampler is NOT constructed here
+            // because the host sample rate is unknown during pre-activation state
+            // restore (defaults to 48000). `flush_pending_model()` builds the
+            // resampler with the correct rates determined at activate() time.
             if let Ok(mut pending_guard) = self.shared.cold.pending_model.lock() {
                 *pending_guard = Some(PendingModel {
                     model: model_l,
-                    resampler: new_resampler,
+                    model_rate,
                     input_mult_adj,
                     output_mult_adj,
                 });

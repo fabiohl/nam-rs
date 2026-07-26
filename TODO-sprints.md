@@ -77,10 +77,11 @@ graph TD
   - **Critério de Aceite:** `deactivate` move recursos para `DeactivatedDspState` sem destruí-los; `activate` os reinstala deterministicamente sem recarregar do disco.
   - **Conclusão (2026-07-26):** `DeactivatedDspState` implementado em `src/clap/processor/deactivated.rs`, armazenado em `ColdShared::deactivated_dsp`. `deactivate()` move model_l, conv_engine, resampler, os_l, os_r e calibração para o struct. `activate()` restaura com validação de invariantes: resampler reutilizado se `sample_rate` coincide, ConvEngine reconstruído apenas se `buffer_size` mudou. Lints (clippy/core/standalone/CLAP) e `tests-quick.sh` passam limpos. Impacto em T02: modelo agora sobrevive a ciclos deactivate/activate, reduzindo necessidade de recarga do disco no restore pré-ativação.
 
-- [ ] **S1-E1-T02 [Crítico] — Restore Pré-Ativação Declarativo e Alocação Exclusiva em Activate**
+- [x] **S1-E1-T02 [Crítico] — Restore Pré-Ativação Declarativo e Alocação Exclusiva em Activate**
   - **Origem:** E1-T02, CLAP-F003 | **Perfis:** Engenheiro de Plugin CLAP & State Specialist
   - **Escopo:** Tornar o restore de state pré-ativação puramente declarativo. Alocar e construir buffers dependentes da taxa de amostragem (`sample_rate`) e tamanho máximo de bloco (`max_buffer_size`) exclusivamente durante o callback `activate()`.
   - **Critério de Aceite:** Mudança de sample rate pelo host reconstrói resamplers na taxa correta sem vazamento nem buffer overflow.
+  - **Conclusão (2026-07-26):** `PendingModel` alterado para armazenar `model_rate: u32` em vez de `Box<NamResampler>`. O resampler NÃO é mais construído em `load_model()` durante o restore pré-ativação — apenas metadados declarativos são persistidos. `flush_pending_model()` (chamado em `activate()`) agora constrói o resampler com `sample_rate` e `buf_capacity` corretos: `buffer_size.max(MAX_RESAMP_BUF).max(1024) * 2`. O bypass resampler em `state.rs` (rollback de falha) mantém comportamento existente — a taxa default de 48000 é aceitável pois `model_l = None` elimina a inferência. State tests (19) e tests-quick.sh (18) passam; 1257 lib tests passam (2 flaky pré-existentes em diagnostic_test). Impacto: remove a única fonte de resampler com taxa incorreta no fluxo de restore pré-ativação, completando CLAP-F003.
 
 - [ ] **S1-E1-T03 [Alta] — Snapshot RT Completo a Partir dos Atômicos com Validação de Invariantes**
   - **Origem:** E1-T03, CLAP-F014 | **Perfis:** Concurrency Specialist & Real-Time QA
