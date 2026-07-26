@@ -20,6 +20,63 @@ use clack_plugin::host::HostAudioProcessorHandle;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
 
+pub(crate) const BYPASS_XFADE_SAMPLES: usize = 64;
+const BYPASS_XFADE_INV: f32 = 1.0 / BYPASS_XFADE_SAMPLES as f32;
+
+/// Sample-accurate bypass crossfade state machine.
+///
+/// When bypass toggles via CLAP host event, a 64-sample linear crossfade
+/// blends between the dry (passthrough) and wet (pipeline) signals to
+/// prevent click artifacts and phase discontinuities.
+///
+/// Direction:
+/// - `mix = 0` → fully dry (bypass ON)
+/// - `mix = 1` → fully wet (bypass OFF = pipeline running)
+/// - On un-bypass (OFF→ON or equiv): `step = +INV`, ramp from current to target
+/// - On bypass (ON→OFF or equiv): `step = -INV`, ramp from current to target
+#[derive(Clone, Copy)]
+pub(crate) struct BypassCrossfader {
+    /// Target bypass state (false = pipeline, true = bypass).
+    pub(crate) target: bool,
+    /// Whether a crossfade is in progress.
+    pub(crate) active: bool,
+    /// Current mix position [0.0 = dry, 1.0 = wet].
+    pub(crate) mix: f32,
+    /// Per-sample step for the mix ramp.
+    pub(crate) step: f32,
+    /// Samples remaining in the crossfade.
+    pub(crate) remaining: usize,
+}
+
+impl BypassCrossfader {
+    pub(crate) fn new(initial_bypass: bool) -> Self {
+        let mix = if initial_bypass { 0.0 } else { 1.0 };
+        Self {
+            target: initial_bypass,
+            active: false,
+            mix,
+            step: 0.0,
+            remaining: 0,
+        }
+    }
+
+    /// Trigger a crossfade towards the given bypass state.
+    /// If already at or transitioning to `target`, does nothing.
+    pub(crate) fn trigger(&mut self, target: bool) {
+        if self.target == target {
+            return;
+        }
+        self.target = target;
+        self.active = true;
+        self.remaining = BYPASS_XFADE_SAMPLES;
+        if target {
+            self.step = -BYPASS_XFADE_INV;
+        } else {
+            self.step = BYPASS_XFADE_INV;
+        }
+    }
+}
+
 /// RT-safe audio processor. Runs on the host's audio thread.
 ///
 /// Holds pre-allocated buffers and mutable inference state.
@@ -69,6 +126,13 @@ pub struct NamClapProcessor<'a> {
     /// Pre-allocated event buffer for host CLAP parameter events.
     /// Cleared and refilled each process() cycle — zero alloc on RT thread.
     pub(crate) scheduled_events: Vec<ScheduledEvent>,
+    /// Bypass crossfade state machine for click-free bypass transitions.
+    pub(crate) bypass_xfade: BypassCrossfader,
+    /// Dry input signal storage for bypass crossfade blending.
+    /// Pipeline modifies buf_host_l/r in place; these preserve the
+    /// original dry signal during crossfade for blend computation.
+    pub(crate) buf_xfade_dry_l: AlignedVec<f32>,
+    pub(crate) buf_xfade_dry_r: AlignedVec<f32>,
 
     /// Status flags for RT telemetry.
     pub(crate) rt_status: Arc<RtStatusFlags>,

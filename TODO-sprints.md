@@ -130,10 +130,11 @@ graph TD
   - **Critério de Aceite:** Automação de parâmetros em posições arbitrárias produz resultado sample-accurate em qualquer tamanho de bloco host.
   - **Conclusão (2026-07-26):** Removido `process_bypass()` precoce do início do loop de port pairs em `orchestrator.rs:98`. O sub-block loop existente já fragmentava blocos nos boundaries exatos de eventos e aplicava bypass corretamente por sub-bloco; o problema era o `continue` que pulava o loop inteiro quando `self.params.bypass` estava ativo. Agora o loop sempre roda: canais são extraídos, eventos são aplicados sample-accurately em cada sub-bloco, e a decisão bypass/wet é tomada por sub-bloco. `process_bypass()` e `process_bypass_cold()` removidos (dead code). Teste `test_f008_bypass_blocks_host_events` corrigido: verifica `ui_to_rt.param_bypass` atômico pós-evento (era RED, agora GREEN). 1170 lib tests pass, clippy limpo. F007 e F001 permanecem RED (escopos S2-E2-T05 e S3 respectivamente).
 
-- [ ] **S2-E2-T03 [Alta] — Scheduler Unificado de Bypass e Signal Path Wet**
+- [x] **S2-E2-T03 [Alta] — Scheduler Unificado de Bypass e Signal Path Wet**
   - **Origem:** E2-T03, CLAP-F011 | **Perfis:** Audio Pipeline Engineer
   - **Escopo:** Unificar o caminho de bypass e o caminho wet sob o mesmo scheduler de amostras, garantindo crossfade ou chaveamento na amostra exata sem artefato de clique ou salto de fase.
   - **Critério de Aceite:** Alternar bypass On/Off durante sinal contínuo não produz estouro temporal nem descontinuidade de fase.
+  - **Conclusão (2026-07-26):** Implementado `BypassCrossfader` com crossfade linear de 64 amostras (~1,33ms @48kHz) entre dry (bypass) e wet (pipeline). A máquina de estados reside em `NamClapProcessor.bypass_xfade` e é acionada quando `self.params.bypass` diverge de `xfade.target` — seja via host event (sample-accurate no sub-block boundary) ou sync SPSC/GUI. `process_crossfade_sub_block()` salva o sinal dry em `buf_xfade_dry_l/r` (pré-alocados no `activate()`), executa o pipeline completo para obter wet, e faz o blend: `output[i] = dry[i] + (wet[i] - dry[i]) * mix_i`. `mix_i` segue rampa linear de 0↔1 controlada por `step` (±1/64 por amostra). Bypass/Wet permanecem sob o mesmo sub-block scheduler (S2-E2-T02). 1170 lib tests pass, clippy limpo, F008 mantém GREEN. F001 e F007 permanecem RED (escopos futuros).
 
 - [ ] **S2-E2-T04 [Alta] — Smoothing Temporal Vetorizado Único**
   - **Origem:** E2-T04, CLAP-F012 | **Perfis:** SIMD & DSP Optimization Specialist

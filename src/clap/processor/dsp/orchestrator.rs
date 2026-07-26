@@ -7,6 +7,7 @@ use crate::clap::extensions::params::{
     PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE,
 };
 use crate::clap::processor::dsp::{channels, peaks};
+use crate::clap::processor::state::BypassCrossfader;
 use crate::common::spsc::RT_STATUS_HOST_CONTRACT_VIOLATION;
 use crate::dsp::gate::GateState;
 use crate::dsp::gate_flags;
@@ -147,6 +148,11 @@ impl<'a> NamClapProcessor<'a> {
 
             let mut input_clipped = false;
 
+            // Sync crossfader with current bypass state. If bypass was changed
+            // by SPSC event sync (process_events) before this block, trigger
+            // the crossfade to avoid click artifacts.
+            self.bypass_xfade.trigger(self.params.bypass);
+
             while block_offset < n_samples {
                 while event_idx < event_count && self.scheduled_events[event_idx].time < block_offset {
                     event_idx += 1;
@@ -194,6 +200,9 @@ impl<'a> NamClapProcessor<'a> {
                             &mut ctx,
                             bypass,
                             process_mono,
+                            &mut self.bypass_xfade,
+                            &mut self.buf_xfade_dry_l,
+                            &mut self.buf_xfade_dry_r,
                             &mut input_clipped,
                             &mut self.smoother_in,
                             &mut self.smoother_out,
@@ -294,6 +303,10 @@ impl<'a> NamClapProcessor<'a> {
                     self.gate_dirty = false;
                 }
 
+                // Trigger bypass crossfade if the bypass state changed via
+                // a host event at this sub-block boundary.
+                self.bypass_xfade.trigger(self.params.bypass);
+
                 block_offset = sub_end;
             }
 
@@ -333,6 +346,9 @@ fn process_sub_block(
     ctx: &mut DspPipelineContext<'_>,
     bypass: bool,
     process_mono: bool,
+    crossfader: &mut BypassCrossfader,
+    buf_xfade_dry_l: &mut [f32],
+    buf_xfade_dry_r: &mut [f32],
     input_clipped: &mut bool,
     smoother_in: &mut crate::dsp::smoother::ParamSmoother,
     smoother_out: &mut crate::dsp::smoother::ParamSmoother,
@@ -352,6 +368,39 @@ fn process_sub_block(
     shared_sample_rate: u32,
     gain_lut: &crate::math::dsp::gain_lut::GainLUT,
 ) -> (usize, GateState) {
+    if crossfader.active {
+        return process_crossfade_sub_block(
+            offset,
+            n_samples,
+            out_l,
+            out_r,
+            output_offset,
+            ctx,
+            process_mono,
+            crossfader,
+            buf_xfade_dry_l,
+            buf_xfade_dry_r,
+            input_clipped,
+            smoother_in,
+            smoother_out,
+            buf_host_l,
+            buf_host_r,
+            buf_mid_l,
+            buf_mid_r,
+            buf_out_l,
+            buf_out_r,
+            buf_model_l,
+            buf_model_r,
+            buf_os_in_l,
+            buf_os_in_r,
+            buf_os_model_l,
+            buf_os_model_r,
+            model_output_mult_adj,
+            shared_sample_rate,
+            gain_lut,
+        );
+    }
+
     if bypass {
         copy_bypass_to_output(
             out_l,
@@ -417,6 +466,152 @@ fn process_sub_block(
 
     apply_output_gain_sub_block_inner(smoother_out, buf_out_l, buf_out_r, n_out);
 
+    copy_output_from_sub_block(
+        out_l,
+        out_r,
+        buf_out_l,
+        buf_out_r,
+        n_out,
+        output_offset,
+        process_mono,
+    );
+
+    (n_out, gate_state)
+}
+
+#[inline(always)]
+#[expect(clippy::too_many_arguments)]
+fn process_crossfade_sub_block(
+    offset: usize,
+    n_samples: usize,
+    out_l: &mut Option<&mut [f32]>,
+    out_r: &mut Option<&mut [f32]>,
+    output_offset: usize,
+    ctx: &mut DspPipelineContext<'_>,
+    process_mono: bool,
+    crossfader: &mut BypassCrossfader,
+    buf_xfade_dry_l: &mut [f32],
+    buf_xfade_dry_r: &mut [f32],
+    input_clipped: &mut bool,
+    smoother_in: &mut crate::dsp::smoother::ParamSmoother,
+    smoother_out: &mut crate::dsp::smoother::ParamSmoother,
+    buf_host_l: &mut [f32],
+    buf_host_r: &mut [f32],
+    buf_mid_l: &mut [f32],
+    buf_mid_r: &mut [f32],
+    buf_out_l: &mut [f32],
+    buf_out_r: &mut [f32],
+    buf_model_l: &mut [f32],
+    buf_model_r: &mut [f32],
+    buf_os_in_l: &mut [f32],
+    buf_os_in_r: &mut [f32],
+    buf_os_model_l: &mut [f32],
+    buf_os_model_r: &mut [f32],
+    model_output_mult_adj: f32,
+    shared_sample_rate: u32,
+    gain_lut: &crate::math::dsp::gain_lut::GainLUT,
+) -> (usize, GateState) {
+    // 1. Save dry input before pipeline modifies buf_host in place
+    let dry_n = n_samples.min(buf_xfade_dry_l.len());
+    buf_xfade_dry_l[..dry_n].copy_from_slice(&buf_host_l[offset..offset + dry_n]);
+    #[cfg(feature = "stereo")]
+    buf_xfade_dry_r[..dry_n].copy_from_slice(&buf_host_r[offset..offset + dry_n]);
+    #[cfg(not(feature = "stereo"))]
+    buf_xfade_dry_r[..dry_n].copy_from_slice(&buf_xfade_dry_l[..dry_n]);
+
+    // 2. Run full wet pipeline
+    apply_input_gain_sub_block_inner(
+        smoother_in,
+        gain_lut,
+        buf_host_l,
+        buf_host_r,
+        offset,
+        n_samples,
+        input_clipped,
+    );
+
+    let gate_state = apply_input_stage(
+        &mut buf_host_l[offset..offset + n_samples],
+        &mut buf_host_r[offset..offset + n_samples],
+        n_samples,
+        ctx,
+    );
+
+    let n_out = if gate_state == GateState::Closed {
+        // Gate closed: wet = silence, dry = original input.
+        // Crossfade still blends dry→silence smoothly.
+        buf_out_l[..n_samples].fill(0.0);
+        buf_out_r[..n_samples].fill(0.0);
+        n_samples
+    } else {
+        let n_o = run_inference(
+            &mut buf_host_l[offset..offset + n_samples],
+            &mut buf_host_r[offset..offset + n_samples],
+            n_samples,
+            ctx,
+            buf_mid_l,
+            buf_mid_r,
+            buf_out_l,
+            buf_out_r,
+            buf_model_l,
+            buf_model_r,
+            buf_os_in_l,
+            buf_os_in_r,
+            buf_os_model_l,
+            buf_os_model_r,
+        );
+
+        apply_output_stage(
+            &mut buf_out_l[..n_o],
+            &mut buf_out_r[..n_o],
+            n_o,
+            model_output_mult_adj,
+            ctx.silence_hysteresis,
+            ctx.rt_status,
+            *ctx.process_mono,
+            ctx.adaptive,
+            shared_sample_rate,
+        );
+
+        apply_output_gain_sub_block_inner(smoother_out, buf_out_l, buf_out_r, n_o);
+
+        n_o
+    };
+
+    // 3. Crossfade blend: output = dry * (1 - mix_i) + wet * mix_i
+    let n_xfade = n_out.min(crossfader.remaining);
+    let step = crossfader.step;
+    let mut mix = crossfader.mix;
+
+    // Blended portion (first n_xfade samples): ramp from current mix towards target
+    for i in 0..n_xfade {
+        let dry_l = buf_xfade_dry_l[i];
+        let dry_r = buf_xfade_dry_r[i];
+        buf_out_l[i] = dry_l + (buf_out_l[i] - dry_l) * mix;
+        buf_out_r[i] = dry_r + (buf_out_r[i] - dry_r) * mix;
+        mix += step;
+    }
+
+    // Pure portion (remaining n_out - n_xfade samples): final mix value
+    let final_mix = if crossfader.target { 0.0 } else { 1.0 };
+    if (final_mix - 1.0f32).abs() > f32::EPSILON {
+        // final_mix is 0.0 (dry target): copy dry to output
+        for i in n_xfade..n_out {
+            let di = i.min(dry_n.saturating_sub(1));
+            buf_out_l[i] = buf_xfade_dry_l[di];
+            buf_out_r[i] = buf_xfade_dry_r[di];
+        }
+    }
+    // If final_mix is 1.0 (wet target): buf_out already has wet, nothing to do
+
+    crossfader.mix = mix;
+    crossfader.remaining = crossfader.remaining.saturating_sub(n_xfade);
+    if crossfader.remaining == 0 {
+        crossfader.active = false;
+        crossfader.mix = final_mix;
+    }
+
+    // 4. Copy blended result to output
     copy_output_from_sub_block(
         out_l,
         out_r,

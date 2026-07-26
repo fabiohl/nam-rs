@@ -157,6 +157,19 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             ))
         })?;
 
+        // 2c. Bypass crossfade dry storage (one sub-block of input samples, max_frames_count).
+        let xfade_capacity = audio_config.max_frames_count as usize;
+        let buf_xfade_dry_l = AlignedVec::new(xfade_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of bypass xfade dry buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+        let buf_xfade_dry_r = AlignedVec::new(xfade_capacity, 0.0f32).map_err(|e| {
+            PluginError::Message(Box::leak(
+                format!("pre-allocation of bypass xfade dry buffer failed: {e:?}").into_boxed_str(),
+            ))
+        })?;
+
         // 3. DSP component initialization
         let model_rate = shared.cold.model_sample_rate.load(Ordering::Relaxed);
         let model_rate = if model_rate == 0 { 48000 } else { model_rate };
@@ -409,10 +422,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             buf_os_in_r,
             buf_os_model_l,
             buf_os_model_r,
+            buf_xfade_dry_l,
+            buf_xfade_dry_r,
             silence_hyst,
             mono_hyst,
             process_mono: true,
             scheduled_events: Vec::with_capacity(4096),
+            bypass_xfade: state::BypassCrossfader::new(params.bypass),
             rt_status: Arc::clone(&shared.cold.rt_status),
             adaptive_compute: AdaptiveCompute::new(
                 crate::common::params::AdaptiveComputeMode::Conservative,
