@@ -4,7 +4,7 @@
 //! Processor state (struct definition).
 
 use crate::clap::plugin::{ClapParamPayload, NamClapShared};
-use crate::common::params::RtPluginParams;
+use crate::common::params::{ActivationPrecision, RtPluginParams};
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::cabsim::conv::ConvEngine;
@@ -123,6 +123,11 @@ pub struct NamClapProcessor<'a> {
     pub(crate) max_frames_count: usize,
     /// Last seen render mode for transition detection (0 = Realtime, 1 = Offline).
     pub(crate) last_render_mode: u32,
+    /// Immutable snapshot of activation precision captured when entering
+    /// Offline mode. Restored when returning to Realtime (S0-E0-T04,
+    /// CLAP-F009). Initialized to the same value as `params.activation_precision`
+    /// during activate().
+    pub(crate) realtime_activation: ActivationPrecision,
     /// Pre-resolved gain LUT reference, hoisted from process_events hot-path.
     pub(crate) gain_lut: &'static GainLUT,
     /// Host audio processor handle, stored for host extension queries on the audio thread.

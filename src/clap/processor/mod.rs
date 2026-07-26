@@ -303,6 +303,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             last_seen_generation: 0,
             max_frames_count: audio_config.max_frames_count as usize,
             last_render_mode: 0,
+            realtime_activation: crate::common::params::ActivationPrecision::Standard,
             gain_lut: get_gain_lut(),
             host,
         })

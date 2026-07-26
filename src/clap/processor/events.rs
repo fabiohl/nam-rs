@@ -105,8 +105,12 @@ impl<'a> NamClapProcessor<'a> {
         let render_mode = self.shared.cold.render_mode.load(Ordering::Acquire); // pairs with Release store em extensions/render.rs:30
         if render_mode != self.last_render_mode {
             self.last_render_mode = render_mode;
-            let old_activation = self.params.activation_precision;
             if render_mode == crate::clap::plugin::RENDER_MODE_OFFLINE {
+                // ── Entering Offline ──
+                // Capture an immutable snapshot of the realtime state BEFORE
+                // overwriting it. This snapshot is restored when returning to
+                // Realtime (S0-E0-T04, CLAP-F009).
+                self.realtime_activation = self.params.activation_precision;
                 self.adaptive_compute.set_mode(
                     crate::common::params::AdaptiveComputeMode::Off,
                     &self.rt_status,
@@ -117,6 +121,8 @@ impl<'a> NamClapProcessor<'a> {
                     crate::common::params::ActivationPrecision::Standard,
                 );
             } else {
+                // ── Returning to Realtime ──
+                // Restore from the immutable snapshot captured at offline entry.
                 let user_mode = crate::common::params::AdaptiveComputeMode::from_f32(
                     self.shared
                         .ui_to_rt
@@ -124,8 +130,8 @@ impl<'a> NamClapProcessor<'a> {
                         .load(Ordering::Relaxed) as f32,
                 );
                 self.adaptive_compute.set_mode(user_mode, &self.rt_status);
-                self.params.activation_precision = old_activation;
-                crate::math::activations::set_activation_precision(old_activation);
+                self.params.activation_precision = self.realtime_activation;
+                crate::math::activations::set_activation_precision(self.realtime_activation);
             }
         }
         // Also guard against user changing adaptive compute while offline (via host events

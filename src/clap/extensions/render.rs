@@ -40,14 +40,23 @@ impl<'a> PluginRenderImpl for NamClapMainThread<'a> {
             } else {
                 "Realtime"
             };
+            // Report actual oversample factor from shared state, not a
+            // hard-coded "max quality" claim. The audio thread does NOT
+            // activate a 4x engine during offline mode (CLAP-F009).
+            let os_factor = crate::dsp::oversample::OversampleFactor::from_f32(
+                self.shared
+                    .ui_to_rt
+                    .param_oversample
+                    .load(Ordering::Relaxed) as f32,
+            );
+            let os_label = match os_factor {
+                crate::dsp::oversample::OversampleFactor::Off => "1x (Off)",
+                crate::dsp::oversample::OversampleFactor::X2 => "2x",
+                crate::dsp::oversample::OversampleFactor::X4 => "4x",
+            };
             log::info!(
                 "Render mode changed: {old_mode} -> {new_mode} \
-                 (oversample={}, adaptive_compute=Off in Offline mode)",
-                if val == RENDER_MODE_OFFLINE {
-                    "max quality"
-                } else {
-                    "host-budget"
-                }
+                 (oversample={os_label}, adaptive_compute=Off in Offline mode)",
             );
         }
 

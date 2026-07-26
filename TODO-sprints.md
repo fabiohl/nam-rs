@@ -51,7 +51,7 @@ graph TD
   - **Escopo:** Em `state.rs` e `state_context.rs`, implementar restore em 2 fases (`prepare` -> `commit`). Ao falhar o carregamento de asset, abortar a troca, descarregar o DSP anterior e registrar o erro em `RtStatusFlags`.
   - **Critério de Aceite:** Restore corrompido não mantém áudio antigo com nome novo; estado de erro visível na telemetria.
 
-- [ ] **S0-E0-T04 [Alta] — Snapshot Realtime/Offline e Auditoria de Logs de Oversampling**
+- [x] **S0-E0-T04 [Alta] — Snapshot Realtime/Offline e Auditoria de Logs de Oversampling**
   - **Origem:** E0-T03, CLAP-F004, CLAP-F009 | **Perfis:** Engenheiro de Sistemas CLAP
   - **Escopo:** Salvar snapshot imutável `RtActivationSnapshot` ao entrar em `RenderMode::Offline` e restaurá-lo ao voltar a `Realtime`. Remover logs de áudio que afirmam `oversample=max quality` sem engine 4x ativo.
   - **Critério de Aceite:** Parâmetros de tempo real preservados 100% após bounce offline; logs condizentes com a realidade.
