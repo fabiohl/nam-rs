@@ -34,6 +34,26 @@ impl WindowHandler for NamPluginWindow {
             return;
         }
 
+        // Idle-skip (CLAP-F022): when the window is truly static — no input
+        // events, VU meters stable, no animations active — skip the entire
+        // GL context acquisition, egui run, and paint cycle. This drops CPU
+        // usage to ~0% when the window is open but idle.
+        //
+        // We need to check peak values BEFORE run_ui() (otherwise we never
+        // detect the transition from silent→audio because hold timestamps
+        // are only updated inside run_ui). Cached peak comparison against
+        // shared atomics gives us a cheap change detector.
+        let mut peaks_changed = false;
+        if let Some(shared) = self.safe_shared() {
+            let peak_l = f32::from_bits(shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
+            let peak_r = f32::from_bits(shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
+            peaks_changed = peak_l != self.state.cached_peak_l || peak_r != self.state.cached_peak_r;
+        }
+
+        if !self.dirty && !self.state.has_active_animations() && !peaks_changed {
+            return;
+        }
+
         let Some(gl_ctx) = window.gl_context() else {
             return;
         };
@@ -43,6 +63,10 @@ impl WindowHandler for NamPluginWindow {
         }
 
         if let Some(shared) = self.safe_shared() {
+            // Cache peak values for idle detection on the next frame.
+            self.state.cached_peak_l = f32::from_bits(shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
+            self.state.cached_peak_r = f32::from_bits(shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
+
             let mut raw_input = self.raw_input.take();
             raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
 

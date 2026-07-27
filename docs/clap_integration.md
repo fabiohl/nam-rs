@@ -222,26 +222,37 @@ Only `CLAP_WINDOW_API_X11` is declared. Native Wayland embedding is planned.
 - `src/clap/gui/ui/meter/` — `orchestrator`, `glow` (GPU), `cpu` (fallback), `readout`.
 - `src/clap/gui/ui/{knob,focus,colors,simd,vsep,bypass,state}.rs` — widgets, a11y, theme.
 
-### 7.3 Frame Lifecycle & Idle Skip
+### 7.3 Frame Lifecycle & Idle Skip (CLAP-F022)
 
-`on_frame()` makes the GL context current, runs `egui_ctx.run_ui(draw_ui)`,
-tessellates, paints, and swaps buffers — unless a skip is decided:
+`on_frame()` follows a two-tier strategy:
 
+**Tier 1 — Idle early-exit (before GL context):** Before acquiring the GL context
+or running egui, the handler checks three conditions via cheap atomics and
+state flags. If all are met, the function returns immediately without any
+rendering work:
 ```rust
-let should_skip = !self.dirty
-    && !has_short_repaint
-    && !hold_changed
-    && time_since_paint < Duration::from_millis(22);
+if !self.dirty && !self.state.has_active_animations() && !peaks_changed {
+    return; // no GL context acquired, near-zero per-frame cost
+}
 ```
+- `!dirty` — no input events since last frame (`on_event` sets `dirty = true`).
+- `!has_active_animations()` — no error banner, toast notification, or drag
+  overlay with unexpired timer.
+- `!peaks_changed` — cached peak values match current shared-state atomics
+  (audio stream is silent). Updated every rendered frame so the detector
+  catches the silent→audio transition.
 
-- `!dirty` — no input since last paint.
-- `!has_short_repaint` — egui requested a short (<50 ms) repaint (toasts/spinners).
-- `!hold_changed` — VU peak-hold is not decaying.
-- 22 ms throttle — caps active repaint at ~45 FPS, lowering idle CPU with many
-  instances. On skip the GL context is released and the frame exits early.
+**Tier 2 — Repaint throttle (after egui):** When the frame is rendered, the
+repaint driver in `draw_ui()` requests a 33 ms repaint only when VU meters
+are active, animations are running, or telemetry is visible. Otherwise no
+repaint is requested — the baseview event loop still calls `on_frame()` at
+the native frame interval (~67 FPS), but Tier 1 returns instantly, keeping
+CPU usage near zero in true idle.
 
-`on_event` always sets `dirty = true`. Close is signalled via `close_signal`:
-the next `on_frame` destroys GL resources idempotently and closes the window.
+The previous unconditional `request_repaint_after(30 ms)` at the end of
+`draw_ui()` has been removed as it made the old `should_skip` logic
+unreachable (every frame had a <50 ms repaint request, so the skip guard
+never fired).
 
 ### 7.4 Adaptive VU Metering
 

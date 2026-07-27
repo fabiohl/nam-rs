@@ -152,7 +152,19 @@ pub fn draw_ui(
 
     handle_focus_navigation(ui, load_btn_id, load_ir_btn_id);
 
-    ui.ctx().request_repaint_after(Duration::from_millis(30));
+    // Repaint driver (CLAP-F022):
+    // Request repaints only when something is actively changing. The baseview
+    // event loop drives frames at ~15 ms. The idle early-exit in on_frame()
+    // returns immediately when nothing changed, dropping per-frame cost to
+    // near-zero. We do NOT set a long idle repaint here because it would
+    // override shorter requests from widgets (spinner, VU decay, etc.).
+    let needs_repaint = state.has_active_animations()  // error/toast banners
+        || !state.peak_hold_is_stable()                // VU meters active
+        || state.show_telemetry;                        // telemetry visible
+
+    if needs_repaint {
+        ui.ctx().request_repaint_after(Duration::from_millis(33));
+    }
 }
 
 #[cfg(test)]

@@ -142,6 +142,10 @@ pub struct UiState {
     pub metadata_display_version: u64,
     /// The metadata_display_version used for the last font size computation.
     pub metadata_last_font_version: u64,
+    /// Cached peak-L value for idle-frame detection (updated by on_frame before ui run).
+    pub cached_peak_l: f32,
+    /// Cached peak-R value for idle-frame detection (updated by on_frame before ui run).
+    pub cached_peak_r: f32,
 }
 
 impl std::fmt::Debug for UiState {
@@ -181,6 +185,31 @@ impl std::fmt::Debug for UiState {
             .field("model_display_name", &self.model_display_name)
             .field("ir_display_name", &self.ir_display_name)
             .finish()
+    }
+}
+
+impl UiState {
+    /// Returns `true` if any UI animation is currently active (error banner,
+    /// toast notification) and requires continuous repaints.
+    pub fn has_active_animations(&self) -> bool {
+        let now = Instant::now();
+        self.error_expiration.is_some_and(|t| t > now)
+            || self.ir_error_expiration.is_some_and(|t| t > now)
+            || self.toast_expiration.is_some_and(|t| t > now)
+            || self.drag_active
+    }
+
+    /// Returns `true` if peak-hold values are stable (not being updated by
+    /// audio — hold timestamps haven't changed). Stable holds mean the audio
+    /// stream is silent and we can skip repaints.
+    pub fn peak_hold_is_stable(&self) -> bool {
+        // Peak holds are considered stable when:
+        // - Values < 1e-6 (no audio at all), OR
+        // - Hold timestamps haven't changed in >2s (audio stopped, holds decayed)
+        let tiny = self.peak_l_hold < 1e-6 && self.peak_r_hold < 1e-6;
+        let old = self.peak_l_hold_time.elapsed() > std::time::Duration::from_secs(2)
+            && self.peak_r_hold_time.elapsed() > std::time::Duration::from_secs(2);
+        tiny || old
     }
 }
 
@@ -238,6 +267,8 @@ impl Default for UiState {
             metadata_cached_width: 0.0,
             metadata_display_version: 0,
             metadata_last_font_version: 0,
+            cached_peak_l: 0.0,
+            cached_peak_r: 0.0,
         }
     }
 }
