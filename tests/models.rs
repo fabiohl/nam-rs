@@ -24,6 +24,8 @@ mod cabsim_golden;
 mod container_slimmable;
 #[path = "models/diagnostic_bundle.rs"]
 mod diagnostic_bundle;
+#[path = "models/doc_inventory.rs"]
+mod doc_inventory;
 #[path = "models/ebu_lufs_compliance.rs"]
 mod ebu_lufs_compliance;
 #[path = "models/fixture_b1_2_smoke.rs"]
