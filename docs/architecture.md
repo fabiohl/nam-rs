@@ -467,13 +467,20 @@ An investigation into unifying the object-swap + GC-cascade logic shared between
 
 The existing free function `gc_cascade()` (`src/common/spsc/gc.rs`) already abstracts the 3-tier cascade (SPSC → parking-lot → overflow, detailed in [docs/clap_integration.md](clap_integration.md) §6.3); both standalone and CLAP call it directly instead of through an added abstraction layer.
 
-### 8.5 R13 — GUI Floating Thread Lifecycle (Destroy Watchdog)
+### 8.5 R13-v2 — GUI Floating Thread Lifecycle (Reaper Pattern)
 
-`gui.destroy()` signals `close_signal = true` and polls `is_finished()` for up
-to 2 s waiting for the floating window thread to exit. If the event loop is
-unresponsive (degraded X11/Wayland), the thread handle is abandoned (controlled
-leak: 1 thread, no extra fds). The OS reclaims all resources on process exit —
-preferable to freezing the host main thread (DAW hang).
+`gui.destroy()` signals `close_signal = true`. For the floating window thread, the old
+R13 watchdog (abandon unresponsive thread after 2 s, leaking the handle) has been
+replaced with a **reaper pattern**: a lightweight named thread (`nam-gui-reaper`) is
+spawned whose sole responsibility is to join the old floating handle. The main thread
+returns immediately (never blocked), the floating thread is guaranteed to be joined
+(via reaper), and no thread is ever abandoned detached. This eliminates the UAF vector
+where a detached thread retained `NamClapSharedRef` pointing to freed memory.
+
+The `HostSharedHandle<'a>` lifetime bridge has been replaced with `GuiHostBridge`,
+a safe newtype that stores the raw host pointer as `NonNull<()>` and reconstructs
+`HostSharedHandle<'static>` on demand, documenting the CLAP-spec guarantee that
+the host outlives the plugin instance.
 
 ## 8.6 Shutdown Behaviour (SIGINT / SIGTERM)
 

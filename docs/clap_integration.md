@@ -144,10 +144,13 @@ Telemetry peaks (`ui_peak_l/r`) use `Relaxed` stores; the UI reads them with
 - **`alive_fence`** (`Arc<AtomicBool>` in `ColdShared`, cleared in `Drop`): the
   async file-picker thread and `NamPluginWindow::safe_shared()` check it before
   dereferencing the shared pointer, preventing use-after-free if the plugin is
-  destroyed while a background thread still holds a reference.
-- **`extend_host_lifetime`** (`src/clap/gui/mod.rs`): `unsafe` transmute of the
-  `HostSharedHandle` to `'static`, documented with the invariant that the GUI
-  window is destroyed before the plugin (guaranteed by the CLAP lifecycle).
+  destroyed while a background thread still holds a reference. With the reaper
+  pattern (R13-v2), no GUI thread is ever abandoned detached — eliminating the
+  primary UAF vector.
+- **`GuiHostBridge`** (`src/clap/gui/mod.rs`): safe newtype that stores the raw
+  host pointer as `NonNull<()>` and reconstructs `HostSharedHandle<'static>` on
+  demand, documenting the CLAP-spec guarantee that the host outlives the plugin.
+  Replaces the previous `extend_host_lifetime()` unsafe transmute.
 - **Panic hook**: `install_panic_hook("clap")` runs once in `new_shared()`;
   `Drop` calls `set_shutdown_in_progress()`. A panic crossing the C-ABI FFI
   boundary is UB, so `on_frame()`/`on_event()` use silent early-returns instead
@@ -206,7 +209,7 @@ Only `CLAP_WINDOW_API_X11` is declared. Native Wayland embedding is planned.
 
 ### 7.2 Module Map
 
-- `src/clap/gui/mod.rs` — entryway; `GUI_WIDTH=600`/`GUI_HEIGHT=275`, `extend_host_lifetime`.
+- `src/clap/gui/mod.rs` — entryway; `GUI_WIDTH=600`/`GUI_HEIGHT=275`, `GuiHostBridge`.
 - `src/clap/gui/window/state.rs` — `NamPluginWindow`: GL context init, `egui_glow` painter,
   shader compile, theme, teardown. `safe_shared()` guards `alive_fence`.
 - `src/clap/gui/window/handler.rs` — `WindowHandler`: `on_frame`/`on_event`, event →

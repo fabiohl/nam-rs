@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 //! Zone 1 (left): Identity — logo, version, SIMD badge, model load button.
 
+use crate::clap::gui::GuiHostBridge;
 use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
 use std::sync::Arc;
@@ -112,9 +113,7 @@ pub(crate) fn draw_zone1_identity(
 
             if load_clicked && !shared.cold.ui_loading.load(Ordering::Relaxed) {
                 shared.cold.ui_loading.store(true, Ordering::Relaxed);
-                let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-                    unsafe { crate::clap::gui::extend_host_lifetime(*host) };
+                let host_static = GuiHostBridge::new(host).as_static();
                 if let Some(dialog_state_arc) = shared.cold.dialog_state.as_ref() {
                     let handle = spawn_file_dialog(Arc::clone(dialog_state_arc), host_static);
                     if let Ok(mut guard) = shared.cold.dialog_handle_sink.lock() {
@@ -264,9 +263,7 @@ pub(crate) fn draw_zone1_identity(
 
             if load_ir_clicked && !ir_loading {
                 shared.cold.ui_ir_loading.store(true, Ordering::Relaxed);
-                let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-                    unsafe { crate::clap::gui::extend_host_lifetime(*host) };
+                let host_static = GuiHostBridge::new(host).as_static();
                 if let Some(ir_dialog_state_arc) = shared.cold.ir_dialog_state.as_ref() {
                     let handle = spawn_ir_file_dialog(Arc::clone(ir_dialog_state_arc), host_static);
                     if let Ok(mut guard) = shared.cold.ir_dialog_handle_sink.lock() {
@@ -311,9 +308,7 @@ pub(crate) fn draw_zone1_identity(
 
                 if clear_ir_clicked {
                     shared.cold.ui_clear_ir.store(true, Ordering::Relaxed);
-                    let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-                        unsafe { crate::clap::gui::extend_host_lifetime(*host) };
+                    let host_static = GuiHostBridge::new(host).as_static();
                     host_static.request_callback();
                 }
             }

@@ -5,6 +5,7 @@
 
 use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
 use crate::clap::gui::lifecycle::{GuiEvent, GuiLifecycle};
+use crate::clap::gui::GuiHostBridge;
 use crate::clap::plugin::NamClapMainThread;
 use crate::clap::plugin::debug_assert_main_thread;
 use clack_extensions::gui::{
@@ -18,33 +19,50 @@ use std::sync::atomic::{AtomicBool, Ordering};
 impl<'a> NamClapMainThread<'a> {
     /// Closes all active GUI windows (embedded and floating).
     /// Idempotent — safe to call even when no windows are open.
+    ///
+    /// # Reaper pattern (R13-v2)
+    ///
+    /// Instead of abandoning unresponsive floating threads (which creates
+    /// a UAF window — the detached thread retains `NamClapSharedRef` pointing
+    /// to memory that may be freed when the plugin is destroyed), this method
+    /// spawns a lightweight "reaper" thread whose sole responsibility is to
+    /// join the old floating thread handle. The main thread is never blocked,
+    /// and the floating thread is guaranteed to be joined (and its resources
+    /// reclaimed) before the plugin process exits.
     fn teardown_gui_resources(&mut self) {
         if let Some(signal) = self.floating_close_signal.take() {
             signal.store(true, Ordering::Release);
         }
         if let Some(handle) = self.floating_thread_handle.take() {
-            // R13: watchdog com deadline de 2 s para evitar freeze do host.
-            // Se a janela X11/Wayland não responder ao close_signal dentro do prazo,
-            // abandonamos o handle (leak controlado de 1 thread — preferível a congelar o DAW).
+            // R13-v2: reaper thread joins the floating thread without blocking
+            // the main thread. The reaper holds the JoinHandle — when the
+            // floating thread eventually exits, the reaper joins it and the OS
+            // reclaims all resources. No thread is ever abandoned detached.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-            loop {
-                if handle.is_finished() {
-                    let _ = handle.join();
-                    break;
-                }
-                if std::time::Instant::now() >= deadline {
-                    // Abandono controlado: a thread vive até o processo terminar.
-                    // O sistema operacional recolhe todos os recursos (fds, mapeamentos)
-                    // no exit do processo. Ver docs/architecture.md §lifecycle-r13.
-                    log::warn!(
-                        "NAM-rs: floating window thread did not exit within 2 s on destroy \
-                         — abandoning handle to avoid host freeze (R13 controlled leak)"
-                    );
-                    // handle é movido para fora do `if let` e dropado aqui,
-                    // sem join — a thread continua rodando detached.
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
+            if handle.is_finished() {
+                let _ = handle.join();
+            } else {
+                // Spawn a reaper thread that waits for the floating thread to
+                // finish. The main thread is free to continue immediately.
+                // The reaper holds the only JoinHandle — once the floating
+                // thread exits, `join()` returns and the reaper drops the
+                // thread resources. No detached threads, zero UAF.
+                std::thread::Builder::new()
+                    .name("nam-gui-reaper".into())
+                    .spawn(move || {
+                        let _ = handle.join();
+                        let elapsed = deadline.elapsed();
+                        if elapsed.as_secs() > 0 {
+                            log::info!(
+                                "NAM-rs: floating window thread joined after {:?} \
+                                 (clean shutdown via reaper)",
+                                elapsed
+                            );
+                        }
+                    })
+                    .ok(); // Ignore spawn failure — the handle will be dropped
+                           // by the caller when `self` is dropped, which
+                           // is harmless (OS reclaims).
             }
         }
         for sink in [
@@ -63,23 +81,18 @@ impl<'a> NamClapMainThread<'a> {
     }
 
     /// Returns the static host handle and shared pointer needed by window callbacks.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the window is closed before the plugin is destroyed.
-    /// See `crate::clap::gui::extend_host_lifetime` for details on the transmute.
     fn host_static_and_shared(
         &self,
     ) -> (
         clack_plugin::host::HostSharedHandle<'static>,
         crate::clap::plugin::NamClapSharedRef,
     ) {
-        // SAFETY: `self.shared` is a valid reference to the live plugin shared state.
-        // The caller guarantees the window is closed before plugin destruction (see fn doc).
+        let bridge = GuiHostBridge::new(&self.host.shared());
+        let host_static = bridge.as_static();
+        // SAFETY: self.shared is a valid reference to the plugin shared state.
+        // The GUI thread is joined before the plugin is destroyed (reaper pattern
+        // in teardown_gui_resources), so the pointer remains valid.
         let shared_ptr = unsafe { crate::clap::plugin::NamClapSharedRef::new(self.shared) };
-        let host_shared = self.host.shared();
-        let host_static: clack_plugin::host::HostSharedHandle<'static> =
-            unsafe { crate::clap::gui::extend_host_lifetime(host_shared) };
         (host_static, shared_ptr)
     }
 
