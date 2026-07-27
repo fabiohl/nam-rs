@@ -32,6 +32,19 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
     /// In addition to applying host events, this method also syncs parameters
     /// that were changed by the GUI directly in the shared atomics.
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
+        // S5-E5-T03: isolate panics from this instance.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.flush_inner(input, output);
+        }));
+        if let Err(err) = result {
+            drop(err);
+        }
+    }
+}
+
+impl NamClapProcessor<'_> {
+    #[inline(always)]
+    fn flush_inner(&mut self, input: &InputEvents, output: &mut OutputEvents) {
         self.shared.write_gui_events(output);
 
         let mut param_changed = false;

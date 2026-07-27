@@ -69,6 +69,9 @@ impl DefaultPluginFactory for NamClapPlugin {
             crate::common::panic_hook::install_panic_hook("clap");
         });
 
+        // S5-E5-T03: track active instances for multi-instance panic isolation
+        crate::clap::plugin::shared::bump_active_instances();
+
         let (param_tx, param_rx) = RingBuffer::new(CMD_QUEUE_CAPACITY);
         let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
         let (slimmable_tx, slimmable_rx) = RingBuffer::new(4);

@@ -15,6 +15,18 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Active plugin instance counter (S5-E5-T03).
+/// Incremented in `new_shared()`, decremented in `NamClapShared::drop()`.
+/// `set_shutdown_in_progress()` is only called when this reaches zero,
+/// so crash-reporting remains active as long as at least one instance exists.
+static ACTIVE_INSTANCES: AtomicU32 = AtomicU32::new(0);
+
+/// Increments the active instance counter (S5-E5-T03).
+#[inline]
+pub(crate) fn bump_active_instances() {
+    ACTIVE_INSTANCES.fetch_add(1, Ordering::Release);
+}
+
 /// Main -> RT communication payload for the CLAP plugin.
 pub enum ClapParamPayload {
     /// Parameter update (gain, gate, bypass).
@@ -368,7 +380,11 @@ impl Drop for NamClapShared {
     fn drop(&mut self) {
         log::debug!("NAM-rs: NamClapShared dropped.");
         self.cold.alive_fence.store(false, Ordering::Release); // pairs with Acquire load em gui/window/state.rs:190
-        crate::common::panic_hook::set_shutdown_in_progress();
+        // S5-E5-T03: only signal shutdown when the last instance is destroyed
+        let remaining = ACTIVE_INSTANCES.fetch_sub(1, Ordering::Release) - 1;
+        if remaining == 0 {
+            crate::common::panic_hook::set_shutdown_in_progress();
+        }
     }
 }
 
