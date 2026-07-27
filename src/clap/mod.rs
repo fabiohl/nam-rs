@@ -28,3 +28,6 @@ mod preset_discovery_test;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod test_util;
+
+#[cfg(any(test, feature = "testing"))]
+pub mod host_harness;

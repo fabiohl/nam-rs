@@ -359,10 +359,11 @@ graph TD
 
 ### Tarefas Técnicas S8
 
-- [ ] **S8-E8-T01 [Crítico] — Harness de Teste de Host CLAP Completo**
+- [x] **S8-E8-T01 [Crítico] — Harness de Teste de Host CLAP Completo**
   - **Origem:** E8-T01, CLAP-F025 | **Perfis:** Test Framework Architect
   - **Escopo:** Construir um host CLAP simulado em Rust que execute validações de contrato: callbacks de thread, requisições de restart, verificações de thread estritas e filas de eventos limitadas.
   - **Critério de Aceite:** Harness detecta automaticamente qualquer violação do protocolo CLAP e falha a suite de testes.
+  - **Conclusão (2026-07-27):** (A) Módulo `src/clap/host_harness.rs` implementa um host CLAP completo com: `CompleteHostState` (rastreamento de eventos via `Arc<Mutex<Vec<HostEvent>>>` e flags atômicos), `CompleteHostShared` (implementa `SharedHandler`, `HostThreadCheckImpl`, `HostLogImpl`, `HostParamsImplShared`), `CompleteHostMainThread` (implementa `MainThreadHandler`, `HostLatencyImpl`, `HostPresetLoadImpl`, `HostParamsImplMainThread`), `CompleteHostAudioProcessor` (implementa `AudioProcessorHandler`, `HostTailImpl`). Todas as 6 extensões CLAP são registradas via `declare_extensions()`. (B) 10 testes validam: thread-check (main/audio), restart por oversampling com ciclo completo de deactivate→activate, notificação de latência, tracking de tail (com `HostTail::changed()` via `CompleteHostAudioProcessor`), saturação de fila de comandos sob burst de automação (50 eventos coalescidos), smoke de lifecycle completo, captura de logs do plugin, e isolamento multi-instância. (C) Helpers: `make_test_plugin_with_harness()`, `process_block_harness()`, `perform_restart()` (ciclo completo de deactivate→activate), `extract_plugin_shared()`. Clippy limpo. Tests-quick pass.
 
 - [ ] **S8-E8-T02 [Crítico] — Validação do Artefato Compilado `.so` por Path e Hash**
   - **Origem:** E8-T02 | **Perfis:** CI/CD & Build Engineer
