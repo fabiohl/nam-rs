@@ -1,0 +1,626 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Centralised transactional pipeline for state and state-context restoration (S6-E6-T01).
+//!
+//! Implements a 3-phase pipeline (Prepare → Validate → Commit) that guarantees:
+//! - Any asset validation failure returns an error **without altering active DSP state**
+//! - Successful restores publish all resources atomically
+//!
+//! # Phases
+//! 1. **Prepare** — deserialise the state blob into `NamPluginParams`
+//! 2. **Validate** — off-RT validation: check paths, load/build model, IR, resamplers
+//! 3. **Commit** — publish params + payloads via atomics and SPSC (only after full validation)
+
+use crate::clap::plugin::debug_assert_main_thread;
+use crate::clap::plugin::ClapParamPayload;
+use crate::clap::plugin::NamClapMainThread;
+use crate::clap::plugin::NamModelMetadata;
+use crate::clap::plugin::PendingModel;
+use crate::common::diagnostics::{ModelInfo, NamDiagnostic, NamErrorCode};
+use crate::common::params::NamPluginParams;
+use crate::common::params::RtPluginParams;
+use crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED;
+use crate::dsp::resampler::NamResampler;
+use crate::loader::load_and_build_model;
+use crate::models::NamModel;
+use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
+use crate::models::StaticModel;
+use clack_plugin::prelude::*;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::adapter::CabSimAdapter;
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::conv::ConvEngine;
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::loader::CabSimIr;
+
+struct ModelResources {
+    model_l: Option<Box<StaticModel>>,
+    new_resampler: Box<NamResampler>,
+    input_mult_adj: f32,
+    output_mult_adj: f32,
+    model_rate: u32,
+    model_metadata: NamModelMetadata,
+    model_info: ModelInfo,
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+struct IrResources {
+    adapter: Option<CabSimAdapter>,
+    samples: Vec<f32>,
+    sample_rate: u32,
+}
+
+/// Holds all resources that passed validation, ready for atomic commit.
+struct ValidatedRestore {
+    params: NamPluginParams,
+    model: Option<ModelResources>,
+    model_path_on_disk: Option<PathBuf>,
+    model_basename: Option<String>,
+    model_search_path_to_add: Option<PathBuf>,
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    ir: Option<IrResources>,
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    ir_path_on_disk: Option<String>,
+}
+
+/// Restore mode: `Full` for project/duplicate, `ForPreset` for preset bank loads.
+pub(crate) enum RestoreMode {
+    Full,
+    ForPreset,
+}
+
+/// Entry-point for the 3-phase transactional state restore (S6-E6-T01).
+pub(crate) fn restore_state_transactional(
+    buffer: &[u8],
+    main_thread: &mut NamClapMainThread,
+    mode: RestoreMode,
+) -> Result<(), PluginError> {
+    debug_assert_main_thread(&main_thread.host);
+
+    if buffer.is_empty() {
+        log::debug!("Empty state buffer, returning error");
+        return Err(PluginError::Message("Empty state buffer"));
+    }
+
+    // ══════ Phase 1: PREPARE — deserialise ══════
+    let loaded_params = super::state::load_state(buffer)?;
+
+    let host_rate = {
+        let rate = main_thread.shared.cold.sample_rate.load(Ordering::Relaxed);
+        if rate == 0 { 48000 } else { rate }
+    };
+    let buffer_size = main_thread.shared.cold.buffer_size.load(Ordering::Relaxed);
+
+    // ══════ Phase 2: VALIDATE — build resources off-RT ══════
+    let validated = validate_and_build(
+        &loaded_params,
+        host_rate,
+        buffer_size,
+        &main_thread.sys,
+        &mode,
+    )?;
+
+    // ══════ Phase 3: COMMIT — publish atomically ══════
+    commit(validated, main_thread, &mode);
+
+    Ok(())
+}
+
+type ModelValidationResult = (
+    Option<ModelResources>,
+    Option<PathBuf>,
+    Option<String>,
+    Option<PathBuf>,
+);
+
+fn validate_and_build(
+    loaded_params: &NamPluginParams,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+    mode: &RestoreMode,
+) -> Result<ValidatedRestore, PluginError> {
+    let maybe_model = match mode {
+        RestoreMode::Full => validate_model_full(loaded_params, host_rate, buffer_size, sys)?,
+        RestoreMode::ForPreset => validate_model_preset(loaded_params, host_rate, buffer_size, sys)?,
+    };
+
+    let params = loaded_params.clone();
+
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    let (maybe_ir, ir_path_on_disk) =
+        validate_ir(loaded_params, host_rate, buffer_size, sys)?;
+
+    Ok(ValidatedRestore {
+        params,
+        model: maybe_model.0,
+        model_path_on_disk: maybe_model.1,
+        model_basename: maybe_model.2,
+        model_search_path_to_add: maybe_model.3,
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        ir: maybe_ir,
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        ir_path_on_disk,
+    })
+}
+
+/// Builds a model pair + resampler from a filesystem path, **without** any
+/// side-effects on the main-thread state.
+fn build_model_resources(
+    path: &Path,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+) -> Result<ModelResources, Box<NamDiagnostic>> {
+    let model_pair = load_and_build_model(path, sys, false, crate::loader::LoadOptions::default())
+        .map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                    .message(format!("Failed to load model: {:?}", path))
+                    .param("error", e.to_string()),
+            )
+        })?;
+
+    if model_pair.model_l.is_none() {
+        return Err(Box::new(
+            NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                .message(format!("Failed to build model: {:?}", path)),
+        ));
+    }
+
+    let model_rate = model_pair.sample_rate;
+    if host_rate != model_rate {
+        log::warn!(
+            "Model sample rate ({model_rate} Hz) differs from host sample rate ({host_rate} Hz); \
+             resampler will convert internally"
+        );
+    }
+
+    let model_info = model_pair.model_info(path);
+
+    let mut model_l = model_pair.model_l;
+    let input_mult_adj = model_pair.input_mult_adj;
+    let output_mult_adj = model_pair.output_mult_adj;
+
+    // Pre-size model if buffer size is known (borrow ends before model_l is moved)
+    if buffer_size > 0
+        && let Some(ref mut model) = model_l
+        && let Err(e) = model.set_max_buffer_size(buffer_size as usize)
+    {
+        return Err(Box::new(
+            NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                .message("Failed to resize model buffers for host buffer size")
+                .param("buffer_size", buffer_size.to_string())
+                .param("error", e.to_string()),
+        ));
+    }
+
+    let new_resampler =
+        Box::new(NamResampler::new(host_rate, model_rate, 0).map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                    .message("Failed to build resampler")
+                    .param("error", e.to_string()),
+            )
+        })?);
+
+    let metadata = model_pair.metadata.clone();
+    let architecture = model_pair.architecture.clone();
+    let topology = model_pair.topology.clone();
+
+    let model_metadata = NamModelMetadata {
+        architecture,
+        topology,
+        sample_rate: model_rate,
+        modeled_by: metadata.as_ref().and_then(|m| m.modeled_by.clone()),
+        gear_make: metadata.as_ref().and_then(|m| m.gear_make.clone()),
+        gear_model: metadata.as_ref().and_then(|m| m.gear_model.clone()),
+        gear_type: metadata.as_ref().and_then(|m| m.gear_type.clone()),
+        tone_type: metadata.as_ref().and_then(|m| m.tone_type.clone()),
+        date: metadata
+            .as_ref()
+            .and_then(|m| m.date.as_ref())
+            .map(|d| match (d.year, d.month, d.day) {
+                (Some(y), Some(m), Some(d)) => format!("{:04}-{:02}-{:02}", y, m, d),
+                (Some(y), Some(m), None) => format!("{:04}-{:02}", y, m),
+                (Some(y), None, None) => format!("{:04}", y),
+                _ => String::new(),
+            })
+            .filter(|s| !s.is_empty()),
+    };
+    Ok(ModelResources {
+        model_l,
+        new_resampler,
+        input_mult_adj,
+        output_mult_adj,
+        model_rate,
+        model_metadata,
+        model_info,
+    })
+}
+
+fn validate_model_full(
+    loaded_params: &NamPluginParams,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+) -> Result<ModelValidationResult, PluginError> {
+    let Some(ref path) = loaded_params.model_path else {
+        return Ok((None, None, None, None));
+    };
+
+    if path.exists() {
+        let resources = build_model_resources(path, host_rate, buffer_size, sys)
+            .map_err(|e| PluginError::Error(e))?;
+        let basename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        let search_path = path.parent().map(|p| p.to_path_buf());
+        return Ok((Some(resources), Some(path.clone()), basename, search_path));
+    }
+
+    if let Some(ref basename) = loaded_params.model_basename {
+        let found = loaded_params
+            .model_search_paths
+            .clone()
+            .into_iter()
+            .find_map(|dir| {
+                let candidate = dir.join(basename);
+                if candidate.exists() {
+                    Some(candidate)
+                } else {
+                    None
+                }
+            });
+        if let Some(new_path) = found {
+            log::info!(
+                "Model not found at original path ({path:?}), using portable fallback: {new_path:?}"
+            );
+            let resources = build_model_resources(&new_path, host_rate, buffer_size, sys)
+                .map_err(|e| PluginError::Error(e))?;
+            let basename = new_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string());
+            let search_path = new_path.parent().map(|p| p.to_path_buf());
+            return Ok((Some(resources), Some(new_path), basename, search_path));
+        }
+    }
+
+    log::error!(
+        "NAM-rs: State restore failed — model not found at {path:?}{}",
+        loaded_params
+            .model_basename
+            .as_ref()
+            .map(|b| format!(" (basename: {b})"))
+            .unwrap_or_default()
+    );
+    Err(PluginError::Message(Box::leak(
+        format!("Saved model not found: {:?}", path).into_boxed_str(),
+    )))
+}
+
+fn validate_model_preset(
+    loaded_params: &NamPluginParams,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+) -> Result<ModelValidationResult, PluginError> {
+    let Some(ref basename) = loaded_params.model_basename else {
+        return Ok((None, None, None, None));
+    };
+
+    let found = loaded_params
+        .model_search_paths
+        .clone()
+        .into_iter()
+        .find_map(|dir| {
+            let candidate = dir.join(basename);
+            if candidate.exists() {
+                Some(candidate)
+            } else {
+                None
+            }
+        });
+
+    let Some(new_path) = found else {
+        log::error!(
+            "NAM-rs: ForPreset restore failed — model basename {basename:?} not found in search paths"
+        );
+        return Err(PluginError::Message(Box::leak(
+            format!("Preset model not found: {basename}").into_boxed_str(),
+        )));
+    };
+
+    let resources = build_model_resources(&new_path, host_rate, buffer_size, sys)
+        .map_err(|e| PluginError::Error(e))?;
+    let basename_from_path = new_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string());
+    let search_path = new_path.parent().map(|p| p.to_path_buf());
+
+    Ok((Some(resources), Some(new_path), basename_from_path, search_path))
+}
+
+/// Builds IR resources from a filesystem path without side-effects.
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+fn build_ir_resources(
+    path: &Path,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+) -> Result<IrResources, Box<NamDiagnostic>> {
+    let partition_size = if buffer_size > 0 {
+        buffer_size as usize
+    } else {
+        256
+    };
+
+    let cabsim = CabSimIr::load(path, host_rate, true).map_err(|e| {
+        Box::new(
+            NamDiagnostic::new(NamErrorCode::IrLoadFailed, sys)
+                .message(format!("Failed to load cab-sim IR: {:?}", path))
+                .param("error", e.to_string()),
+        )
+    })?;
+
+    let engine = ConvEngine::new(&cabsim.samples, partition_size).map_err(|e| {
+        Box::new(
+            NamDiagnostic::new(e, sys)
+                .message("Failed to build convolution engine for cab-sim IR")
+                .hint("The IR samples require more memory than available."),
+        )
+    })?;
+
+    Ok(IrResources {
+        adapter: Some(CabSimAdapter::new(Box::new(engine)).map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(e, sys)
+                    .message("Failed to build cab-sim convolution adapter")
+                    .hint("The IR samples require more memory than available."),
+            )
+        })?),
+        samples: cabsim.samples,
+        sample_rate: cabsim.sample_rate,
+    })
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+fn validate_ir(
+    loaded_params: &NamPluginParams,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+) -> Result<(Option<IrResources>, Option<String>), PluginError> {
+    let Some(ref ir_path) = loaded_params.ir_path else {
+        return Ok((None, None));
+    };
+
+    if !ir_path.exists() {
+        log::error!("NAM-rs: State restore failed — IR not found at {ir_path:?}");
+        return Err(PluginError::Message(Box::leak(
+            format!("Saved IR not found: {:?}", ir_path).into_boxed_str(),
+        )));
+    }
+
+    let resources = build_ir_resources(ir_path, host_rate, buffer_size, sys)
+        .map_err(|e| PluginError::Error(e))?;
+    Ok((Some(resources), Some(ir_path.to_string_lossy().to_string())))
+}
+
+/// Publishes the validated restore atomically.  Only reached after all validation passes.
+fn commit(
+    validated: ValidatedRestore,
+    main_thread: &mut NamClapMainThread,
+    mode: &RestoreMode,
+) {
+    let buffer_size = main_thread.shared.cold.buffer_size.load(Ordering::Relaxed);
+
+    // ── Commit model ──
+    if let Some(resources) = validated.model {
+        let ModelResources {
+            model_l,
+            new_resampler,
+            input_mult_adj,
+            output_mult_adj,
+            model_rate,
+            model_metadata,
+            model_info,
+        } = resources;
+
+        // Store full WaveNet weights for slimmable rebuild
+        {
+            let mut storage = main_thread
+                .shared
+                .cold
+                .full_wavenet_model
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            *storage = model_l.as_ref().and_then(|m| {
+                if let StaticModel::WavenetDyn(w) = m.as_ref() {
+                    clone_wavenet_for_slimmable_storage(w).ok()
+                } else {
+                    None
+                }
+            });
+        }
+
+        if let Ok(mut meta_guard) = main_thread.shared.cold.ui_model_metadata.lock() {
+            *meta_guard = Some(model_metadata);
+        }
+        if let Ok(mut info_guard) = main_thread.shared.cold.ui_model_info.lock() {
+            *info_guard = Some(model_info);
+        }
+
+        main_thread
+            .shared
+            .cold
+            .model_load_counter
+            .fetch_add(1, Ordering::Relaxed);
+
+        if buffer_size > 0 {
+            if main_thread
+                .cmd_producer
+                .push_command(ClapParamPayload::LoadModel {
+                    model_l,
+                    new_resampler,
+                    input_mult_adj,
+                    output_mult_adj,
+                })
+                .is_err()
+            {
+                log::error!("NAM-rs: Failed to send restored model to audio thread (SPSC full)");
+                main_thread
+                    .shared
+                    .cold
+                    .rt_status
+                    .set_flag(RT_STATUS_MODEL_LOAD_FAILED);
+            }
+        } else {
+            if let Ok(mut pending_guard) = main_thread.shared.cold.pending_model.lock() {
+                *pending_guard = Some(PendingModel {
+                    model: model_l,
+                    model_rate,
+                    input_mult_adj,
+                    output_mult_adj,
+                });
+            }
+        }
+
+        if let Some(ref basename) = validated.model_basename {
+            if let Ok(mut name_guard) = main_thread.shared.cold.ui_model_name.lock() {
+                *name_guard = basename.clone();
+            }
+            log::info!(
+                "Model restored: {:?}",
+                validated.model_path_on_disk.as_deref().unwrap_or(Path::new(""))
+            );
+        }
+
+        if let Some(mut state_ext) = main_thread
+            .host
+            .get_extension::<clack_extensions::state::HostState>()
+        {
+            state_ext.mark_dirty(&main_thread.host);
+        }
+    }
+
+    // ── Commit IR ──
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    if let Some(ir) = validated.ir {
+        if let Some(ref ir_path_str) = validated.ir_path_on_disk
+            && let Ok(mut ir_guard) = main_thread.shared.cold.ir_path.lock()
+        {
+            *ir_guard = Some(ir_path_str.clone());
+        }
+        if let Ok(mut raw_guard) = main_thread.shared.cold.ir_raw_samples.lock() {
+            *raw_guard = Some(ir.samples);
+        }
+        main_thread
+            .shared
+            .cold
+            .ir_raw_sample_rate
+            .store(ir.sample_rate, Ordering::Relaxed);
+
+        if main_thread
+            .cmd_producer
+            .push_command(ClapParamPayload::LoadCabIr {
+                adapter: ir.adapter,
+            })
+            .is_err()
+        {
+            log::error!("NAM-rs: Failed to send restored IR to audio thread (SPSC full)");
+        }
+    } else {
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            let _ = main_thread
+                .cmd_producer
+                .push_command(ClapParamPayload::LoadCabIr { adapter: None });
+        }
+    }
+
+    // ── Commit params ──
+    match mode {
+        RestoreMode::Full => {
+            main_thread.params = validated.params;
+        }
+        RestoreMode::ForPreset => {
+            main_thread.params.input_gain_db = validated.params.input_gain_db;
+            main_thread.params.output_gain_db = validated.params.output_gain_db;
+            main_thread.params.gate_threshold_db = validated.params.gate_threshold_db;
+            main_thread.params.bypass = validated.params.bypass;
+            main_thread.params.adaptive_compute = validated.params.adaptive_compute;
+            main_thread.params.slim_override = validated.params.slim_override;
+        }
+    }
+
+    if let RestoreMode::Full = mode {
+        main_thread.params.model_path = validated.model_path_on_disk;
+        main_thread.params.model_basename = validated.model_basename;
+        if let Some(search_path) = validated.model_search_path_to_add
+            && !main_thread.params.model_search_paths.contains(&search_path)
+        {
+            main_thread.params.model_search_paths.push(search_path);
+        }
+    }
+
+    // ── Publish params to RT atomics ──
+    use crate::clap::extensions::params::bypass_bool_to_u32;
+    main_thread.shared.ui_to_rt.param_input_gain.store(
+        main_thread.params.input_gain_db.to_bits(),
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_output_gain.store(
+        main_thread.params.output_gain_db.to_bits(),
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_gate_thresh.store(
+        main_thread.params.gate_threshold_db.to_bits(),
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_bypass.store(
+        bypass_bool_to_u32(main_thread.params.bypass),
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_adaptive_compute.store(
+        main_thread.params.adaptive_compute as u32,
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_slim_override.store(
+        main_thread.params.slim_override as u32,
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_oversample.store(
+        main_thread.params.oversample.to_f32() as u32,
+        Ordering::Relaxed,
+    );
+    main_thread.shared.ui_to_rt.param_activation.store(
+        main_thread.params.activation_precision as u32,
+        Ordering::Relaxed,
+    );
+    main_thread.shared.bump_generation();
+
+    main_thread
+        .cmd_producer
+        .push_params(RtPluginParams::from_plugin_params(&main_thread.params));
+    let _ = main_thread.cmd_producer.force_flush();
+
+    if let Some(params_ext) = main_thread
+        .host
+        .get_extension::<clack_extensions::params::HostParams>()
+    {
+        params_ext.rescan(
+            &mut main_thread.host,
+            clack_extensions::params::ParamRescanFlags::VALUES,
+        );
+    }
+}

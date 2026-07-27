@@ -182,11 +182,12 @@ fn test_f001_cabsim_loaded_but_not_applied_to_audio() {
 // ── Test: CLAP-F014 — Falha de asset no state restore mantém DSP antigo ───
 //
 // O state é comprometido nos parametros e atômicos antes de resolver modelo e IR.
-// Se o caminho não existe, o código apenas loga warning e retorna sucesso.
-// Nenhum payload descarrega o modelo/IR anterior.
+// Se o caminho não existe, o load deve falhar com erro e manter o estado anterior
+// intacto — sem alterar DSP, parâmetros ou UI.
+// S6-E6-T01: pipeline transacional garante "fail without side-effects".
 
 #[test]
-fn test_f014_state_restore_with_missing_model_keeps_old_dsp() {
+fn test_f014_state_restore_with_missing_model_fails_and_keeps_old_dsp() {
     let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
     let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
@@ -212,7 +213,7 @@ fn test_f014_state_restore_with_missing_model_keeps_old_dsp() {
             .expect("failed to load model A via state");
     }
 
-    // ── Step 2: Activate, process blocks so DSP materializes ──
+    // ── Step 2: Activate, process blocks so DSP materialises ──
     let audio_config = PluginAudioConfiguration {
         sample_rate: 48000.0,
         min_frames_count: 256,
@@ -238,8 +239,10 @@ fn test_f014_state_restore_with_missing_model_keeps_old_dsp() {
         );
     }
 
+    // Save model A's name for later comparison
+    let model_a_name = shared.cold.ui_model_name.lock().unwrap().clone();
+
     // ── Step 3: Attempt to load nonexistent model B via state ──
-    // Use identical params so that the only meaningful difference is the model.
     let missing_path = PathBuf::from("/nonexistent/model_b.nam");
     let params_b = NamPluginParams {
         model_path: Some(missing_path),
@@ -260,13 +263,15 @@ fn test_f014_state_restore_with_missing_model_keeps_old_dsp() {
         let state_ext = test_util::get_state_ext(&mut plugin_instance);
         let state_b = serde_json::to_vec(&params_b).unwrap();
         let mut handle = plugin_instance.plugin_handle();
-        // Returns Ok even when model is missing (CLAP-F014 bug)
-        state_ext
-            .load(&mut handle, &mut state_b.as_slice())
-            .expect("state load should return Ok (model absent is not an error)");
+        // S6-E6-T01: load returns Err when model is not found — no DSP change
+        let result = state_ext.load(&mut handle, &mut state_b.as_slice());
+        assert!(
+            result.is_err(),
+            "CLAP-F014: state load with missing model must return Err (transactional pipeline)"
+        );
     }
 
-    // Process one more block so the RT thread observes any state change
+    // Process one more block so the RT thread processes any queued events
     {
         let mut il = vec![0.3f32; n];
         let mut ir = vec![0.3f32; n];
@@ -285,24 +290,27 @@ fn test_f014_state_restore_with_missing_model_keeps_old_dsp() {
     plugin_instance.deactivate(started.stop_processing());
 
     // ── Assertions ──
+    // S6-E6-T01: failed restore preserves old state completely.
 
-    // CLAP-F014 green: after failing to restore model B, the old model
-    // must be unloaded and the error must be visible in telemetry.
-
-    // The old model name should be cleared from the UI
+    // Model name in GUI must still be the original model name
     let ui_name = shared.cold.ui_model_name.lock().unwrap();
     assert!(
-        ui_name.is_empty(),
-        "CLAP-F014 RED: ui_model_name must be empty after failed restore (currently: '{ui_name}'). The old model was not unloaded — stale state persists."
+        !ui_name.is_empty(),
+        "CLAP-F014: ui_model_name must NOT be empty — old model should be preserved. Currently: '{ui_name}'"
+    );
+    assert_eq!(
+        ui_name.as_str(),
+        model_a_name,
+        "CLAP-F014: ui_model_name should still be the old model name after failed restore"
     );
 
-    // Error flag must be set in RT telemetry
+    // RT status must NOT have MODEL_LOAD_FAILED — no change to DSP
     assert!(
-        shared
+        !shared
             .cold
             .rt_status
             .check_flag(nam_rs::common::spsc::RT_STATUS_MODEL_LOAD_FAILED),
-        "CLAP-F014: RT_STATUS_MODEL_LOAD_FAILED must be set after failed restore"
+        "CLAP-F014: RT_STATUS_MODEL_LOAD_FAILED should NOT be set — old DSP was never touched"
     );
 }
 

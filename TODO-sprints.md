@@ -273,10 +273,11 @@ graph TD
 
 ### Tarefas Técnicas S6
 
-- [ ] **S6-E6-T01 [Crítico] — Centralização de Pipeline Transacional (Prepare/Validate/Commit)**
+- [x] **S6-E6-T01 [Crítico] — Centralização de Pipeline Transacional (Prepare/Validate/Commit)**
   - **Origem:** E6-T01, CLAP-F014 | **Perfis:** State Architecture Specialist
   - **Escopo:** Centralizar a lógica de restauração de `state` e `state-context` num pipeline único de 3 passos: ler/deserializar, validar/instanciar recursos off-RT e realizar commit síncrono.
   - **Critério de Aceite:** Restauração falha limpa em qualquer etapa de validação sem alterar o estado do DSP ativo.
+  - **Conclusão (2026-07-27):** Criado `src/clap/extensions/state_transaction.rs` com pipeline transacional de 3 fases: `Prepare` (desserialização), `Validate` (construção off-RT de modelo/resampler/IR sem efeitos colaterais) e `Commit` (publicação atômica de params + SPSC payloads). `state.rs::load()` e `state_context.rs::load()` delegam ao pipeline via `RestoreMode::Full` e `RestoreMode::ForPreset`. Em caso de falha na validação (modelo ausente, IR corrompido), retorna `Err(PluginError)` sem alterar DSP ativo, parâmetros ou UI. Teste CLAP-F014 atualizado para verificar: (1) `load()` com modelo inexistente retorna `Err`, (2) `ui_model_name` preserva nome do modelo antigo, (3) `RT_STATUS_MODEL_LOAD_FAILED` fica limpo. 10/11 CLAP tests passam (3 pre-existing containment failures: F001, F007, F009). Lints limpos.
 
 - [ ] **S6-E6-T02 [Crítico] — Identidade Portável de Assets e Resolução Canônica de Paths**
   - **Origem:** E6-T02, CLAP-F015 | **Perfis:** Cross-Platform Systems Engineer
