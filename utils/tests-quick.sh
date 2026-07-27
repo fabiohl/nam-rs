@@ -326,7 +326,7 @@ fi
 # para rodar só o subconjunto ágil) suprimiria os demais oráculos se combinado.
 # Self-skip gracioso se o render C++ não estiver compilado.
 if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
-    # ── Preventive render compilation (S1.T10) ────────────────────────────
+    # ── Preventive render compilation ────────────────────────────
     # Build the C++ render binary before cargo test so the CMake build time
     # is isolated from the test output and doesn't trigger mid-phase.
     NAM_CORE_DIR="tests/fixtures/NeuralAmpModelerCore"
@@ -337,7 +337,7 @@ if [ -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     fi
     SKIP_CPP_PARITY=false
     if [ ! -f "$RENDER_BIN" ]; then
-        echo -e "  ${BLUE}→ Compilando render C++ preventivamente (S1.T10)...${NC}"
+        echo -e "  ${BLUE}→ Compilando render C++ preventivamente...${NC}"
         if [ -z "${CXX:-}" ]; then
             if command -v g++ >/dev/null 2>&1; then
                 CXX=g++

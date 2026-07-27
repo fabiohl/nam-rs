@@ -389,9 +389,16 @@ impl<'a> NamClapMainThread<'a> {
                     log::trace!("In-flight params delivered on retry");
                 }
                 Err(crate::clap::plugin::command_scheduler::PushError::Full) => {
-                    if let Ok(mut guard) = self.shared.cold.in_flight_params.lock() {
-                        *guard = Some(params);
-                    }
+                    let mut guard = self
+                        .shared
+                        .cold
+                        .in_flight_params
+                        .lock()
+                        .unwrap_or_else(|e| {
+                            log::error!("in_flight_params mutex poisoned during flush, recovering");
+                            e.into_inner()
+                        });
+                    *guard = Some(params);
                     self.shared.bump_generation();
                 }
             }

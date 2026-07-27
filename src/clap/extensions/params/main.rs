@@ -404,9 +404,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             let snapshot = RtPluginParams::from_plugin_params(&self.params);
             self.cmd_producer.push_params(snapshot);
             if self.cmd_producer.force_flush().is_err() {
-                if let Ok(mut guard) = self.shared.cold.in_flight_params.lock() {
-                    *guard = Some(snapshot);
-                }
+                let mut guard = self
+                    .shared
+                    .cold
+                    .in_flight_params
+                    .lock()
+                    .unwrap_or_else(|e| {
+                        log::error!(
+                            "in_flight_params mutex poisoned during param flush, recovering"
+                        );
+                        e.into_inner()
+                    });
+                *guard = Some(snapshot);
                 self.shared.bump_generation();
                 self.host.request_callback();
             }
