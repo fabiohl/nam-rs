@@ -27,6 +27,7 @@ use crate::models::NamModel;
 use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
 use crate::models::StaticModel;
 use clack_plugin::prelude::*;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
@@ -47,6 +48,7 @@ struct ModelResources {
     model_rate: u32,
     model_metadata: NamModelMetadata,
     model_info: ModelInfo,
+    model_hash: String,
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -63,6 +65,7 @@ struct ValidatedRestore {
     model_path_on_disk: Option<PathBuf>,
     model_basename: Option<String>,
     model_search_path_to_add: Option<PathBuf>,
+    model_hash: Option<String>,
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     ir: Option<IrResources>,
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -117,6 +120,7 @@ type ModelValidationResult = (
     Option<PathBuf>,
     Option<String>,
     Option<PathBuf>,
+    Option<String>,
 );
 
 fn validate_and_build(
@@ -143,11 +147,50 @@ fn validate_and_build(
         model_path_on_disk: maybe_model.1,
         model_basename: maybe_model.2,
         model_search_path_to_add: maybe_model.3,
+        model_hash: maybe_model.4,
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         ir: maybe_ir,
         #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
         ir_path_on_disk,
     })
+}
+
+/// Computes the SHA-256 hex digest of a file's raw bytes (S6-E6-T02).
+fn compute_file_hash(path: &Path) -> Result<String, PluginError> {
+    let bytes = std::fs::read(path).map_err(|e| {
+        PluginError::Message(Box::leak(
+            format!("Failed to read file for hashing ({path:?}): {e}").into_boxed_str(),
+        ))
+    })?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Returns canonical search directories for portable model/IR lookup (S6-E6-T02).
+///
+/// These are well-known directories where users store their NAM models, shared
+/// across the NAM ecosystem. The order is:
+/// 1. `~/.nam/models/` — NAM ecosystem convention
+/// 2. `~/NAM Models/` — alternative common location
+fn canonical_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let home = match std::env::var("HOME") {
+        Ok(h) => PathBuf::from(h),
+        Err(_) => return dirs,
+    };
+
+    let candidate = home.join(".nam").join("models");
+    if candidate.is_dir() {
+        dirs.push(candidate);
+    }
+
+    let candidate = home.join("NAM Models");
+    if candidate.is_dir() {
+        dirs.push(candidate);
+    }
+
+    dirs
 }
 
 /// Builds a model pair + resampler from a filesystem path, **without** any
@@ -158,6 +201,14 @@ fn build_model_resources(
     buffer_size: u32,
     sys: &crate::common::diagnostics::SystemSnapshot,
 ) -> Result<ModelResources, Box<NamDiagnostic>> {
+    let model_hash = compute_file_hash(path).map_err(|e| {
+        Box::new(
+            NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                .message(format!("Failed to hash model file: {:?}", path))
+                .param("error", e.to_string()),
+        )
+    })?;
+
     let model_pair = load_and_build_model(path, sys, false, crate::loader::LoadOptions::default())
         .map_err(|e| {
             Box::new(
@@ -242,6 +293,7 @@ fn build_model_resources(
         model_rate,
         model_metadata,
         model_info,
+        model_hash,
     })
 }
 
@@ -252,7 +304,7 @@ fn validate_model_full(
     sys: &crate::common::diagnostics::SystemSnapshot,
 ) -> Result<ModelValidationResult, PluginError> {
     let Some(ref path) = loaded_params.model_path else {
-        return Ok((None, None, None, None));
+        return Ok((None, None, None, None, None));
     };
 
     if path.exists() {
@@ -263,7 +315,8 @@ fn validate_model_full(
             .and_then(|n| n.to_str())
             .map(|s| s.to_string());
         let search_path = path.parent().map(|p| p.to_path_buf());
-        return Ok((Some(resources), Some(path.clone()), basename, search_path));
+        let hash = Some(resources.model_hash.clone());
+        return Ok((Some(resources), Some(path.clone()), basename, search_path, hash));
     }
 
     if let Some(ref basename) = loaded_params.model_basename {
@@ -290,7 +343,8 @@ fn validate_model_full(
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string());
             let search_path = new_path.parent().map(|p| p.to_path_buf());
-            return Ok((Some(resources), Some(new_path), basename, search_path));
+            let hash = Some(resources.model_hash.clone());
+            return Ok((Some(resources), Some(new_path), basename, search_path, hash));
         }
     }
 
@@ -314,40 +368,57 @@ fn validate_model_preset(
     sys: &crate::common::diagnostics::SystemSnapshot,
 ) -> Result<ModelValidationResult, PluginError> {
     let Some(ref basename) = loaded_params.model_basename else {
-        return Ok((None, None, None, None));
+        return Ok((None, None, None, None, None));
     };
 
-    let found = loaded_params
+    // S6-E6-T02: search chain — loaded search paths first, then canonical dirs.
+    // Hash verification ensures content identity when multiple files share a basename.
+    let search_dirs: Vec<PathBuf> = loaded_params
         .model_search_paths
-        .clone()
-        .into_iter()
-        .find_map(|dir| {
-            let candidate = dir.join(basename);
-            if candidate.exists() {
-                Some(candidate)
-            } else {
-                None
-            }
-        });
+        .iter()
+        .cloned()
+        .chain(canonical_search_dirs())
+        .collect();
 
-    let Some(new_path) = found else {
-        log::error!(
-            "NAM-rs: ForPreset restore failed — model basename {basename:?} not found in search paths"
-        );
-        return Err(PluginError::Message(Box::leak(
-            format!("Preset model not found: {basename}").into_boxed_str(),
-        )));
-    };
+    let expected_hash = loaded_params.model_hash.as_deref();
 
-    let resources = build_model_resources(&new_path, host_rate, buffer_size, sys)
-        .map_err(|e| PluginError::Error(e))?;
-    let basename_from_path = new_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string());
-    let search_path = new_path.parent().map(|p| p.to_path_buf());
+    for dir in &search_dirs {
+        let candidate = dir.join(basename);
+        if !candidate.exists() {
+            continue;
+        }
+        if let Some(ref expected) = expected_hash
+            && let Ok(actual) = compute_file_hash(&candidate)
+            && actual != *expected
+        {
+            log::debug!(
+                "NAM-rs: Skipping {candidate:?} — hash mismatch (expected {expected}, got {actual})"
+            );
+            continue;
+        }
+        let resources = build_model_resources(&candidate, host_rate, buffer_size, sys)
+            .map_err(|e| PluginError::Error(e))?;
+        let basename_from_path = candidate
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        let search_path = candidate.parent().map(|p| p.to_path_buf());
+        let hash = Some(resources.model_hash.clone());
+        log::info!("NAM-rs: ForPreset resolved model via canonical search: {candidate:?}");
+        return Ok((Some(resources), Some(candidate), basename_from_path, search_path, hash));
+    }
 
-    Ok((Some(resources), Some(new_path), basename_from_path, search_path))
+    let searched = search_dirs
+        .iter()
+        .map(|d| format!("{d:?}/"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    log::error!(
+        "NAM-rs: ForPreset restore failed — model basename {basename:?} not found in: [{searched}]"
+    );
+    Err(PluginError::Message(Box::leak(
+        format!("Preset model not found: {basename} (searched canonical dirs)").into_boxed_str(),
+    )))
 }
 
 /// Builds IR resources from a filesystem path without side-effects.
@@ -434,6 +505,7 @@ fn commit(
             model_rate,
             model_metadata,
             model_info,
+            model_hash: _,
         } = resources;
 
         // Store full WaveNet weights for slimmable rebuild
@@ -566,6 +638,7 @@ fn commit(
     if let RestoreMode::Full = mode {
         main_thread.params.model_path = validated.model_path_on_disk;
         main_thread.params.model_basename = validated.model_basename;
+        main_thread.params.model_hash = validated.model_hash;
         if let Some(search_path) = validated.model_search_path_to_add
             && !main_thread.params.model_search_paths.contains(&search_path)
         {

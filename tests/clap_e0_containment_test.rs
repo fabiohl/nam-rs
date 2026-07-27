@@ -257,6 +257,8 @@ fn test_f014_state_restore_with_missing_model_fails_and_keeps_old_dsp() {
         oversample: params_a.oversample,
         activation_precision: params_a.activation_precision,
         ir_path: None,
+        ir_hash: None,
+        model_hash: None,
     };
 
     {

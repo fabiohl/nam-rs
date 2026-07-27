@@ -40,6 +40,10 @@ pub struct NamPluginParams {
     /// when the absolute path does not exist (cross-machine / cross-user).
     #[serde(default)]
     pub model_basename: Option<String>,
+    /// SHA-256 hex digest of the model file, for content-based portable
+    /// identity across machines and OSes (S6-E6-T02).
+    #[serde(default)]
+    pub model_hash: Option<String>,
     /// Directories to search for the model if the absolute `model_path` does not exist.
     #[serde(default)]
     pub model_search_paths: Vec<PathBuf>,
@@ -60,6 +64,10 @@ pub struct NamPluginParams {
     /// Path to the loaded cab-sim impulse response (.wav).
     #[serde(default)]
     pub ir_path: Option<PathBuf>,
+    /// SHA-256 hex digest of the IR file, for content-based portable
+    /// identity across machines and OSes (S6-E6-T02).
+    #[serde(default)]
+    pub ir_hash: Option<String>,
     /// Activation precision mode (`Standard` or `Fast`).
     /// Default: `Standard` (universal, exact-grade — matches NAMCore C++).
     #[serde(default)]
@@ -78,12 +86,14 @@ impl Default for NamPluginParams {
             gate_threshold_db: GATE_THRESHOLD_DB_DEFAULT,
             model_path: None,
             model_basename: None,
+            model_hash: None,
             model_search_paths: Vec::new(),
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
             slim_override: SlimOverride::Auto,
             oversample: OversampleFactor::Off,
             ir_path: None,
+            ir_hash: None,
             activation_precision: ActivationPrecision::Standard,
         }
     }
@@ -154,6 +164,7 @@ mod tests {
         assert_eq!(params.gate_threshold_db, -70.0);
         assert_eq!(params.model_path, None);
         assert_eq!(params.model_basename, None);
+        assert_eq!(params.model_hash, None);
         assert!(params.model_search_paths.is_empty());
         assert!(!params.bypass);
         assert_eq!(params.ir_path, None);

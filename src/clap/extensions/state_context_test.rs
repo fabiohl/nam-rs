@@ -12,12 +12,14 @@ fn make_test_params() -> NamPluginParams {
         gate_threshold_db: -50.0,
         model_path: Some(PathBuf::from("/tmp/test.nam")),
         model_basename: Some("test.nam".to_string()),
+        model_hash: None,
         model_search_paths: vec![PathBuf::from("/tmp")],
         bypass: false,
         adaptive_compute: AdaptiveComputeMode::Off,
         slim_override: Default::default(),
         oversample: OversampleFactor::Off,
         ir_path: None,
+        ir_hash: None,
         activation_precision: ActivationPrecision::Standard,
     }
 }

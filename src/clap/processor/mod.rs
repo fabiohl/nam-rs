@@ -852,11 +852,13 @@ mod diagnostics_logging_tests {
             gate_threshold_db: -50.0,
             model_basename: Some("BossWN-nano.nam".to_string()),
             model_search_paths: vec![],
+            model_hash: None,
             bypass: false,
             adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
             slim_override: Default::default(),
             oversample: crate::dsp::oversample::OversampleFactor::Off,
             ir_path: None,
+            ir_hash: None,
             activation_precision: crate::common::params::ActivationPrecision::Standard,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();

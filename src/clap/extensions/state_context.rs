@@ -33,7 +33,10 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
 
         let save_params = if context_type == StateContextType::ForPreset {
             let mut preset_params = self.params.clone();
+            // S6-E6-T02: strip all absolute paths, keep portable identifiers only
             preset_params.model_path = None;
+            preset_params.model_search_paths = Vec::new();
+            preset_params.ir_path = None;
             preset_params
         } else {
             self.params.clone()

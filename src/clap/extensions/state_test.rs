@@ -40,11 +40,13 @@ fn test_v1_round_trip() {
         model_path: Some(PathBuf::from("/tmp/test.nam")),
         model_basename: None,
         model_search_paths: Vec::new(),
+        model_hash: None,
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
         oversample: OversampleFactor::Off,
         ir_path: None,
+        ir_hash: None,
         activation_precision: ActivationPrecision::Standard,
     };
 
@@ -97,11 +99,13 @@ fn test_v1_round_trip_with_search_fields() {
         model_path: Some(PathBuf::from("/tmp/test.nam")),
         model_basename: Some("test.nam".to_string()),
         model_search_paths: search_paths.clone(),
+        model_hash: None,
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
         oversample: OversampleFactor::Off,
         ir_path: None,
+        ir_hash: None,
         activation_precision: ActivationPrecision::Standard,
     };
 
@@ -144,11 +148,13 @@ fn test_v1_round_trip_with_ir_path() {
         model_path: None,
         model_basename: None,
         model_search_paths: Vec::new(),
+        model_hash: None,
         bypass: false,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
         oversample: OversampleFactor::Off,
         ir_path: Some(PathBuf::from("/tmp/cab.wav")),
+        ir_hash: None,
         activation_precision: ActivationPrecision::Standard,
     };
 

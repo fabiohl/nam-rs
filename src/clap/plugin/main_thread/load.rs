@@ -11,6 +11,7 @@ use crate::loader::load_and_build_model;
 use crate::models::NamModel;
 use crate::models::StaticModel;
 use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
@@ -79,6 +80,19 @@ impl<'a> NamClapMainThread<'a> {
                 self.params.model_search_paths.push(parent_buf);
             }
         }
+
+        // S6-E6-T02: compute content hash for portable asset identity
+        self.params.model_hash = match std::fs::read(path) {
+            Ok(bytes) => {
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                Some(format!("{:x}", hasher.finalize()))
+            }
+            Err(e) => {
+                log::warn!("NAM-rs: Failed to compute model hash ({path:?}): {e}");
+                None
+            }
+        };
 
         let metadata = model_pair.metadata.clone();
         let architecture = model_pair.architecture.clone();
