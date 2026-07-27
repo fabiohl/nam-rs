@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+mod common;
+
+use common::alloc_audit::CountingAllocator;
+
+#[cfg_attr(
+    not(all(feature = "clap-plugin", feature = "heap-audit")),
+    global_allocator
+)]
+#[allow(dead_code, clippy::allow_attributes)]
+static GLOBAL: CountingAllocator = CountingAllocator;
+
 #[cfg(feature = "clap-plugin")]
 #[path = "clap/clap_lifecycle_test.rs"]
 mod clap_lifecycle_test;

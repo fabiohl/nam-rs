@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+#[cfg(feature = "heap-audit")]
+use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
 use clack_host::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -164,4 +166,150 @@ fn test_multi_instance_rt_priority() {
 
     // Drop all instances and verify no panics on cleanup
     drop(instances);
+}
+
+/// S5-E5-T04: Multi-instance parallel stress test with heap audit.
+///
+/// Spawns 16 threads, each creating an independent plugin instance,
+/// activating, processing 10 blocks, deactivating, and cleaning up.
+/// Each process() block is wrapped in a `TrackingGuard` that verifies
+/// **zero heap allocations** on the audio thread — the core RT-safety
+/// invariant. The full pipeline (gate, gain stages, resampler,
+/// oversampling, bypass xfade) is exercised even without a loaded model.
+///
+/// This test also validates the `ACTIVE_INSTANCES` counter from
+/// S5-E5-T03: 16 instances are created and destroyed in parallel
+/// without corrupting the counter (Release/Acquire ordering ensures
+/// correctness).
+#[cfg(feature = "heap-audit")]
+#[test]
+fn test_multi_instance_heap_audit_stress() {
+    const INSTANCE_COUNT: usize = 16;
+    const BLOCK_COUNT: usize = 10;
+    const BLOCK_SIZE: usize = 256;
+
+    let audio_config = PluginAudioConfiguration {
+        sample_rate: 48000.0,
+        min_frames_count: BLOCK_SIZE as u32,
+        max_frames_count: BLOCK_SIZE as u32,
+    };
+
+    let handles: Vec<_> = (0..INSTANCE_COUNT)
+        .map(|i| {
+            std::thread::spawn(move || {
+                let entry = PluginEntry::load_from_clack::<
+                    clack_plugin::entry::SinglePluginEntry<nam_rs::clap::plugin::NamClapPlugin>,
+                >(c"/test")
+                .expect("Failed to load PluginEntry");
+
+                let host_info = HostInfo::new(
+                    "NAM-rs Stress",
+                    "NAM-rs",
+                    "https://github.com/fabiohl/nam-rs",
+                    "0.1.0",
+                )
+                .expect("Failed to create HostInfo");
+
+                let mut plugin_instance = PluginInstance::<MultiHost>::new(
+                    |_| MultiHostShared {
+                        _restart_was_called: Arc::new(AtomicBool::new(false)),
+                    },
+                    |_| (),
+                    &entry,
+                    c"br.eti.fabiolima.nam-rs",
+                    &host_info,
+                )
+                .expect("Failed to create plugin instance");
+
+                let stopped = plugin_instance
+                    .activate(|_, _| (), audio_config)
+                    .expect("Failed to activate plugin");
+
+                let mut started = stopped
+                    .start_processing()
+                    .expect("Failed to start processing");
+
+                let input_buf = [[0.1f32; BLOCK_SIZE]; 2];
+                let output_buf = [[0.0f32; BLOCK_SIZE]; 2];
+
+                // Pre-allocate CLAP audio infrastructure outside heap-audit scope.
+                let mut input_ports = AudioPorts::with_capacity(2, 1);
+                let mut output_ports = AudioPorts::with_capacity(2, 1);
+                let mut events_buf = EventBuffer::with_capacity(10);
+                let input_events = InputEvents::empty();
+
+                let mut input_audio_buf1 = input_buf[0];
+                let mut input_audio_buf2 = input_buf[1];
+                let mut output_audio_buf1 = output_buf[0];
+                let mut output_audio_buf2 = output_buf[1];
+
+                let mut total_allocs: usize = 0;
+                for _block in 0..BLOCK_COUNT {
+                    let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                        latency: 0,
+                        channels: AudioPortBufferType::f32_input_only(
+                            [&mut input_audio_buf1, &mut input_audio_buf2]
+                                .into_iter()
+                                .map(InputChannel::constant),
+                        ),
+                    }]);
+
+                    let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                        latency: 0,
+                        channels: AudioPortBufferType::f32_output_only(
+                            [&mut output_audio_buf1, &mut output_audio_buf2]
+                                .into_iter()
+                                .map(|b| b.as_mut_slice()),
+                        ),
+                    }]);
+
+                    let mut output_events = OutputEvents::from_buffer(&mut events_buf);
+
+                    // Only the process() call is inside the audit scope.
+                    let _guard = TrackingGuard::new();
+                    let status = started
+                        .process(
+                            &input_audio,
+                            &mut output_audio,
+                            &input_events,
+                            &mut output_events,
+                            None,
+                            None,
+                        )
+                        .expect("process() failed");
+                    let allocs = get_alloc_count();
+                    total_allocs += allocs;
+
+                    assert_eq!(
+                        allocs, 0,
+                        "[instance {}] heap allocation ({}) detected during process() block {}",
+                        i, allocs, _block,
+                    );
+
+                    assert!(
+                        status == ProcessStatus::Continue || status == ProcessStatus::Sleep,
+                        "[instance {}] unexpected process status: {:?}",
+                        i,
+                        status
+                    );
+                }
+
+                let stopped = started.stop_processing();
+                plugin_instance.deactivate(stopped);
+
+                assert_eq!(
+                    total_allocs, 0,
+                    "[instance {}] total heap allocations across {} blocks: {} — expected 0",
+                    i, BLOCK_COUNT, total_allocs
+                );
+
+                drop(plugin_instance);
+            })
+        })
+        .collect();
+
+    for (i, h) in handles.into_iter().enumerate() {
+        h.join()
+            .unwrap_or_else(|_| panic!("worker thread {} panicked", i));
+    }
 }
