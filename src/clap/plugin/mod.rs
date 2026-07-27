@@ -164,6 +164,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 full_wavenet_model: Mutex::new(None),
                 cmd_next_seq: AtomicU64::new(0),
                 cmd_last_ack: AtomicU64::new(0),
+                pending_restart_os_factor: AtomicU32::new(0),
                 pending_model: Mutex::new(None),
                 deactivated_dsp: Mutex::new(None),
                 dialog_state: dialog_state.clone(),

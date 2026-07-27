@@ -37,6 +37,12 @@ impl<'a> NamClapProcessor<'a> {
         input_events: &InputEvents,
         start_nanos: u64,
     ) -> Result<ProcessStatus, PluginError> {
+        // S4-E4-T02: track pending restart factor for latency-policy enforcement.
+        let pending_before = self
+            .shared
+            .cold
+            .pending_restart_os_factor
+            .load(Ordering::Relaxed);
         {
             let events = &mut self.scheduled_events;
             events.clear();
@@ -291,6 +297,8 @@ impl<'a> NamClapProcessor<'a> {
                         &self.rt_status,
                         &self.shared.ui_to_rt,
                         self.gain_lut,
+                        self.shared.cold.buffer_size.load(Ordering::Relaxed),
+                        &self.shared.cold.pending_restart_os_factor,
                     );
                     event_idx += 1;
                 }
@@ -320,6 +328,18 @@ impl<'a> NamClapProcessor<'a> {
             }
 
             peaks::store_peaks(self.shared, peak_l, peak_r);
+        }
+
+        // S4-E4-T02: if an oversampling change was detected during active
+        // processing, request host restart so latency can be updated
+        // legally during the next activate().
+        let pending_after = self
+            .shared
+            .cold
+            .pending_restart_os_factor
+            .load(Ordering::Relaxed);
+        if pending_after != pending_before && pending_after != 0 {
+            self.host.request_restart();
         }
 
         self.process_telemetry(start_nanos);
@@ -930,6 +950,8 @@ fn apply_scheduled_event(
     rt_status: &crate::common::spsc::RtStatusFlags,
     ui_to_rt: &crate::clap::plugin::UiToRt,
     gain_lut: &crate::math::dsp::gain_lut::GainLUT,
+    buffer_size: u32,
+    pending_restart_os_factor: &std::sync::atomic::AtomicU32,
 ) {
     use crate::clap::extensions::params::{bypass_bool_to_u32, bypass_f32_to_bool};
     use std::sync::atomic::Ordering;
@@ -1005,10 +1027,18 @@ fn apply_scheduled_event(
                     ui_to_rt
                         .param_oversample
                         .store(factor.to_f32() as u32, Ordering::Relaxed);
-                    rt_status
-                        .requested_os_factor
-                        .store(factor.to_f32() as u32, Ordering::Relaxed);
-                    rt_status.set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
+                    // S4-E4-T02: if the plugin is active, defer the rebuild
+                    // via host restart; otherwise flag the main thread.
+                    if buffer_size > 0 {
+                        pending_restart_os_factor
+                            .store(factor.to_f32() as u32, Ordering::Release);
+                    } else {
+                        rt_status
+                            .requested_os_factor
+                            .store(factor.to_f32() as u32, Ordering::Relaxed);
+                        rt_status
+                            .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
+                    }
                 }
             }
             PARAM_ACTIVATION => {

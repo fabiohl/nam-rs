@@ -18,9 +18,15 @@ use std::sync::Arc;
 
 // ── Test host mocks ──
 
-pub struct TestHostShared;
+pub struct TestHostShared {
+    /// Set to `true` when `request_restart()` is called by the plugin.
+    /// Used by tests to verify CLAP restart-on-latency-change policy (S4-E4-T02).
+    pub restart_was_called: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
 impl<'a> SharedHandler<'a> for TestHostShared {
-    fn request_restart(&self) {}
+    fn request_restart(&self) {
+        self.restart_was_called.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     fn request_process(&self) {}
     fn request_callback(&self) {}
 }
@@ -46,8 +52,14 @@ pub fn make_test_plugin() -> (PluginEntry, HostInfo, PluginInstance<TestHost>) {
 
     let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
+    let restart_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let instance = PluginInstance::<TestHost>::new(
-        |_| TestHostShared,
+        {
+            let restart_flag = std::sync::Arc::clone(&restart_flag);
+            move |_| TestHostShared {
+                restart_was_called: restart_flag,
+            }
+        },
         |_| (),
         &entry,
         c"br.eti.fabiolima.nam-rs",
@@ -71,13 +83,15 @@ pub fn make_test_plugin_dynamic(
     let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
     let instance = PluginInstance::<TestHost>::new(
-        |_| TestHostShared,
+        |_| TestHostShared {
+            restart_was_called: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        },
         |_| (),
         &entry,
         c"br.eti.fabiolima.nam-rs",
         &host_info,
     )
-    .expect("Failed to instantiate plugin");
+    .expect("Failed to instantiate plugin from .so");
 
     (entry, host_info, instance)
 }

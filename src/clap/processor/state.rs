@@ -202,10 +202,7 @@ pub struct NamClapProcessor<'a> {
     /// Decremented by `process_tail_drain` until zero, at which point the
     /// tail ring-out is complete and true silence can be emitted.
     pub(crate) cabsim_tail_remaining: usize,
-    /// Host audio processor handle, stored for host extension queries on the audio thread.
-    #[expect(
-        dead_code,
-        reason = "retained for future audio-thread host extension queries"
-    )]
+    /// Host audio processor handle. Used for `host.request_restart()` when
+    /// structural latency changes are pending (S4-E4-T02).
     pub(crate) host: HostAudioProcessorHandle<'a>,
 }

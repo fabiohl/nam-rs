@@ -262,6 +262,12 @@ pub struct ColdShared {
     /// Last sequence fully drained and processed by the audio thread.
     /// Written by the audio thread (Release), read by the main thread (Acquire).
     pub cmd_last_ack: AtomicU64,
+    /// Pending restart oversampling factor (S4-E4-T02).
+    /// Set by the audio thread via `host.request_restart()` when
+    /// oversampling changes during active processing. Consumed by
+    /// `activate()` to build engines at the correct factor. 0 = no
+    /// pending restart, 1 = 2x, 2 = 4x.
+    pub pending_restart_os_factor: AtomicU32,
     /// Model loaded before `activate()` (state restore while `buffer_size == 0`),
     /// deferred to avoid heap allocation on the audio thread (F3 fix).
     /// See `flush_pending_model()` in load.rs and housekeeping.rs.

@@ -5,9 +5,16 @@ use clack_extensions::state::PluginState;
 use clack_host::prelude::*;
 use nam_rs::clap::plugin::NamClapPlugin;
 
-struct TestHostShared;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+struct TestHostShared {
+    restart_was_called: Arc<AtomicBool>,
+}
 impl<'a> SharedHandler<'a> for TestHostShared {
-    fn request_restart(&self) {}
+    fn request_restart(&self) {
+        self.restart_was_called.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     fn request_process(&self) {}
     fn request_callback(&self) {}
 }
@@ -35,7 +42,9 @@ fn create_plugin_instance() -> PluginInstance<TestHost> {
     .expect("Failed to create HostInfo");
 
     PluginInstance::<TestHost>::new(
-        |_| TestHostShared,
+        |_| TestHostShared {
+            restart_was_called: Arc::new(AtomicBool::new(false)),
+        },
         |_| (),
         &entry,
         c"br.eti.fabiolima.nam-rs",

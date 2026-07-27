@@ -2,9 +2,12 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use clack_host::prelude::*;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-struct MultiHostShared;
+struct MultiHostShared {
+    _restart_was_called: Arc<AtomicBool>,
+}
 impl<'a> SharedHandler<'a> for MultiHostShared {
     fn request_restart(&self) {}
     fn request_process(&self) {}
@@ -96,7 +99,9 @@ fn test_multi_instance_rt_priority() {
 
     for _i in 0..INSTANCE_COUNT {
         let mut plugin_instance = PluginInstance::<MultiHost>::new(
-            |_| MultiHostShared,
+            |_| MultiHostShared {
+                _restart_was_called: Arc::new(AtomicBool::new(false)),
+            },
             |_| (),
             &entry,
             c"br.eti.fabiolima.nam-rs",

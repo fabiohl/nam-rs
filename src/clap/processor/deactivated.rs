@@ -14,7 +14,7 @@
 //! discarded and rebuilt from scratch. Model weights are always reusable.
 
 use crate::dsp::cabsim::adapter::CabSimAdapter;
-use crate::dsp::oversample::OversampleEngine;
+use crate::dsp::oversample::{OversampleEngine, OversampleFactor};
 use crate::dsp::resampler::NamResampler;
 use crate::models::StaticModel;
 
@@ -35,6 +35,9 @@ pub(crate) struct DeactivatedDspState {
     pub(crate) os_l: Box<OversampleEngine>,
     /// Half-band oversampling engine R.
     pub(crate) os_r: Box<OversampleEngine>,
+    /// Oversampling factor these engines were built for.
+    /// Used to detect factor changes on restart (S4-E4-T02).
+    pub(crate) os_factor: OversampleFactor,
     /// Host sample rate when deactivated (for restore validation).
     pub(crate) sample_rate: u32,
     /// Host buffer size when deactivated (for `conv_engine` validation).

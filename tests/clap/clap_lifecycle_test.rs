@@ -4,8 +4,12 @@
 use clack_host::prelude::*;
 use std::env;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-struct MyHostShared;
+struct MyHostShared {
+    _restart_was_called: Arc<AtomicBool>,
+}
 impl SharedHandler<'_> for MyHostShared {
     fn request_restart(&self) {}
     fn request_process(&self) {}
@@ -69,7 +73,9 @@ fn test_clap_lifecycle() {
     .unwrap();
 
     let mut plugin_instance = PluginInstance::<MyHost>::new(
-        |_| MyHostShared,
+        |_| MyHostShared {
+            _restart_was_called: Arc::new(AtomicBool::new(false)),
+        },
         |_| (),
         &entry,
         c"br.eti.fabiolima.nam-rs",

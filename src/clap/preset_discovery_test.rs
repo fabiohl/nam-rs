@@ -89,7 +89,9 @@ mod tests {
         .expect("Failed to create HostInfo");
 
         let mut plugin_instance = PluginInstance::<TestHost>::new(
-            |_| TestHostShared,
+            |_| TestHostShared {
+                restart_was_called: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            },
             |_| (),
             &entry,
             c"br.eti.fabiolima.nam-rs",

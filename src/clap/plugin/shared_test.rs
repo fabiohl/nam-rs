@@ -94,6 +94,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             full_wavenet_model: Mutex::new(None),
             cmd_next_seq: std::sync::atomic::AtomicU64::new(0),
             cmd_last_ack: std::sync::atomic::AtomicU64::new(0),
+            pending_restart_os_factor: AtomicU32::new(0),
             pending_model: Mutex::new(None),
             deactivated_dsp: Mutex::new(None),
             dialog_state: None,

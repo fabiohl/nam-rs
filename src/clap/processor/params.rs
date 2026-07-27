@@ -102,15 +102,25 @@ impl<'a> NamClapProcessor<'a> {
     // ── SPSC full-apply ───────────────────────────────────────────
 
     pub(crate) fn apply_oversample(&mut self, factor: crate::dsp::oversample::OversampleFactor) {
-        // Oversample factor change requires rebuilding the engines
-        // (allocation of new buffers), which must happen off-RT.
-        // The audio thread signals the main thread via rt_status flag
-        // and the main thread creates new engines + delivers via SPSC.
-        self.rt_status
-            .requested_os_factor
-            .store(factor.to_f32() as u32, Ordering::Relaxed);
-        self.rt_status
-            .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
+        // S4-E4-T02: CLAP latency policy — while the plugin is active,
+        // structural changes that alter latency must request a host restart
+        // and defer the rebuild to the next `activate()`.
+        let buffer_size = self.shared.cold.buffer_size.load(Ordering::Relaxed);
+        if buffer_size > 0 {
+            self.shared
+                .cold
+                .pending_restart_os_factor
+                .store(factor.to_f32() as u32, Ordering::Release);
+            self.host.request_restart();
+        } else {
+            // Plugin is not active yet — safe to flag the main thread for
+            // an immediate rebuild (allocate off-RT, deliver via SPSC).
+            self.rt_status
+                .requested_os_factor
+                .store(factor.to_f32() as u32, Ordering::Relaxed);
+            self.rt_status
+                .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
+        }
     }
 
     pub(super) fn apply_params_from_spsc(&mut self, new_params: RtPluginParams) {

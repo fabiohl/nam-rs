@@ -191,6 +191,23 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .unwrap_or_else(|e| e.into_inner())
             .take();
         let deactivated = rollback.deactivated.take();
+
+        // S4-E4-T02: Resolve the oversampling factor for this activation.
+        // Priority: pending restart > UiToRt atomic > Off (fresh).
+        let os_factor = {
+            let pending = shared
+                .cold
+                .pending_restart_os_factor
+                .swap(0, Ordering::Acquire);
+            if pending != 0 {
+                OversampleFactor::from_f32(pending as f32)
+            } else {
+                OversampleFactor::from_f32(
+                    shared.ui_to_rt.param_oversample.load(Ordering::Relaxed) as f32,
+                )
+            }
+        };
+
         let (
             model_l,
             resampler,
@@ -236,13 +253,40 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     deact.cabsim_adapter
                 };
 
-            // Oversample engines: always reusable (constructed at Off factor).
+            // Oversample engines: reuse only if the factor hasn't changed
+            // (structural change → rebuild). Otherwise rebuild for the resolved
+            // factor (S4-E4-T02).
+            let os_l = if deact.os_factor == os_factor {
+                deact.os_l
+            } else {
+                Box::new(
+                    OversampleEngine::new(os_factor, MAX_RESAMP_BUF).map_err(|e| {
+                        PluginError::Message(Box::leak(
+                            format!("Failed to create oversample engine (L): {:?}", e)
+                                .into_boxed_str(),
+                        ))
+                    })?,
+                )
+            };
+            let os_r = if deact.os_factor == os_factor {
+                deact.os_r
+            } else {
+                Box::new(
+                    OversampleEngine::new(os_factor, MAX_RESAMP_BUF).map_err(|e| {
+                        PluginError::Message(Box::leak(
+                            format!("Failed to create oversample engine (R): {:?}", e)
+                                .into_boxed_str(),
+                        ))
+                    })?,
+                )
+            };
+
             // Model weights: always reusable (independent of rates/buffers).
             (
                 deact.model_l,
                 resampler,
-                deact.os_l,
-                deact.os_r,
+                os_l,
+                os_r,
                 cabsim_adapter,
                 deact.model_input_mult_adj,
                 deact.model_output_mult_adj,
@@ -269,14 +313,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             let cabsim_adapter = None;
 
             let os_l = Box::new(
-                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
+                OversampleEngine::new(os_factor, MAX_RESAMP_BUF).map_err(|e| {
                     PluginError::Message(Box::leak(
                         format!("Failed to create oversample engine (L): {:?}", e).into_boxed_str(),
                     ))
                 })?,
             );
             let os_r = Box::new(
-                OversampleEngine::new(OversampleFactor::Off, MAX_RESAMP_BUF).map_err(|e| {
+                OversampleEngine::new(os_factor, MAX_RESAMP_BUF).map_err(|e| {
                     PluginError::Message(Box::leak(
                         format!("Failed to create oversample engine (R): {:?}", e).into_boxed_str(),
                     ))
@@ -321,6 +365,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let params = RtPluginParams {
             input_gain_db: input_db,
             output_gain_db: output_db,
+            oversample: os_factor,
             ..RtPluginParams::default()
         };
         debug_assert!(
@@ -465,6 +510,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             resampler: self.resampler,
             os_l: self.os_l,
             os_r: self.os_r,
+            os_factor: self.params.oversample,
             sample_rate: self.shared.cold.sample_rate.load(Ordering::Relaxed),
             buffer_size: self.shared.cold.buffer_size.load(Ordering::Relaxed),
             model_input_mult_adj: self.model_input_mult_adj,
@@ -641,6 +687,10 @@ mod processor_automation_test;
 #[cfg(test)]
 #[path = "../processor_deactivate_reactivate_test.rs"]
 mod processor_deactivate_reactivate_test;
+
+#[cfg(test)]
+#[path = "../processor_restart_test.rs"]
+mod processor_restart_test;
 
 #[cfg(test)]
 mod diagnostics_logging_tests {
