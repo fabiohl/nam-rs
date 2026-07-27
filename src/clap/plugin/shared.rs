@@ -268,6 +268,11 @@ pub struct ColdShared {
     /// `activate()` to build engines at the correct factor. 0 = no
     /// pending restart, 1 = 2x, 2 = 4x.
     pub pending_restart_os_factor: AtomicU32,
+    /// In-flight parameter snapshot (S4-E4-T04).
+    /// When the main-thread `flush()` fails to push params to the SPSC
+    /// (channel full), the snapshot is stored here for retry via
+    /// `host.request_callback()` → `housekeeping()`.
+    pub in_flight_params: Mutex<Option<crate::common::params::RtPluginParams>>,
     /// Model loaded before `activate()` (state restore while `buffer_size == 0`),
     /// deferred to avoid heap allocation on the audio thread (F3 fix).
     /// See `flush_pending_model()` in load.rs and housekeeping.rs.

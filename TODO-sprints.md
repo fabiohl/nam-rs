@@ -217,10 +217,11 @@ graph TD
   - **Critério de Aceite:** `HostTail::changed()` é invocado exclusivamente a partir de contextos audio-thread autorizados; zero avisos em validators estritos.
   - **Conclusão:** `HostTail::changed()` movido para `cold_load_cabsim()` no audio thread (`processor/events.rs:214`), que tem acesso direto ao `HostAudioProcessorHandle` via `self.host`. Removido bloco `unsafe` de 7 linhas em `housekeeping.rs` que convertia `HostMainThreadHandle` → `HostAudioProcessorHandle` via `from_raw`. Import `clack_extensions::tail::HostTail` removido de `housekeeping.rs`. Atualização do `cabsim_tail_samples` em `rt_to_ui` mantida inalterada — apenas a notificação ao host agora ocorre junto com a troca do adapter. 1296/1316 lib tests passam (3 falhas pré-existentes).
 
-- [ ] **S4-E4-T04 [Alta] — Eventos de Parâmetros GUI Completos e Retryable**
+- [x] **S4-E4-T04 [Alta] — Eventos de Parâmetros GUI Completos e Retryable**
   - **Origem:** E4-T04, CLAP-F016 | **Perfis:** GUI/Plugin Integration Specialist
   - **Escopo:** Envolver edições de parâmetros da GUI no ciclo oficial `begin_edit` -> `value` -> `end_edit` via `host.request_callback()` / `in_flight` queue.
   - **Critério de Aceite:** Automações iniciadas pela GUI gravam envelopes corretos na DAW sem perder o fim do gesto (`end_edit`).
+  - **Conclusão:** Controles segmentados (Oversampling, Activation Precision) em `controls.rs` agora emitem gesto completo BEGIN→CHANGED→END + chamam `HostParams::request_flush()`. `ColdShared` ganhou `in_flight_params: Mutex<Option<RtPluginParams>>` para retry de push SPSC. `PluginMainThreadParams::flush()` armazena snapshot pendente + chama `host.request_callback()` ao falhar push. `housekeeping()` drena `in_flight_params` via novo método `flush_in_flight_params()` com retry em caso de SPSC ainda cheio. 1297/1316 lib tests passam (2 falhas pré-existentes).
 
 - [ ] **S4-E4-T05 [Média] — Suporte à Extensão HostPresetLoad**
   - **Origem:** E4-T05, CLAP-F017 | **Perfis:** Plugin Extension Specialist

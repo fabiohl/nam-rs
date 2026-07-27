@@ -12,6 +12,9 @@ use std::sync::atomic::Ordering;
 impl<'a> NamClapMainThread<'a> {
     /// GC drain, status flag mirroring, hugepage sync, pending model load, latency notification.
     pub(crate) fn housekeeping(&mut self) {
+        // S4-E4-T04: Drain in-flight parameter snapshot queued by
+        // PluginMainThreadParams::flush() when the SPSC was full.
+        self.flush_in_flight_params();
         // Flush any model deferred by load_model() (F3 fix).
         // Primary mechanism is activate(), this is a fallback for hosts
         // that call state-load between activate() and the first process().
@@ -338,6 +341,33 @@ impl<'a> NamClapMainThread<'a> {
             .load(Ordering::Relaxed);
         if _cabsim_tail != self.last_reported_cabsim_tail {
             self.last_reported_cabsim_tail = _cabsim_tail;
+        }
+    }
+
+    /// S4-E4-T04: Retries delivery of parameter snapshots queued by
+    /// `PluginMainThreadParams::flush()` when the SPSC channel was full.
+    /// Called from `housekeeping()` (triggered by `host.request_callback()`).
+    fn flush_in_flight_params(&mut self) {
+        let snapshot = self
+            .shared
+            .cold
+            .in_flight_params
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(params) = snapshot {
+            self.cmd_producer.push_params(params);
+            match self.cmd_producer.force_flush() {
+                Ok(_) => {
+                    log::trace!("In-flight params delivered on retry");
+                }
+                Err(crate::clap::plugin::command_scheduler::PushError::Full) => {
+                    if let Ok(mut guard) = self.shared.cold.in_flight_params.lock() {
+                        *guard = Some(params);
+                    }
+                    self.shared.bump_generation();
+                }
+            }
         }
     }
 }

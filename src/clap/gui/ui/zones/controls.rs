@@ -4,6 +4,7 @@
 //! and Oversampling segmented control.
 
 use crate::clap::plugin::NamClapShared;
+use clack_extensions::params::HostParams;
 use clack_plugin::host::HostSharedHandle;
 use std::sync::atomic::Ordering;
 
@@ -150,9 +151,20 @@ pub(crate) fn draw_zone2_controls(
                         shared.ui_to_rt.param_oversample.store(0, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            1,
+                        );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
                             0,
                         );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            2,
+                        );
                         shared.bump_generation();
+                        if let Some(params_ext) = host.get_extension::<HostParams>() {
+                            params_ext.request_flush(host);
+                        }
                     }
                     let resp = ui.selectable_value(
                         &mut (os_val_i32 == 1),
@@ -163,9 +175,20 @@ pub(crate) fn draw_zone2_controls(
                         shared.ui_to_rt.param_oversample.store(1, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            1,
+                        );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
                             0,
                         );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            2,
+                        );
                         shared.bump_generation();
+                        if let Some(params_ext) = host.get_extension::<HostParams>() {
+                            params_ext.request_flush(host);
+                        }
                     }
                     let resp = ui.selectable_value(
                         &mut (os_val_i32 == 2),
@@ -176,9 +199,20 @@ pub(crate) fn draw_zone2_controls(
                         shared.ui_to_rt.param_oversample.store(2, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            1,
+                        );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
                             0,
                         );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_OVERSAMPLE as usize,
+                            2,
+                        );
                         shared.bump_generation();
+                        if let Some(params_ext) = host.get_extension::<HostParams>() {
+                            params_ext.request_flush(host);
+                        }
                     }
                 });
                 if ind_os & 1 != 0 {
@@ -228,9 +262,20 @@ pub(crate) fn draw_zone2_controls(
                         shared.ui_to_rt.param_activation.store(1, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_ACTIVATION as usize,
+                            1,
+                        );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_ACTIVATION as usize,
                             0,
                         );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_ACTIVATION as usize,
+                            2,
+                        );
                         shared.bump_generation();
+                        if let Some(params_ext) = host.get_extension::<HostParams>() {
+                            params_ext.request_flush(host);
+                        }
                     }
                     let resp = ui.selectable_value(
                         &mut (act_val_i32 == 0),
@@ -241,9 +286,20 @@ pub(crate) fn draw_zone2_controls(
                         shared.ui_to_rt.param_activation.store(0, Ordering::Relaxed);
                         shared.set_gesture(
                             crate::clap::extensions::params::PARAM_ACTIVATION as usize,
+                            1,
+                        );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_ACTIVATION as usize,
                             0,
                         );
+                        shared.set_gesture(
+                            crate::clap::extensions::params::PARAM_ACTIVATION as usize,
+                            2,
+                        );
                         shared.bump_generation();
+                        if let Some(params_ext) = host.get_extension::<HostParams>() {
+                            params_ext.request_flush(host);
+                        }
                     }
                 });
                 if ind_act & 1 != 0 {
