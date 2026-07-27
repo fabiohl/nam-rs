@@ -61,7 +61,7 @@ mod tests {
         // This previously would panic or produce wrong results because the
         // byte-index counter in (1usize..) would mismatch char_indices().
         // Now with char_indices() the byte index is always valid.
-        let s = r#"{"名前": "value"}"#;  // "名" = 3 bytes U+540D
+        let s = r#"{"名前": "value"}"#; // "名" = 3 bytes U+540D
         let result = extract_balanced_json(s).unwrap();
         assert_eq!(result, s);
     }

@@ -716,9 +716,9 @@ mod tests {
     /// 3. ForDuplicate → state.load
     #[test]
     fn test_s6e6t03_state_context_preset_roundtrip_via_state_load() {
-        use clack_extensions::state_context::{PluginStateContext, StateContextType};
         use crate::common::params::{ActivationPrecision, AdaptiveComputeMode, NamPluginParams};
         use crate::dsp::oversample::OversampleFactor;
+        use clack_extensions::state_context::{PluginStateContext, StateContextType};
 
         let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
 
@@ -773,16 +773,22 @@ mod tests {
             serde_json::from_slice(&preset_buffer).expect("preset buffer should be valid JSON");
         assert!(preset_json["params"]["model_path"].is_null());
         // S6-E6-T02: model_search_paths are preserved as portable directory hints
-        assert!(preset_json["params"]["model_search_paths"].is_array(),
-            "model_search_paths are preserved for cross-machine search");
+        assert!(
+            preset_json["params"]["model_search_paths"].is_array(),
+            "model_search_paths are preserved for cross-machine search"
+        );
         assert!(preset_json["params"]["ir_path"].is_null());
         assert!(preset_json["params"]["model_basename"].is_string());
         // S6-E6-T02: model_hash must be present for portable identity
         assert!(preset_json["params"]["model_hash"].is_string());
         // S6-E6-T03: oversample and activation_precision must be preserved
-        assert_eq!(preset_json["params"]["oversample"], "X2",
-            "ForPreset must preserve oversample");
-        assert!((preset_json["params"]["input_gain_db"].as_f64().unwrap() - 2.0).abs() < f64::EPSILON);
+        assert_eq!(
+            preset_json["params"]["oversample"], "X2",
+            "ForPreset must preserve oversample"
+        );
+        assert!(
+            (preset_json["params"]["input_gain_db"].as_f64().unwrap() - 2.0).abs() < f64::EPSILON
+        );
 
         // ── S6-E6-T03 equivalence: ForPreset blob loaded via state.load on same instance ──
         // First deactivate the plugin to reset DSP state, then load the preset
@@ -813,16 +819,67 @@ mod tests {
                 .expect("state.load of preset should succeed (S6-E6-T03 equivalence)");
         }
 
-        let counter = shared.cold.model_load_counter.load(std::sync::atomic::Ordering::Relaxed);
-        assert!(counter > 0, "S6-E6-T03: model must be loaded via state.load(ForPreset blob)");
+        let counter = shared
+            .cold
+            .model_load_counter
+            .load(std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            counter > 0,
+            "S6-E6-T03: model must be loaded via state.load(ForPreset blob)"
+        );
 
         // Verify audio params match original values (not the cleared ones)
-        assert!((f32::from_bits(shared.ui_to_rt.param_input_gain.load(std::sync::atomic::Ordering::Relaxed)) - original.input_gain_db).abs() < f32::EPSILON);
-        assert!((f32::from_bits(shared.ui_to_rt.param_output_gain.load(std::sync::atomic::Ordering::Relaxed)) - original.output_gain_db).abs() < f32::EPSILON);
-        assert!((f32::from_bits(shared.ui_to_rt.param_gate_thresh.load(std::sync::atomic::Ordering::Relaxed)) - original.gate_threshold_db).abs() < f32::EPSILON);
-        assert_eq!(shared.ui_to_rt.param_adaptive_compute.load(std::sync::atomic::Ordering::Relaxed), AdaptiveComputeMode::Conservative as u32);
-        assert_eq!(shared.ui_to_rt.param_oversample.load(std::sync::atomic::Ordering::Relaxed), OversampleFactor::X2.to_f32() as u32);
-        assert_eq!(shared.ui_to_rt.param_activation.load(std::sync::atomic::Ordering::Relaxed), ActivationPrecision::Fast as u32);
+        assert!(
+            (f32::from_bits(
+                shared
+                    .ui_to_rt
+                    .param_input_gain
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            ) - original.input_gain_db)
+                .abs()
+                < f32::EPSILON
+        );
+        assert!(
+            (f32::from_bits(
+                shared
+                    .ui_to_rt
+                    .param_output_gain
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            ) - original.output_gain_db)
+                .abs()
+                < f32::EPSILON
+        );
+        assert!(
+            (f32::from_bits(
+                shared
+                    .ui_to_rt
+                    .param_gate_thresh
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            ) - original.gate_threshold_db)
+                .abs()
+                < f32::EPSILON
+        );
+        assert_eq!(
+            shared
+                .ui_to_rt
+                .param_adaptive_compute
+                .load(std::sync::atomic::Ordering::Relaxed),
+            AdaptiveComputeMode::Conservative as u32
+        );
+        assert_eq!(
+            shared
+                .ui_to_rt
+                .param_oversample
+                .load(std::sync::atomic::Ordering::Relaxed),
+            OversampleFactor::X2.to_f32() as u32
+        );
+        assert_eq!(
+            shared
+                .ui_to_rt
+                .param_activation
+                .load(std::sync::atomic::Ordering::Relaxed),
+            ActivationPrecision::Fast as u32
+        );
 
         let ui_name = shared.cold.ui_model_name.lock().unwrap();
         assert_eq!(ui_name.as_str(), "BossWN-nano.nam");
@@ -831,8 +888,9 @@ mod tests {
         // This part requires the model to be reachable via canonical_search_dirs().
         // For CI environments where ~/.nam/models/ doesn't exist, we skip the cross-machine check.
         if crate::clap::extensions::state_transaction::canonical_search_dirs().is_empty() {
-            log::info!("S6-E6-T03: canonical search dirs empty, skipping cross-machine equivalence check");
-            return;
+            log::info!(
+                "S6-E6-T03: canonical search dirs empty, skipping cross-machine equivalence check"
+            );
         }
     }
 }

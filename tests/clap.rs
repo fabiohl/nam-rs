@@ -13,6 +13,9 @@ use common::alloc_audit::CountingAllocator;
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 #[cfg(feature = "clap-plugin")]
+#[path = "clap/clap_cross_machine.rs"]
+mod clap_cross_machine;
+#[cfg(feature = "clap-plugin")]
 #[path = "clap/clap_lifecycle_test.rs"]
 mod clap_lifecycle_test;
 #[cfg(feature = "clap-plugin")]
@@ -21,9 +24,6 @@ mod clap_multi_instance;
 #[cfg(feature = "clap-plugin")]
 #[path = "clap/clap_state_migration.rs"]
 mod clap_state_migration;
-#[cfg(feature = "clap-plugin")]
-#[path = "clap/clap_cross_machine.rs"]
-mod clap_cross_machine;
 #[cfg(feature = "clap-plugin")]
 #[path = "clap/tail_semantics.rs"]
 mod tail_semantics;

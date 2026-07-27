@@ -12,11 +12,11 @@
 //! 2. **Validate** — off-RT validation: check paths, load/build model, IR, resamplers
 //! 3. **Commit** — publish params + payloads via atomics and SPSC (only after full validation)
 
-use crate::clap::plugin::debug_assert_main_thread;
 use crate::clap::plugin::ClapParamPayload;
 use crate::clap::plugin::NamClapMainThread;
 use crate::clap::plugin::NamModelMetadata;
 use crate::clap::plugin::PendingModel;
+use crate::clap::plugin::debug_assert_main_thread;
 use crate::common::diagnostics::{ModelInfo, NamDiagnostic, NamErrorCode};
 use crate::common::params::NamPluginParams;
 use crate::common::params::RtPluginParams;
@@ -24,8 +24,8 @@ use crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED;
 use crate::dsp::resampler::NamResampler;
 use crate::loader::load_and_build_model;
 use crate::models::NamModel;
-use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
 use crate::models::StaticModel;
+use crate::models::slimmable::clone_wavenet_for_slimmable_storage;
 use clack_plugin::prelude::*;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -132,14 +132,15 @@ fn validate_and_build(
 ) -> Result<ValidatedRestore, PluginError> {
     let maybe_model = match mode {
         RestoreMode::Full => validate_model_full(loaded_params, host_rate, buffer_size, sys)?,
-        RestoreMode::ForPreset => validate_model_preset(loaded_params, host_rate, buffer_size, sys)?,
+        RestoreMode::ForPreset => {
+            validate_model_preset(loaded_params, host_rate, buffer_size, sys)?
+        }
     };
 
     let params = loaded_params.clone();
 
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    let (maybe_ir, ir_path_on_disk) =
-        validate_ir(loaded_params, host_rate, buffer_size, sys)?;
+    let (maybe_ir, ir_path_on_disk) = validate_ir(loaded_params, host_rate, buffer_size, sys)?;
 
     Ok(ValidatedRestore {
         params,
@@ -252,14 +253,13 @@ fn build_model_resources(
         ));
     }
 
-    let new_resampler =
-        Box::new(NamResampler::new(host_rate, model_rate, 0).map_err(|e| {
-            Box::new(
-                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
-                    .message("Failed to build resampler")
-                    .param("error", e.to_string()),
-            )
-        })?);
+    let new_resampler = Box::new(NamResampler::new(host_rate, model_rate, 0).map_err(|e| {
+        Box::new(
+            NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
+                .message("Failed to build resampler")
+                .param("error", e.to_string()),
+        )
+    })?);
 
     let metadata = model_pair.metadata.clone();
     let architecture = model_pair.architecture.clone();
@@ -319,7 +319,13 @@ fn validate_model_full(
             .map(|s| s.to_string());
         let search_path = path.parent().map(|p| p.to_path_buf());
         let hash = Some(resources.model_hash.clone());
-        return Ok((Some(resources), Some(path.clone()), basename, search_path, hash));
+        return Ok((
+            Some(resources),
+            Some(path.clone()),
+            basename,
+            search_path,
+            hash,
+        ));
     }
 
     if let Some(ref basename) = loaded_params.model_basename {
@@ -420,7 +426,13 @@ fn validate_model_from_basename(
         let search_path = candidate.parent().map(|p| p.to_path_buf());
         let hash = Some(resources.model_hash.clone());
         log::info!("NAM-rs: Resolved model via basename search: {candidate:?}");
-        return Ok((Some(resources), Some(candidate), basename_from_path, search_path, hash));
+        return Ok((
+            Some(resources),
+            Some(candidate),
+            basename_from_path,
+            search_path,
+            hash,
+        ));
     }
 
     let searched = search_dirs
@@ -503,11 +515,7 @@ fn validate_ir(
 }
 
 /// Publishes the validated restore atomically.  Only reached after all validation passes.
-fn commit(
-    validated: ValidatedRestore,
-    main_thread: &mut NamClapMainThread,
-    mode: &RestoreMode,
-) {
+fn commit(validated: ValidatedRestore, main_thread: &mut NamClapMainThread, mode: &RestoreMode) {
     let buffer_size = main_thread.shared.cold.buffer_size.load(Ordering::Relaxed);
 
     // ── Commit model ──
@@ -588,7 +596,10 @@ fn commit(
             }
             log::info!(
                 "Model restored: {:?}",
-                validated.model_path_on_disk.as_deref().unwrap_or(Path::new(""))
+                validated
+                    .model_path_on_disk
+                    .as_deref()
+                    .unwrap_or(Path::new(""))
             );
         }
 
@@ -686,10 +697,11 @@ fn commit(
         main_thread.params.adaptive_compute as u32,
         Ordering::Relaxed,
     );
-    main_thread.shared.ui_to_rt.param_slim_override.store(
-        main_thread.params.slim_override as u32,
-        Ordering::Relaxed,
-    );
+    main_thread
+        .shared
+        .ui_to_rt
+        .param_slim_override
+        .store(main_thread.params.slim_override as u32, Ordering::Relaxed);
     main_thread.shared.ui_to_rt.param_oversample.store(
         main_thread.params.oversample.to_f32() as u32,
         Ordering::Relaxed,

@@ -9,8 +9,8 @@
 //! - v1 (current): envelope `StateEnvelope { version: 1, params: {...} }`.
 
 use crate::clap::extensions::state_transaction::{self, RestoreMode};
-use crate::clap::plugin::debug_assert_main_thread;
 use crate::clap::plugin::NamClapMainThread;
+use crate::clap::plugin::debug_assert_main_thread;
 use crate::common::params::NamPluginParams;
 use clack_common::stream::{InputStream, OutputStream};
 use clack_extensions::state::PluginStateImpl;
