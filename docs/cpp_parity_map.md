@@ -37,7 +37,7 @@ when. **For a single-page triage of what is actually broken vs. what is under co
    was eliminated; NAMcore never quantized).
 
 2. **Ideal-math fidelity** — how far is NAM-rs from the exact mathematics? Measured against an
-   independent f64 reference oracle (`src/testing/reference_oracle.rs`), itself cross-checked
+   independent f64 reference oracle (`src/testing/reference_oracle/mod.rs`), itself cross-checked
    against a third, independent NumPy f64 implementation. This isolates the genuine precision
    floor, separate from interop drift.
 

@@ -323,7 +323,7 @@ A2-Full uses the `A2Conv1dCh8` fast path with f32 weights in col-major layout (`
 
 ### A2-Lite (CH=3) — f32 Native GEMV Path
 
-A2-Lite uses the dedicated `A2Conv1dCh3` fast path ([`src/models/a2/conv1d_ch3.rs`](../src/models/a2/conv1d_ch3.rs)), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2.
+A2-Lite uses the dedicated `A2Conv1dCh3` fast path ([`src/models/a2/conv1d_ch3/mod.rs`](../src/models/a2/conv1d_ch3/mod.rs)), mirroring the CH=8 kernel design: f32 native weights in col-major-per-tap layout (one `_mm_loadu_ps` load, one `_mm_fmadd_ps` FMA per input channel — no f16 decode). The kernel is a fully unrolled GEMV (18 FMAs for K=6, 45 FMAs for K=15), with post-conv operations (Mixin, LeakyReLU, head, l1x1) batched via AVX2.
 
 | Block Size   | Latency (µs) | Per-Sample (ns) | CPU % at 48kHz |
 |:------------ |:------------ |:--------------- |:-------------- |

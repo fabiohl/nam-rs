@@ -7,24 +7,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 Este documento centraliza o planejamento ágil completo do ecossistema **NAM-rs**, convertendo as auditorias e achados de [TODO-fix_CLAP.md](file:///home/fabio/nam-rs/TODO-fix_CLAP.md) em Sprints e Tarefas Técnicas atômicas ordenadas para execução segura por especialistas.
 
-Documento mantido exclusivamente em Português Brasileiro (pt-BR) pela skill [`planejador-arquiteto`](file:///home/fabio/nam-rs/.agents/skills/planejador-arquiteto/SKILL.md).
-
 ---
 
-## Fluxo Geral de Dependências entre Sprints
-
-```mermaid
-graph TD
-    S0["Sprint S0: Contenção Imediata (Épico E0)"] --> S1["Sprint S1: Lifecycle & State RT (Épico E1)"]
-    S0 --> S2["Sprint S2: Pipeline Determinístico (Épico E2)"]
-    S1 --> S4["Sprint S4: Control Plane CLAP (Épico E4)"]
-    S2 --> S3["Sprint S3: CabSim Causal & Tail (Épico E3)"]
-    S4 --> S3
-    S3 --> S5["Sprint S5: Multi-Instância & RT Safety (Épico E5)"]
-    S5 --> S6["Sprint S6: Presets Transacionais (Épico E6)"]
-    S6 --> S7["Sprint S7: GUI & UX Previsível (Épico E7)"]
-    S7 --> S8["Sprint S8: QA & Harness de DAWs Reais (Épico E8)"]
-```
+## Épico E0 — Contenção imediata de comportamento enganoso [DONE]
 
 ---
 
@@ -391,36 +376,10 @@ graph TD
   - **Conclusão (2026-07-27):** (A) Dois testes adicionados em `src/clap/processor_gui_test.rs`: `test_headless_gui_floating_window_lifecycle` — ciclo create → set_transient (janela flutuante via `baseview::Window::open_blocking`) → destroy, verificado em Xvfb com software GL (`LIBGL_ALWAYS_SOFTWARE=1`). `test_headless_clipboard_works` — valida round-trip clipboard via `arboard` (set/get text) em X11 headless. Ambos requerem `DISPLAY` definido (skip gracioso sem Xvfb). (B) Integração CI em `utils/tests-long.sh` Phase 5: Xvfb auto-start com número de display livre, execução dos dois testes, cleanup do processo Xvfb ao final. Clippy limpo. Tests-quick pass.
   - **Nota:** O FSM `GuiLifecycle` possui transição `ShowRequested → Active` via `WindowReady` que nunca é disparada na implementação atual (o callback do GUI thread não existe). Por isso o teste de lifecycle usa `set_transient` diretamente (cria janela visível) sem `show()`/`hide()`, refletindo o uso real em DAWs. A correção do FSM (`WindowReady` callback) fica como dívida técnica para sprint futuro.
 
-- [ ] **S8-E8-T06 [Média] — Sincronização Final da Documentação Oficial**
+- [x] **S8-E8-T06 [Média] — Sincronização Final da Documentação Oficial**
   - **Origem:** E8-T06 | **Perfis:** Technical Writer / Documentador
   - **Escopo:** Atualizar `docs/clap_integration.md`, `docs/testing.md`, `docs/functional-tests.md`, `README.md` e `docs/architecture.md` após comprovação completa dos contratos corrigidos.
   - **Critério de Aceite:** Toda a documentação pública reflete a implementação real verificada.
+  - **Conclusão (2026-07-27):** (A) 7 paths fonte stale corrigidos: `docs/testing.md` (`processor_test.rs`→`processor_gc_stress_test.rs`, `gate/gate_test.rs`→`gate_test.rs`, `activation_precision.rs`→`activations/mod.rs`), `docs/architecture.md` (`resampler.rs`→`resampler/mod.rs`), `docs/audio_fidelity_map.md` (`adaptive_compute.rs`→`adaptive.rs`), `docs/benchmarks.md` (`conv1d_ch3.rs`→`conv1d_ch3/mod.rs`), `docs/cpp_parity_map.md` (`reference_oracle.rs`→`reference_oracle/mod.rs`). (B) Scripts `utils/run-standalone.sh` e `utils/check-model.py` documentados no `README.md`. (C) `docs/testing.md`: matriz de testes atualizada com 5 novas entradas (host_harness, artifact_validator, doc_inventory, clap_parity_multi_sr, headless GUI), Phase 5 description atualizada. (D) `docs/clap_integration.md`: nova §10 documenta host harness, artifact validation, headless GUI tests e CLAP-vs-NAMCore parity. (E) Meta-teste `doc_inventory` passa sem exemptions — todas as divergências resolvidas. Clippy limpo. Tests-quick pass.
 
 ---
-
-## Matriz de Riscos e Atribuição Global de Especialistas
-
-| Sprint | Escopo Principal | Nível de Risco | Especialista Lider |
-| :--- | :--- | :--- | :--- |
-| **Sprint S0** | Contenção Imediata de Comportamento Enganoso | 🚨 Crítico | Engenheiro DSP Real-Time & Arquiteto CLAP |
-| **Sprint S1** | Lifecycle e State RT Persistente | 🚨 Crítico | Arquiteto de Sistemas Rust & State Specialist |
-| **Sprint S2** | Pipeline Determinístico e Sem Truncamento | 🚨 Crítico | Real-Time Data Structures & DSP Loop Architect |
-| **Sprint S3** | CabSim Causal, Verificável e Lifecycle-Safe | 🚨 Crítico | Convolution & DSP Scientist |
-| **Sprint S4** | Control Plane e Conformidade CLAP | 🔶 Alto | Concurrency Architect & CLAP Protocol Specialist |
-| **Sprint S5** | Isolamento Multi-Instância e RT-Safety | 🚨 Crítico | Systems Architect & Real-Time Safety Engineer |
-| **Sprint S6** | Estado e Presets Transacionais/Portáveis | 🔶 Alto | State Architecture Specialist |
-| **Sprint S7** | GUI Previsível, Econômica e Acessível | 🔶 Alto | GUI Systems Architect & UX Specialist |
-| **Sprint S8** | QA que Reproduz DAWs Reais | 🚨 Crítico | Test Framework Architect & DSP Scientist |
-
----
-
-## Regras Obrigatórias de Operação
-
-1. **Ordem Sequencial de Scripts (Regra `.agents/rules/testing.md`):**
-   - `utils/lints.sh` — Análise estática, licenças e clippy.
-   - `utils/tests-quick.sh` — Primeira linha de testes. Permitido **uma única vez** por tarefa como validação final.
-   - `utils/quality-dashboard.sh --check docs/quality-contract.txt` — Dashboard de qualidade.
-   - `utils/tests-long.sh` — **NUNCA executar dentro da sessão de IA**. Exclusivo do operador humano.
-
-2. **Condição de Encerramento de Finding:**
-   Um finding só pode ser marcado como resolvido quando houver teste automatizado reproduzindo a falha, correção aprovada no modo release, auditoria RT/heap quando aplicável e aprovação no host harness.

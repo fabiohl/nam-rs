@@ -38,13 +38,13 @@ of the `.nam` / `.namb` file format contract.
 
 **Rationale for removing weight compression.** An earlier optimization using half-precision (`f16c`/`bf16`) weight compression was evaluated and removed. Quantitative profiling confirmed that `f16c` decompression overhead on L1 cache outweighed any bandwidth benefits for LSTM models, while introducing artificial interop drift in recurrent models. Weights are loaded directly as `f32` across all model families.
 
-**Implementation.** Weight loading and vector storage in [src/models/](file:///home/fabio/nam-rs/src/models/) (`set_weights.rs` and `model.rs` per architecture). Utility modules in [src/math/common/half.rs](file:///home/fabio/nam-rs/src/math/common/half.rs) are retained exclusively for benchmark and test reference.
+**Implementation.** Weight loading and vector storage in [src/models/](/src/models/) (`set_weights.rs` and `model.rs` per architecture). Utility modules in [src/math/common/half.rs](/src/math/common/half.rs) are retained exclusively for benchmark and test reference.
 
 ---
 
 ## 2. Activation Precision — Standard (exact-grade) vs Fast (Padé)
 
-**What it is.** Neural models rely on non-linear activations (`tanh`, `sigmoid`). `nam-rs` provides two approximation modes controlled via the global `ActivationPrecision` atomic flag in [src/math/activations/mod.rs](file:///home/fabio/nam-rs/src/math/activations/mod.rs):
+**What it is.** Neural models rely on non-linear activations (`tanh`, `sigmoid`). `nam-rs` provides two approximation modes controlled via the global `ActivationPrecision` atomic flag in [src/math/activations/mod.rs](/src/math/activations/mod.rs):
 
 | Mode                   | Activation Kernel                            | Max Absolute Error      | Approx Error (dBFS) | Compute Impact  |
 |:---------------------- |:-------------------------------------------- |:-----------------------:|:-------------------:|:---------------:|
@@ -70,7 +70,7 @@ Runtime switching is supported without audio thread allocation via CLI (`--activ
 
 Standard mode is most effective when paired with 4× neural stage oversampling (§5): oversampling suppresses non-linear folded harmonics via half-band filtering, while Standard exact-grade activations eliminate high-order polynomial folding residual errors.
 
-**Implementation.** [src/math/activations/mod.rs](file:///home/fabio/nam-rs/src/math/activations/mod.rs), [src/math/activations/tanh/production.rs](file:///home/fabio/nam-rs/src/math/activations/tanh/production.rs) (Fast mode), [src/math/activations/tanh/high_fidelity.rs](file:///home/fabio/nam-rs/src/math/activations/tanh/high_fidelity.rs) (Standard mode), [src/math/activations/sigmoid/production.rs](file:///home/fabio/nam-rs/src/math/activations/sigmoid/production.rs) (Fast mode), [src/math/activations/sigmoid/high_fidelity.rs](file:///home/fabio/nam-rs/src/math/activations/sigmoid/high_fidelity.rs) (Standard mode). Full mathematical analysis in [`docs/fastmath-approximations.md`](fastmath-approximations.md).
+**Implementation.** [src/math/activations/mod.rs](/src/math/activations/mod.rs), [src/math/activations/tanh/production.rs](/src/math/activations/tanh/production.rs) (Fast mode), [src/math/activations/tanh/high_fidelity.rs](/src/math/activations/tanh/high_fidelity.rs) (Standard mode), [src/math/activations/sigmoid/production.rs](/src/math/activations/sigmoid/production.rs) (Fast mode), [src/math/activations/sigmoid/high_fidelity.rs](/src/math/activations/sigmoid/high_fidelity.rs) (Standard mode). Full mathematical analysis in [`docs/fastmath-approximations.md`](fastmath-approximations.md).
 
 ---
 
@@ -101,13 +101,13 @@ Three core mechanisms maintain high recurrent precision in LSTMs:
 - **Kahan-Compensated Head Projection:** Head projection accumulation ($H \to 1$) uses Kahan compensated summation, yielding ~2 dB SNR gain in deep heads.
 - **Fixed Delay Constraint (Oversampling Exclusion):** External oversampling is **not recommended** for LSTM models. Unlike feedforward WaveNet models, LSTM recurrent feedback delays are fixed in absolute sample counts — oversampling by 2×/4× shortens the physical time-constant window, altering timbre drastically.
 
-**Implementation.** [src/models/lstm/layer_kernels.rs](file:///home/fabio/nam-rs/src/models/lstm/layer_kernels.rs).
+**Implementation.** [src/models/lstm/layer_kernels.rs](/src/models/lstm/layer_kernels.rs).
 
 ---
 
 ## 4. Host Sample Rate Adaptation (Polyphase Sinc Resampler)
 
-**What it is.** NAM models are trained at 48 kHz. When host DAW software operates at a different sample rate (e.g., 44.1 kHz, 88.2 kHz, 96 kHz, 192 kHz), `nam-rs` performs rate conversion using a native minimum-phase polyphase FIR sinc resampler ([src/dsp/resampler/mod.rs](file:///home/fabio/nam-rs/src/dsp/resampler/mod.rs)).
+**What it is.** NAM models are trained at 48 kHz. When host DAW software operates at a different sample rate (e.g., 44.1 kHz, 88.2 kHz, 96 kHz, 192 kHz), `nam-rs` performs rate conversion using a native minimum-phase polyphase FIR sinc resampler ([src/dsp/resampler/mod.rs](/src/dsp/resampler/mod.rs)).
 
 **Configuration.** 256 phases × 64 taps, Kaiser window ($\beta = 12$), minimum-phase filter by default. A linear-phase variant is available internally for offline processing.
 
@@ -124,7 +124,7 @@ Three core mechanisms maintain high recurrent precision in LSTMs:
 
 **Rejection of 32-tap mode.** A 32-tap resampler variant was benchmarked and discarded. While saving only ~40 ns per 64-sample block (< 0.1% total pipeline execution time), 32 taps degraded passband SNR from $\ge 100\text{ dB}$ down to $\sim 24\text{ dB}$. The 64-tap configuration is the permanent production standard.
 
-**Implementation.** [src/dsp/resampler/mod.rs](file:///home/fabio/nam-rs/src/dsp/resampler/mod.rs), [src/dsp/sinc_kernel.rs](file:///home/fabio/nam-rs/src/dsp/sinc_kernel.rs).
+**Implementation.** [src/dsp/resampler/mod.rs](/src/dsp/resampler/mod.rs), [src/dsp/sinc_kernel.rs](/src/dsp/sinc_kernel.rs).
 
 ---
 
@@ -142,7 +142,7 @@ Pipeline: `Upsample FIR stage(s) → Model Inference (at 2×/4× rate) → Downs
 | 2×            | 1      | 12 samples @ native rate (~0.25 ms @ 48 kHz) | ~2.0× model cost  |
 | 4×            | 2      | 24 samples @ native rate (~0.50 ms @ 48 kHz) | ~4.0× model cost  |
 
-Latency is reported dynamically to the host host via `OversampleEngine::latency_samples()`. The CLAP plugin integrates latency announcements and dynamic updates seamlessly ([src/clap/processor/events.rs](file:///home/fabio/nam-rs/src/clap/processor/events.rs)).
+Latency is reported dynamically to the host host via `OversampleEngine::latency_samples()`. The CLAP plugin integrates latency announcements and dynamic updates seamlessly ([src/clap/processor/events.rs](/src/clap/processor/events.rs)).
 
 **User Control:**
 
@@ -152,7 +152,7 @@ Latency is reported dynamically to the host host via `OversampleEngine::latency_
 
 **ADAA Rejection Rationale.** Antiderivative Anti-Aliasing (ADAA) requires analytical antiderivatives per activation function, conflicting with `nam-rs`'s generic SIMD dispatch macro (`dispatch_simd!`) and multi-architecture model dispatcher. Half-band FIR oversampling is activation-agnostic and universally compatible across all topologies.
 
-**Implementation.** [src/dsp/oversample.rs](file:///home/fabio/nam-rs/src/dsp/oversample.rs) (`OversampleEngine`), [src/dsp/pipeline/stages/inference.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/inference.rs).
+**Implementation.** [src/dsp/oversample.rs](/src/dsp/oversample.rs) (`OversampleEngine`), [src/dsp/pipeline/stages/inference.rs](/src/dsp/pipeline/stages/inference.rs).
 
 ---
 
@@ -162,13 +162,13 @@ Latency is reported dynamically to the host host via `OversampleEngine::latency_
 
 ### 6.1 Deterministic Dither Offset
 
-A fixed offset `DENORMAL_DITHER_OFFSET = 1.0e-11` (−220 dBFS) is injected into input samples prior to inference and subtracted from output samples after inference ([src/dsp/pipeline/stages/input.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/input.rs), [src/dsp/pipeline/stages/output.rs](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs)).
+A fixed offset `DENORMAL_DITHER_OFFSET = 1.0e-11` (−220 dBFS) is injected into input samples prior to inference and subtracted from output samples after inference ([src/dsp/pipeline/stages/input.rs](/src/dsp/pipeline/stages/input.rs), [src/dsp/pipeline/stages/output.rs](/src/dsp/pipeline/stages/output.rs)).
 
 Because the exact same constant is added and subtracted symmetrically, cancellation is bit-exact with zero residual DC drift or noise floor elevation.
 
 ### 6.2 Hardware FTZ/DAZ (MXCSR Register)
 
-The helper `set_daz_ftz()` in [src/math/common/ops.rs](file:///home/fabio/nam-rs/src/math/common/ops.rs) configures SSE2 MXCSR control register flags:
+The helper `set_daz_ftz()` in [src/math/common/ops.rs](/src/math/common/ops.rs) configures SSE2 MXCSR control register flags:
 
 - **FTZ (Flush-To-Zero):** Output subnormals flush to positive zero.
 - **DAZ (Denormals-Are-Zero):** Input subnormals are read as zero.
@@ -191,7 +191,7 @@ Applied on the first audio block of `process()` and refreshed every 1024 blocks 
 - CLI: `--slim auto|full|lite`
 - CLAP: Dedicated adaptive compute parameter. Setting `--slim full` disables dynamic fallback.
 
-**Implementation.** [src/dsp/adaptive_compute.rs](file:///home/fabio/nam-rs/src/dsp/adaptive_compute.rs), [src/clap/processor/params.rs](file:///home/fabio/nam-rs/src/clap/processor/params.rs), [src/models/static_model.rs](file:///home/fabio/nam-rs/src/models/static_model.rs) (`supports_layer_skip()`).
+**Implementation.** [src/dsp/adaptive.rs](/src/dsp/adaptive.rs), [src/clap/processor/params.rs](/src/clap/processor/params.rs), [src/models/static_model.rs](/src/models/static_model.rs) (`supports_layer_skip()`).
 
 ---
 

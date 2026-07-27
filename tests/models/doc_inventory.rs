@@ -241,20 +241,10 @@ const SCRIPT_DOC_EXEMPT: &[&str] = &[
     "utils/_lib.sh",
     "utils/debug/repro_oversample_hang.sh",
     "utils/debug/verify_bug3_fix.sh",
-    "utils/run-standalone.sh",
-    "utils/check-model.py",
 ];
 
 /// Known stale source paths in documentation — to be fixed in S8-E8-T06.
-const STALE_SRC_PATH_EXEMPT: &[&str] = &[
-    "src/clap/processor_test.rs",
-    "src/dsp/gate/gate_test.rs",
-    "src/dsp/resampler.rs",
-    "src/dsp/adaptive_compute.rs",
-    "src/math/activation_precision.rs",
-    "src/models/a2/conv1d_ch3.rs",
-    "src/testing/reference_oracle.rs",
-];
+const STALE_SRC_PATH_EXEMPT: &[&str] = &[];
 
 #[test]
 fn test_script_refs_in_docs_exist() {
@@ -295,8 +285,6 @@ fn test_all_utils_scripts_are_documented() {
         "utils/_lib.sh",
         "utils/debug/repro_oversample_hang.sh",
         "utils/debug/verify_bug3_fix.sh",
-        "utils/run-standalone.sh",
-        "utils/check-model.py",
     ];
 
     let mut undocumented = Vec::new();

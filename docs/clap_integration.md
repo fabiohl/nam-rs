@@ -230,11 +230,13 @@ Only `CLAP_WINDOW_API_X11` is declared. Native Wayland embedding is planned.
 or running egui, the handler checks three conditions via cheap atomics and
 state flags. If all are met, the function returns immediately without any
 rendering work:
+
 ```rust
 if !self.dirty && !self.state.has_active_animations() && !peaks_changed {
     return; // no GL context acquired, near-zero per-frame cost
 }
 ```
+
 - `!dirty` — no input events since last frame (`on_event` sets `dirty = true`).
 - `!has_active_animations()` — no error banner, toast notification, or drag
   overlay with unexpired timer.
@@ -309,3 +311,32 @@ sample-accurate user-gain smoothing never touches static model calibration.
   floating fallback mode or via host generic sliders. Native Wayland GUI support
   is planned.
 - **CLAP-info / CLAP-host** — CLI tools for spec validation.
+
+## 10. Test Infrastructure & Contract Validation (S8-E8)
+
+### 10.1 Host Harness (`src/clap/host_harness.rs`)
+
+A complete simulated DAW host for CLAP protocol contract validation, built as unit tests within the library crate:
+
+- **`CompleteHostState`** — shared event log (`Arc<Mutex<Vec<HostEvent>>>`) and atomic flags for post-test assertion.
+- **`CompleteHostShared`** — implements `SharedHandler`, `HostThreadCheckImpl` (main/audio thread identity), `HostLogImpl`, `HostParamsImplShared`.
+- **`CompleteHostMainThread`** — implements `MainThreadHandler`, `HostLatencyImpl`, `HostPresetLoadImpl`, `HostParamsImplMainThread`.
+- **`CompleteHostAudioProcessor`** — implements `AudioProcessorHandler`, `HostTailImpl`.
+
+All 6 CLAP host extensions are registered via `declare_extensions()`. The harness includes helpers: `make_test_plugin_with_harness()`, `process_block_harness()`, `perform_restart()` (full deactivate → activate cycle).
+
+### 10.2 Artifact Validation (`tests/clap/artifact_validator.rs`)
+
+Ensures integration tests run against the freshly built `.so`, not a stale install or static-link path:
+
+- **`test_clap_lifecycle`**, **`test_multi_instance_*`**, **`test_state_migration_*`** — all migrated from `PluginEntry::load_from_clack()` (static) to `PluginEntry::load(&artifact.path)` (dynamic).
+- **SHA256 hashing** of the tested binary recorded in test output for CI traceability.
+- Path resolution priority: `CLAP_PLUGIN_PATH` → `CARGO_TARGET_DIR` → `target/release/` → `target/clap/release/`.
+
+### 10.3 Headless GUI Tests (Xvfb)
+
+Float-window lifecycle (`create` → `set_transient` → `destroy`) and clipboard round-trip (`arboard`) tested under a virtual X11 display (`Xvfb :99`) with software rendering (`llvmpipe`). Integrated into `utils/tests-long.sh` Phase 5 with automatic Xvfb start/stop.
+
+### 10.4 End-to-End CLAP vs NAMCore Parity (`tests/clap/clap_parity_multi_sr.rs`)
+
+Loads the `.so`, loads a model via state, processes stress signals with irregular buffer sizes, and compares output against the C++ NAMCore oracle (`ESR < 1e-11`, `SNR > 110 dB`). The `#[ignore]` parity test requires the NAMCore C++ render binary; a `test_clap_parity_smoke` runs in CI without NAMCore.

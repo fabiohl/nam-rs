@@ -192,6 +192,12 @@ utils/tests-quick.sh
 
 # 3. Quality Dashboard (benchmarks & audio fidelity quality contract check)
 utils/quality-dashboard.sh --check docs/quality-contract.txt
+
+# 4. Quick standalone build & run (PipeWire)
+utils/run-standalone.sh
+
+# 5. Model diagnostic check (validates .nam file metadata)
+python3 utils/check-model.py path/to/model.nam
 ```
 
 ---

@@ -241,7 +241,7 @@ PipeWire Input (Nk Hz)
 
 ### Native Resampler Architecture
 
-NAM models are trained at 48 kHz; when the host runs at a different rate, NAM-rs converts using a native **Minimum-Phase Polyphase FIR Sinc Resampler** (`NamResampler` in `src/dsp/resampler.rs`), replacing external dependencies such as `rubato`:
+NAM models are trained at 48 kHz; when the host runs at a different rate, NAM-rs converts using a native **Minimum-Phase Polyphase FIR Sinc Resampler** (`NamResampler` in `src/dsp/resampler/mod.rs`), replacing external dependencies such as `rubato`:
 
 - **Polyphase oversampled with linear interpolation:** 256 phases × 64 taps, Kaiser β=12 windowed sinc.
 - **Minimum-phase transform (Real Cepstrum):** Eliminates pre-ringing by concentrating filter energy into the shortest possible delay via f64 FFT.

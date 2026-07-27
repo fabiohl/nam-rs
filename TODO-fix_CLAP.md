@@ -914,7 +914,7 @@ activate permite retry bem-sucedido.
 Os epics abaixo ordenam a correção para minimizar retrabalho. Não constituem
 `TODO-sprints.md`; são agrupamentos de findings para planejamento posterior.
 
-### Épico E0 — Contenção imediata de comportamento enganoso [DOING]
+### Épico E0 — Contenção imediata de comportamento enganoso [DONE]
 
 **Findings:** CLAP-F001, CLAP-F004, CLAP-F009, CLAP-F014 e CLAP-F021.
 
