@@ -99,7 +99,7 @@ pub fn knob_widget(
         current_text_value: None,
         prev_text_value: None,
         hint_text: None,
-                text_selection: None,
+        text_selection: None,
         selected: None,
         value: Some(current_value as f64),
     });

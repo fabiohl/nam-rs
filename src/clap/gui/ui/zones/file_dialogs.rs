@@ -113,7 +113,10 @@ mod file_dialogs_test {
     fn test_dialog_state_sentinels_are_distinct() {
         let cancelled = dialog_state::dialog_cancelled_sentinel();
         let timedout = dialog_state::dialog_timedout_sentinel();
-        assert_ne!(cancelled, timedout, "cancel and timeout sentinels must differ");
+        assert_ne!(
+            cancelled, timedout,
+            "cancel and timeout sentinels must differ"
+        );
         assert!(cancelled.to_string_lossy().contains("CANCELLED"));
         assert!(timedout.to_string_lossy().contains("TIMEDOUT"));
     }

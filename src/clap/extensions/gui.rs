@@ -3,9 +3,9 @@
 
 //! Implementation of the `clap_plugin_gui` extension for NAM-rs.
 
-use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
-use crate::clap::gui::lifecycle::{GuiEvent, GuiLifecycle};
 use crate::clap::gui::GuiHostBridge;
+use crate::clap::gui::lifecycle::{GuiEvent, GuiLifecycle};
+use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
 use crate::clap::plugin::NamClapMainThread;
 use crate::clap::plugin::debug_assert_main_thread;
 use clack_extensions::gui::{
@@ -61,8 +61,8 @@ impl<'a> NamClapMainThread<'a> {
                         }
                     })
                     .ok(); // Ignore spawn failure — the handle will be dropped
-                           // by the caller when `self` is dropped, which
-                           // is harmless (OS reclaims).
+                // by the caller when `self` is dropped, which
+                // is harmless (OS reclaims).
             }
         }
         // Clear dialog active flags so the UI doesn't show stale Loading state
@@ -94,7 +94,9 @@ impl<'a> NamClapMainThread<'a> {
                     // outlives the plugin).
                     std::thread::Builder::new()
                         .name("nam-dialog-reaper".into())
-                        .spawn(move || { let _ = h.join(); })
+                        .spawn(move || {
+                            let _ = h.join();
+                        })
                         .ok();
                 }
             }
@@ -232,7 +234,11 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
             let scale_factor = {
                 let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
-                if stored == 0 { 1.0f32 } else { f32::from_bits(stored) }
+                if stored == 0 {
+                    1.0f32
+                } else {
+                    f32::from_bits(stored)
+                }
             };
 
             let options = Self::window_options("", scale_factor);
@@ -269,7 +275,11 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
             let scale_factor = {
                 let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
-                if stored == 0 { 1.0f32 } else { f32::from_bits(stored) }
+                if stored == 0 {
+                    1.0f32
+                } else {
+                    f32::from_bits(stored)
+                }
             };
 
             let options = Self::window_options("NAM-rs", scale_factor);

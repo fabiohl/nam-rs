@@ -77,8 +77,11 @@ impl GuiLifecycle {
             // Illegal transitions
             (current, event) => {
                 let err: &'static str = Box::leak(
-                    format!("GUI lifecycle: illegal transition {:?} -> {:?}", current, event)
-                        .into_boxed_str(),
+                    format!(
+                        "GUI lifecycle: illegal transition {:?} -> {:?}",
+                        current, event
+                    )
+                    .into_boxed_str(),
                 );
                 log::warn!("{err}");
                 return Err(PluginError::Message(err));
@@ -166,7 +169,12 @@ mod lifecycle_tests {
 
     #[test]
     fn test_destroy_from_any_state() {
-        for start in [GuiLifecycle::Hidden, GuiLifecycle::ShowRequested, GuiLifecycle::Active, GuiLifecycle::HideRequested] {
+        for start in [
+            GuiLifecycle::Hidden,
+            GuiLifecycle::ShowRequested,
+            GuiLifecycle::Active,
+            GuiLifecycle::HideRequested,
+        ] {
             let mut state = start;
             state.transition(GuiEvent::Destroy).unwrap();
             assert_eq!(state, GuiLifecycle::Destroyed);
@@ -197,10 +205,18 @@ mod lifecycle_tests {
         assert!(state.transition(GuiEvent::Show).is_err());
 
         // Can't window_ready from hidden
-        assert!(GuiLifecycle::Hidden.transition(GuiEvent::WindowReady).is_err());
+        assert!(
+            GuiLifecycle::Hidden
+                .transition(GuiEvent::WindowReady)
+                .is_err()
+        );
 
         // Can't window_hidden from active
-        assert!(GuiLifecycle::Active.transition(GuiEvent::WindowHidden).is_err());
+        assert!(
+            GuiLifecycle::Active
+                .transition(GuiEvent::WindowHidden)
+                .is_err()
+        );
     }
 
     #[test]

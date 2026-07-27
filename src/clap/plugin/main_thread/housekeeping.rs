@@ -238,15 +238,15 @@ impl<'a> NamClapMainThread<'a> {
                     }
                     Err(e) => {
                         let err_msg = e.error_code().message();
-                        let mut msg_guard =
-                            self.shared
-                                .cold
-                                .ui_load_error_msg
-                                .lock()
-                                .unwrap_or_else(|e| {
-                                    log::error!("PoisonError in ui_load_error_msg lock: {e:?}");
-                                    e.into_inner()
-                                });
+                        let mut msg_guard = self
+                            .shared
+                            .cold
+                            .ui_load_error_msg
+                            .lock()
+                            .unwrap_or_else(|e| {
+                                log::error!("PoisonError in ui_load_error_msg lock: {e:?}");
+                                e.into_inner()
+                            });
                         *msg_guard = err_msg.to_string();
                         self.shared
                             .cold
@@ -304,10 +304,16 @@ impl<'a> NamClapMainThread<'a> {
 
                 if path == cancelled_sentinel {
                     log::info!("NAM-rs: IR file dialog cancelled by user");
-                    self.shared.cold.ui_ir_loading.store(false, Ordering::Relaxed);
+                    self.shared
+                        .cold
+                        .ui_ir_loading
+                        .store(false, Ordering::Relaxed);
                 } else if path == timedout_sentinel {
                     log::info!("NAM-rs: IR file dialog timed out");
-                    self.shared.cold.ui_ir_loading.store(false, Ordering::Relaxed);
+                    self.shared
+                        .cold
+                        .ui_ir_loading
+                        .store(false, Ordering::Relaxed);
                 } else {
                     let res = self.load_cabsim(&path);
                     self.shared

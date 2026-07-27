@@ -12,7 +12,8 @@ pub(crate) fn handle_focus_navigation(
 ) {
     let load_btn_id = load_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_model_button"));
     let load_ir_btn_id = load_ir_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_ir_button"));
-    let clear_ir_btn_id = clear_ir_btn_id.unwrap_or_else(|| ui.make_persistent_id("clear_ir_button"));
+    let clear_ir_btn_id =
+        clear_ir_btn_id.unwrap_or_else(|| ui.make_persistent_id("clear_ir_button"));
     let os_id = oversample_id.unwrap_or_else(|| ui.make_persistent_id("oversample_control"));
     let act_id = activation_id.unwrap_or_else(|| ui.make_persistent_id("activation_control"));
 

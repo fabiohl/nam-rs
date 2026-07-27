@@ -324,7 +324,7 @@ pub(crate) fn draw_zone1_identity(
                     current_text_value: None,
                     prev_text_value: None,
                     hint_text: None,
-                text_selection: None,
+                    text_selection: None,
                     selected: None,
                     value: None,
                 });

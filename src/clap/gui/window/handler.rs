@@ -47,7 +47,8 @@ impl WindowHandler for NamPluginWindow {
         if let Some(shared) = self.safe_shared() {
             let peak_l = f32::from_bits(shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
             let peak_r = f32::from_bits(shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
-            peaks_changed = peak_l != self.state.cached_peak_l || peak_r != self.state.cached_peak_r;
+            peaks_changed =
+                peak_l != self.state.cached_peak_l || peak_r != self.state.cached_peak_r;
         }
 
         if !self.dirty && !self.state.has_active_animations() && !peaks_changed {
@@ -64,8 +65,10 @@ impl WindowHandler for NamPluginWindow {
 
         if let Some(shared) = self.safe_shared() {
             // Cache peak values for idle detection on the next frame.
-            self.state.cached_peak_l = f32::from_bits(shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
-            self.state.cached_peak_r = f32::from_bits(shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
+            self.state.cached_peak_l =
+                f32::from_bits(shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
+            self.state.cached_peak_r =
+                f32::from_bits(shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
 
             let mut raw_input = self.raw_input.take();
             raw_input.time = Some(self.start_time.elapsed().as_secs_f64());

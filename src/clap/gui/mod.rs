@@ -69,7 +69,10 @@ impl GuiHostBridge {
         // The 'static lifetime is justified because the host's actual lifetime
         // encompasses all plugin instance lifetimes.
         unsafe {
-            std::mem::transmute::<std::ptr::NonNull<()>, clack_plugin::host::HostSharedHandle<'static>>(self.raw)
+            std::mem::transmute::<
+                std::ptr::NonNull<()>,
+                clack_plugin::host::HostSharedHandle<'static>,
+            >(self.raw)
         }
     }
 }

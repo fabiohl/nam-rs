@@ -297,7 +297,7 @@ impl NamLogger {
                 Ok(())
             }
             Err(_) => {
-                log::set_max_level(level_filter);
+                logger.set_max_level(level_filter);
                 Ok(())
             }
         }
@@ -319,8 +319,7 @@ impl NamLogger {
                 Ok(logger)
             }
             Err(_) => {
-                // Already set by another CLAP instance — expected for 2nd+ instance.
-                log::set_max_level(level_filter);
+                logger.set_max_level(level_filter);
                 Ok(logger)
             }
         }

@@ -59,7 +59,11 @@ pub fn handle_bypass(
     }
 
     // Accessibility: register widget info for screen readers
-    let bypass_label = if current_bypass { "Bypass: On" } else { "Bypass: Off" };
+    let bypass_label = if current_bypass {
+        "Bypass: On"
+    } else {
+        "Bypass: Off"
+    };
     response.clone().widget_info(move || egui::WidgetInfo {
         typ: egui::WidgetType::Checkbox,
         enabled: true,
@@ -67,7 +71,7 @@ pub fn handle_bypass(
         current_text_value: None,
         prev_text_value: None,
         hint_text: None,
-                text_selection: None,
+        text_selection: None,
         selected: Some(current_bypass),
         value: None,
     });

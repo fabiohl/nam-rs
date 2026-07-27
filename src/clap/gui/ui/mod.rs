@@ -105,7 +105,8 @@ pub fn draw_ui(
         }
 
         // ── Zone 1: Identity (left) ───────────────────────────
-        let (model_btn, ir_btn, clear_ir_btn) = draw_zone1_identity(ui, shared, host, state, accent_color);
+        let (model_btn, ir_btn, clear_ir_btn) =
+            draw_zone1_identity(ui, shared, host, state, accent_color);
         load_btn_id = model_btn;
         load_ir_btn_id = ir_btn;
         clear_ir_btn_id = clear_ir_btn;
@@ -156,7 +157,14 @@ pub fn draw_ui(
             });
     }
 
-    handle_focus_navigation(ui, load_btn_id, load_ir_btn_id, clear_ir_btn_id, oversample_id, activation_id);
+    handle_focus_navigation(
+        ui,
+        load_btn_id,
+        load_ir_btn_id,
+        clear_ir_btn_id,
+        oversample_id,
+        activation_id,
+    );
 
     // Repaint driver (CLAP-F022):
     // Request repaints only when something is actively changing. The baseview
@@ -166,7 +174,7 @@ pub fn draw_ui(
     // override shorter requests from widgets (spinner, VU decay, etc.).
     let needs_repaint = state.has_active_animations()  // error/toast banners
         || !state.peak_hold_is_stable()                // VU meters active
-        || state.show_telemetry;                        // telemetry visible
+        || state.show_telemetry; // telemetry visible
 
     if needs_repaint {
         ui.ctx().request_repaint_after(Duration::from_millis(33));

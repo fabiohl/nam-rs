@@ -151,17 +151,18 @@ pub(crate) fn draw_zone2_controls(
                     }
                 );
                 let os_label_clone = os_label.clone();
-                ui.ctx().register_widget_info(os_id, move || egui::WidgetInfo {
-                    typ: egui::WidgetType::RadioGroup,
-                    enabled: true,
-                    label: Some(os_label_clone.clone()),
-                    current_text_value: None,
-                    prev_text_value: None,
-                    hint_text: None,
-                text_selection: None,
-                    selected: None,
-                    value: None,
-                });
+                ui.ctx()
+                    .register_widget_info(os_id, move || egui::WidgetInfo {
+                        typ: egui::WidgetType::RadioGroup,
+                        enabled: true,
+                        label: Some(os_label_clone.clone()),
+                        current_text_value: None,
+                        prev_text_value: None,
+                        hint_text: None,
+                        text_selection: None,
+                        selected: None,
+                        value: None,
+                    });
                 ui.horizontal_centered(|ui| {
                     ui.label(
                         egui::RichText::new("Oversampling")
@@ -280,17 +281,18 @@ pub(crate) fn draw_zone2_controls(
                     if act_val_i32 == 1 { "Standard" } else { "Fast" }
                 );
                 let act_label_clone = act_label.clone();
-                ui.ctx().register_widget_info(act_id, move || egui::WidgetInfo {
-                    typ: egui::WidgetType::RadioGroup,
-                    enabled: true,
-                    label: Some(act_label_clone.clone()),
-                    current_text_value: None,
-                    prev_text_value: None,
-                    hint_text: None,
-                text_selection: None,
-                    selected: None,
-                    value: None,
-                });
+                ui.ctx()
+                    .register_widget_info(act_id, move || egui::WidgetInfo {
+                        typ: egui::WidgetType::RadioGroup,
+                        enabled: true,
+                        label: Some(act_label_clone.clone()),
+                        current_text_value: None,
+                        prev_text_value: None,
+                        hint_text: None,
+                        text_selection: None,
+                        selected: None,
+                        value: None,
+                    });
                 ui.horizontal_centered(|ui| {
                     ui.label(
                         egui::RichText::new("Activation")
