@@ -93,7 +93,7 @@ impl<'a> NamClapProcessor<'a> {
                 .ui_to_rt
                 .param_activation
                 .store(mode as u32, Ordering::Relaxed);
-            crate::math::activations::set_activation_precision(mode);
+            crate::math::activations::set_activation_tls(mode);
         }
     }
 
@@ -150,7 +150,7 @@ impl<'a> NamClapProcessor<'a> {
             self.apply_oversample(self.params.oversample);
         }
         if activation_changed {
-            crate::math::activations::set_activation_precision(self.params.activation_precision);
+            crate::math::activations::set_activation_tls(self.params.activation_precision);
         }
     }
 
@@ -254,7 +254,7 @@ impl<'a> NamClapProcessor<'a> {
         );
         if shared_mode != self.params.activation_precision {
             self.params.activation_precision = shared_mode;
-            crate::math::activations::set_activation_precision(shared_mode);
+            crate::math::activations::set_activation_tls(shared_mode);
         }
     }
 }

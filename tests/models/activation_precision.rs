@@ -36,7 +36,7 @@ use std::path::PathBuf;
 
 use nam_rs::loader::nam_json::model::NamModelData;
 use nam_rs::loader::nam_json::parse::parse_nam_json;
-use nam_rs::math::activations::{ActivationPrecision, set_activation_precision};
+use nam_rs::math::activations::{ActivationPrecision, set_activation_tls};
 use nam_rs::models::NamModel;
 use nam_rs::testing::reference_oracle::{
     ActivationMode, PrecisionConfig, WeightPrecision, compute_esr_f64, esr_to_db_f64,
@@ -304,7 +304,7 @@ fn test_hf_mode_switch_functional() {
         let _guard = PrecisionGuard::new(ActivationPrecision::Fast);
         let out_fast = run_f32_inference(&md, input);
 
-        set_activation_precision(ActivationPrecision::Standard);
+        set_activation_tls(ActivationPrecision::Standard);
         let out_std = run_f32_inference(&md, input);
 
         for (&x, &y) in out_fast.iter().zip(out_std.iter()) {
@@ -339,7 +339,7 @@ fn test_hf_mode_switch_functional() {
 // =============================================================================
 //
 // These tests simulate the CLI and CLAP control flow for activation precision
-// switching and verify that set_activation_precision() is zero-alloc
+// switching and verify that set_activation_tls() is zero-alloc
 // (no heap allocation occurs during the mode switch, meeting RT-safety guarantee).
 //
 // For the CLAP simulation: PARAM_ACTIVATION=8 is declared but the RT-thread
@@ -350,7 +350,7 @@ fn test_hf_mode_switch_functional() {
 // regardless of whether the model dispatches to the HF kernel (WaveNet does,
 // LSTM doesn't yet — see Epic β/I6).
 
-/// Zero-alloc: `set_activation_precision()` global atomic write.
+/// Zero-alloc: `set_activation_tls()` global atomic write.
 ///
 /// Proves that switching activation precision (the global atomic store)
 /// performs zero heap allocations. This is the primitive both CLI and CLAP
@@ -360,14 +360,14 @@ fn test_zero_alloc_activation_switch_primitive() {
     let _prec_guard = PrecisionGuard::new(ActivationPrecision::Standard);
     let count = {
         let _guard = TrackingGuard::new();
-        set_activation_precision(ActivationPrecision::Fast);
-        set_activation_precision(ActivationPrecision::Standard);
-        set_activation_precision(ActivationPrecision::Fast);
+        set_activation_tls(ActivationPrecision::Fast);
+        set_activation_tls(ActivationPrecision::Standard);
+        set_activation_tls(ActivationPrecision::Fast);
         get_alloc_count()
     };
     assert_eq!(
         count, 0,
-        "set_activation_precision() allocated {} times — violation of RT-safety!",
+        "set_activation_tls() allocated {} times — violation of RT-safety!",
         count
     );
 }
@@ -410,7 +410,7 @@ fn test_zero_alloc_activation_hot_path_switch() {
         let count = {
             let _guard = TrackingGuard::new();
 
-            set_activation_precision(ActivationPrecision::Fast);
+            set_activation_tls(ActivationPrecision::Fast);
             for i in (0..256).step_by(64) {
                 model.process(
                     std::hint::black_box(&input[i..i + 64]),
@@ -418,7 +418,7 @@ fn test_zero_alloc_activation_hot_path_switch() {
                 );
             }
 
-            set_activation_precision(ActivationPrecision::Standard);
+            set_activation_tls(ActivationPrecision::Standard);
             for i in (0..256).step_by(64) {
                 model.process(
                     std::hint::black_box(&input[i..i + 64]),
@@ -426,7 +426,7 @@ fn test_zero_alloc_activation_hot_path_switch() {
                 );
             }
 
-            set_activation_precision(ActivationPrecision::Fast);
+            set_activation_tls(ActivationPrecision::Fast);
             for i in (0..256).step_by(64) {
                 model.process(
                     std::hint::black_box(&input[i..i + 64]),
@@ -454,7 +454,7 @@ fn test_zero_alloc_activation_hot_path_switch() {
 ///
 /// Simulates the full standalone CLI activation flow:
 /// 1. Parse `--activation standard|fast` from command-line args.
-/// 2. Call `set_activation_precision()` with the parsed value.
+/// 2. Call `set_activation_tls()` with the parsed value.
 /// 3. Verify zero allocations.
 #[cfg(feature = "standalone")]
 #[test]
@@ -492,7 +492,7 @@ fn test_zero_alloc_cli_activation_flow() {
 
         let count = {
             let _guard = TrackingGuard::new();
-            set_activation_precision(cli_args.activation.unwrap());
+            set_activation_tls(cli_args.activation.unwrap());
             get_alloc_count()
         };
 
@@ -546,10 +546,10 @@ fn test_activation_switch_output_idempotent() {
         while pos < input.len() {
             let nf = (input.len() - pos).min(64);
             if pos == 128 {
-                set_activation_precision(ActivationPrecision::Standard);
+                set_activation_tls(ActivationPrecision::Standard);
             }
             if pos == 192 {
-                set_activation_precision(ActivationPrecision::Fast);
+                set_activation_tls(ActivationPrecision::Fast);
             }
             model.process(&input[pos..pos + nf], &mut out_mixed[pos..pos + nf]);
             pos += nf;
@@ -568,7 +568,7 @@ fn test_activation_switch_output_idempotent() {
 ///
 /// Simulates the CLAP processor pattern for activation precision switching:
 /// the RT thread reads PARAM_ACTIVATION from UiToRt at block boundaries
-/// and calls set_activation_precision() without model rebuild.
+/// and calls set_activation_tls() without model rebuild.
 ///
 /// While PARAM_ACTIVATION=8 is pending, the global setter path
 /// exercised here is the identical code path the CLAP processor will use.
@@ -605,9 +605,9 @@ fn test_clap_pattern_block_boundary_activation_switch() {
             if block_start % 256 == 0 {
                 toggle = !toggle;
                 if toggle {
-                    set_activation_precision(ActivationPrecision::Standard);
+                    set_activation_tls(ActivationPrecision::Standard);
                 } else {
-                    set_activation_precision(ActivationPrecision::Fast);
+                    set_activation_tls(ActivationPrecision::Fast);
                 }
             }
             model.process(

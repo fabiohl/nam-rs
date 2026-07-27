@@ -409,7 +409,7 @@ fn test_f009_offline_realtime_loses_activation_precision() {
     plugin_instance.deactivate(started.stop_processing());
 
     // CLAP-F009 red assertion: the internal activation precision at the DSP
-    // level (global ACTIVATION_MODE) must be restored to Fast after
+    // level (TLS) must be restored to Fast after
     // offline->realtime transition.
     //
     // Bug: `old_activation` is captured from `self.params` which was already

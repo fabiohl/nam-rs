@@ -536,6 +536,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             None
         };
 
+        // S5-E5-T01: Per-instance activation precision via TLS.
+        // Activation updates within process() (host events, SPSC, GUI sync, offline↔realtime)
+        // call set_activation_tls() to reflect the new value. The scope guard clears TLS on
+        // return so the next invocation re-arms from self.params.activation_precision.
+        let _activation_guard = crate::math::activations::set_thread_local_activation_precision(
+            Some(self.params.activation_precision),
+        );
+
         let should_measure = self.cycles_since_telemetry & 0xF == 0;
         self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
         let start_nanos = if should_measure { rdtsc_nanos() } else { 0 };

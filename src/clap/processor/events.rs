@@ -120,7 +120,7 @@ impl<'a> NamClapProcessor<'a> {
                 );
                 self.params.activation_precision =
                     crate::common::params::ActivationPrecision::Standard;
-                crate::math::activations::set_activation_precision(
+                crate::math::activations::set_activation_tls(
                     crate::common::params::ActivationPrecision::Standard,
                 );
             } else {
@@ -134,7 +134,7 @@ impl<'a> NamClapProcessor<'a> {
                 );
                 self.adaptive_compute.set_mode(user_mode, &self.rt_status);
                 self.params.activation_precision = self.realtime_activation;
-                crate::math::activations::set_activation_precision(self.realtime_activation);
+                crate::math::activations::set_activation_tls(self.realtime_activation);
             }
         }
         // Also guard against user changing adaptive compute while offline (via host events

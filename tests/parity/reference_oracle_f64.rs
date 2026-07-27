@@ -35,7 +35,7 @@ use common::WAVENET_ESR_LIMIT;
 
 use nam_rs::loader::nam_json::model::NamModelData;
 use nam_rs::loader::nam_json::parse::parse_nam_json;
-use nam_rs::math::activations::{ActivationPrecision, set_activation_precision};
+use nam_rs::math::activations::{ActivationPrecision, set_activation_tls};
 use nam_rs::models::NamModel;
 use nam_rs::testing::reference_oracle::{
     AccumulationMode, ActivationMode, PrecisionConfig, WeightPrecision, compute_esr_f64,
@@ -1543,13 +1543,13 @@ fn t33b_diagnostic_recurrent_drift_lstm_1x16_paired() {
     let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
-    set_activation_precision(ActivationPrecision::Fast);
+    set_activation_tls(ActivationPrecision::Fast);
     let (esr_tail_fast, _) =
         run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Fast)", 48_000);
     let _ = run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Fast)", 12_000);
 
     // 2. Run with Standard precision (exact-grade, universal default)
-    set_activation_precision(ActivationPrecision::Standard);
+    set_activation_tls(ActivationPrecision::Standard);
     let (esr_tail_std, _) =
         run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Standard)", 48_000);
     let _ = run_paired_drift_diagnostic("BossLSTM-1x16.nam", "LSTM 1x16 paired (Standard)", 12_000);
@@ -1591,13 +1591,13 @@ fn t33c_diagnostic_recurrent_drift_lstm_2x8_paired() {
     let _guard = PrecisionGuard::new(ActivationPrecision::Standard);
 
     // 1. Run with Fast precision (Padé/minimax approximation, opt-in)
-    set_activation_precision(ActivationPrecision::Fast);
+    set_activation_tls(ActivationPrecision::Fast);
     let (esr_tail_fast, _) =
         run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Fast)", 48_000);
     let _ = run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Fast)", 12_000);
 
     // 2. Run with Standard precision (exact-grade, universal default)
-    set_activation_precision(ActivationPrecision::Standard);
+    set_activation_tls(ActivationPrecision::Standard);
     let (esr_tail_std, _) =
         run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Standard)", 48_000);
     let _ = run_paired_drift_diagnostic("BossLSTM-2x8.nam", "LSTM 2x8 paired (Standard)", 12_000);

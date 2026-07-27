@@ -239,10 +239,11 @@ graph TD
 
 ### Tarefas Técnicas S5
 
-- [ ] **S5-E5-T01 [Crítico] — Remoção de Estado Global de ActivationPrecision e TLS Security Guard**
+- [x] **S5-E5-T01 [Crítico] — Remoção de Estado Global de ActivationPrecision e TLS Security Guard**
   - **Origem:** E5-T01, CLAP-F006 | **Perfis:** Systems Architect & Rust Core Engineer
   - **Escopo:** Remover a variável global/estática de `ActivationPrecision`. Mover a precisão de ativação para dentro do contexto de cada instância de plugin ou exigir guard TLS com cleanup automático.
   - **Critério de Aceite:** Duas instâncias ativas do plugin operando em modos de precisão opostos (`Fast` vs `Standard`) mantêm seus modos isolados sem interferência cruzada.
+  - **Conclusão (2026-07-27):** `ACTIVATION_MODE` (AtomicUsize global) removido de `src/math/activations/mod.rs`. `set_activation_precision()` substituído por `set_activation_tls(mode)` que escreve diretamente na thread-local `ACTIVE_MODEL_PRECISION`. Adicionado `clear_activation_tls()` para limpeza explícita e `set_thread_local_activation_precision()` (já existente) preservado como API de guard RAII. `activation_precision()` agora retorna `Standard` como fallback quando TLS não está setado (seguro para qualquer thread). Em `NamClapProcessor::process()`, um `ActivationPrecisionGuard` criado via `set_thread_local_activation_precision(Some(self.params.activation_precision))` isola a instância — descartado ao retornar de `process()`. Atualizações mid-process (host events em `orchestrator.rs`, SPSC em `params.rs`, GUI sync, offline↔realtime em `events.rs`, audio-thread flush em `params/audio.rs`) chamam `set_activation_tls()` diretamente. Standalone CLI (`main.rs`) usa `set_activation_tls()` uma vez na inicialização. Tests: `PrecisionGuard` atualizado para TLS; meta-test `threshold_calibration.rs` atualizado para `set_activation_tls`. 1501 tests pass (0 fail), lints limpos. Cada instância de plugin agora opera com TLS isolado — duas instâncias na mesma thread alternam precisão via guard no entry/exit de `process()`, sem interferência cruzada.
 
 - [ ] **S5-E5-T02 [Crítico] — Remoção de Logs Bloqueantes e Alocação de String no Audio Thread**
   - **Origem:** E5-T02, CLAP-F010 | **Perfis:** Real-Time Safety Engineer

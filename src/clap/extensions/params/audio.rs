@@ -150,7 +150,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             );
             if shared_activation != self.params.activation_precision {
                 self.params.activation_precision = shared_activation;
-                crate::math::activations::set_activation_precision(shared_activation);
+                crate::math::activations::set_activation_tls(shared_activation);
             }
         }
     }

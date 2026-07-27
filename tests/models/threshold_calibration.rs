@@ -580,12 +580,12 @@ fn test_mrstft_soft_threshold_is_calibrated() {
     );
 }
 
-/// Meta-test: every `set_activation_precision(` call-site in
+/// Meta-test: every `set_activation_tls(` call-site in
 /// `tests/**/*.rs` (outside `tests/common/precision.rs`) must have
 /// `PrecisionGuard::new` in the same function.
 ///
 /// This meta-test reads all test source files and enforces the rule that
-/// any function calling `set_activation_precision()` is protected by a
+/// any function calling `set_activation_tls()` is protected by a
 /// `PrecisionGuard`, guarding against race conditions when tests run
 /// in parallel.
 ///
@@ -593,7 +593,7 @@ fn test_mrstft_soft_threshold_is_calibrated() {
 ///
 /// Parses Rust source files by tracking brace depth to identify function
 /// boundaries, then verifies that every function body containing
-/// `set_activation_precision(` also contains `PrecisionGuard::new`.
+/// `set_activation_tls(` also contains `PrecisionGuard::new`.
 #[test]
 fn test_all_set_activation_calls_are_guarded() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -625,7 +625,7 @@ fn test_all_set_activation_calls_are_guarded() {
         let source = fs::read_to_string(file_path)
             .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
 
-        if !source.contains("set_activation_precision(") {
+        if !source.contains("set_activation_tls(") {
             continue;
         }
 
@@ -657,7 +657,7 @@ fn test_all_set_activation_calls_are_guarded() {
             depth += line.matches('{').count() as i32;
             depth -= line.matches('}').count() as i32;
 
-            if line.contains("set_activation_precision(") {
+            if line.contains("set_activation_tls(") {
                 has_set = true;
             }
             if line.contains("PrecisionGuard::new") {
@@ -667,7 +667,7 @@ fn test_all_set_activation_calls_are_guarded() {
             if depth == 0 {
                 if has_set && !has_guard {
                     violations.push(format!(
-                        "{}:{} — set_activation_precision() without PrecisionGuard::new in the same function",
+                        "{}:{} — set_activation_tls() without PrecisionGuard::new in the same function",
                         file_path
                             .strip_prefix(&project_root)
                             .unwrap_or(file_path.as_path())
@@ -682,9 +682,9 @@ fn test_all_set_activation_calls_are_guarded() {
 
     if !violations.is_empty() {
         panic!(
-            "Guard-rail FAILED: unprotected set_activation_precision() call-sites found:\n\
+            "Guard-rail FAILED: unprotected set_activation_tls() call-sites found:\n\
              \n{}\n\n\
-             Every test function that calls set_activation_precision() must also contain\n\
+             Every test function that calls set_activation_tls() must also contain\n\
              PrecisionGuard::new, acquired BEFORE TrackingGuard, to prevent race conditions\n\
              when tests run in parallel.\n",
             violations

@@ -21,7 +21,7 @@ use nam_rs::diagnostics::{SystemSnapshot, logger::NamLogger};
 use nam_rs::dsp::cabsim::adapter::CabSimAdapter;
 use nam_rs::dsp::cabsim::conv::ConvEngine;
 use nam_rs::dsp::cabsim::loader::CabSimIr;
-use nam_rs::math::activations::set_activation_precision;
+use nam_rs::math::activations::set_activation_tls;
 use nam_rs::models::StaticModel;
 use nam_rs::models::slimmable::clone_wavenet_for_slimmable_storage;
 use nam_rs::standalone::{cli, colors::Colorize, pw_host, rt_setup};
@@ -224,7 +224,7 @@ fn main() -> anyhow::Result<()> {
 
     // Apply activation precision mode before any audio processing if explicitly overridden by the user
     if let Some(activation) = args.activation {
-        set_activation_precision(activation);
+        set_activation_tls(activation);
         log::info!(
             "{} Activation precision explicitly set to {:?}",
             "⚡".yellow(),

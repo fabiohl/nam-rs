@@ -1043,7 +1043,7 @@ fn apply_scheduled_event(
                     ui_to_rt
                         .param_activation
                         .store(mode as u32, Ordering::Relaxed);
-                    crate::math::activations::set_activation_precision(mode);
+                    crate::math::activations::set_activation_tls(mode);
                 }
             }
             _ => {}

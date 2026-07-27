@@ -98,15 +98,6 @@ impl ActivationPrecision {
     }
 }
 
-/// Global activation precision mode (default: `Standard`, exact-grade).
-///
-/// # Thread Safety
-/// This is a relaxed atomic — the mode is set once during initialisation
-/// (or on a hot-swap rebuild) and never changed mid-`process`.  The
-/// branch predictor will specialise to whichever path is stable.
-static ACTIVATION_MODE: core::sync::atomic::AtomicUsize =
-    core::sync::atomic::AtomicUsize::new(ActivationPrecision::Standard as usize);
-
 thread_local! {
     static ACTIVE_MODEL_PRECISION: std::cell::Cell<Option<ActivationPrecision>> = const { std::cell::Cell::new(None) };
 }
@@ -123,18 +114,26 @@ impl Drop for ActivationPrecisionGuard {
     }
 }
 
-/// Set the global activation precision mode.
+/// Sets the thread-local activation precision for the current thread.
 ///
-/// Must be called **outside** the real-time audio thread (during model build
-/// or hot-swap), before the first call to `tanh_slice`/`sigmoid_slice`.
+/// Callers MUST ensure TLS is cleared via [`clear_activation_tls`] or by
+/// holding the returned [`ActivationPrecisionGuard`] until processing completes.
+/// S5-E5-T01: this is the ONLY API for setting activation precision —
+/// the process-wide global has been removed.
 #[inline]
-pub fn set_activation_precision(mode: ActivationPrecision) {
-    ACTIVATION_MODE.store(mode as usize, core::sync::atomic::Ordering::Relaxed);
+pub fn set_activation_tls(mode: ActivationPrecision) {
+    ACTIVE_MODEL_PRECISION.with(|p| p.set(Some(mode)));
 }
 
-/// Temporarily overrides the global activation precision mode for the current thread.
-///
-/// Returns a guard that resets the override to `None` when dropped.
+/// Clears the thread-local activation precision override, falling back to
+/// `Standard` on subsequent [`activation_precision`] calls.
+#[inline]
+pub fn clear_activation_tls() {
+    ACTIVE_MODEL_PRECISION.with(|p| p.set(None));
+}
+
+/// Temporarily overrides thread-local activation precision and returns a guard
+/// that clears it on drop.
 #[inline]
 pub fn set_thread_local_activation_precision(
     mode: Option<ActivationPrecision>,
@@ -149,17 +148,16 @@ pub fn thread_local_activation_precision() -> Option<ActivationPrecision> {
     ACTIVE_MODEL_PRECISION.with(|p| p.get())
 }
 
-/// Returns the current active activation precision mode (checks thread-local first, then global).
+/// Returns the current activation precision from thread-local storage.
+///
+/// Falls back to `Standard` (exact-grade polynomial path) when TLS is not set.
+/// This is safe for standalone/CLI use and for audio-thread windows between
+/// `process()` calls where DSP is inactive.
 #[inline]
 pub fn activation_precision() -> ActivationPrecision {
-    if let Some(precision) = ACTIVE_MODEL_PRECISION.with(|p| p.get()) {
-        precision
-    } else {
-        match ACTIVATION_MODE.load(core::sync::atomic::Ordering::Relaxed) {
-            0 => ActivationPrecision::Fast,
-            _ => ActivationPrecision::Standard,
-        }
-    }
+    ACTIVE_MODEL_PRECISION
+        .with(|p| p.get())
+        .unwrap_or(ActivationPrecision::Standard)
 }
 
 /// Applies Tanh activation to a slice of f32 with automatic dispatch to the best SIMD implementation.
