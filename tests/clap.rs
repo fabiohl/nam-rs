@@ -22,5 +22,8 @@ mod clap_multi_instance;
 #[path = "clap/clap_state_migration.rs"]
 mod clap_state_migration;
 #[cfg(feature = "clap-plugin")]
+#[path = "clap/clap_cross_machine.rs"]
+mod clap_cross_machine;
+#[cfg(feature = "clap-plugin")]
 #[path = "clap/tail_semantics.rs"]
 mod tail_semantics;

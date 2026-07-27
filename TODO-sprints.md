@@ -297,10 +297,11 @@ graph TD
   - **Critério de Aceite:** Nomes de modelo contendo caracteres Unicode (e.g. acentos, kanji) e arquivos corrompidos são lidos sem pânico ou estouro de buffer.
   - **Conclusão (2026-07-27):** (A) Bug Unicode corrigido: `extract_balanced_json()` substituiu `(1usize..).zip(chars)` por `char_indices().skip(1)` — o índice de bytes agora é calculado com `end_idx + ch.len_utf8()`, eliminando pânico por slicing em meio de caractere multibyte. (B) Parser bounded: `read_file_bounded()` lê no máximo 1 MiB (`MAX_METADATA_BYTES`), substituindo `std::fs::read()` que carregava pesos na memória. (C) Suporte NAMB: adicionado `extract_namb_metadata()` — lê apenas os 80 bytes do cabeçalho + seção JSON entre header e `weights_offset`, extrai metadata com a mesma lógica de `extract_nam_json_metadata()`. (D) `parse_metadata()` extraído como helper compartilhado. (E) Testes: 25 passam (incluindo 7 novos: Unicode em JSON keys/strings, emoji, escaped unicode, byte-index correctness, JSON malformado, UTF-8 truncado, extensão não suportada, arquivo ausente). Clippy limpo.
 
-- [ ] **S6-E6-T05 [Média] — Suite de Simulação Cross-Machine e Assets Corrompidos**
+- [x] **S6-E6-T05 [Média] — Suite de Simulação Cross-Machine e Assets Corrompidos**
   - **Origem:** E6-T05, CLAP-F014, CLAP-F015 | **Perfis:** QA Integration Engineer
   - **Escopo:** Escrever testes de integração simulando ambientes com estruturas de diretório alteradas, arquivos truncated de 0 bytes e payloads malformatados.
   - **Critério de Aceite:** 100% das simulações de erro resultam em rejeição graciosa com status de erro informativo na telemetria.
+  - **Conclusão (2026-07-27):** Criado `tests/clap/clap_cross_machine.rs` com 11 testes de integração: (1) payload vazio rejeitado, (2) JSON malformado/UTF-8 truncado rejeitado, (3) modelo ausente preserva DSP antigo (ui_model_name, counter, RT_STATUS_MODEL_LOAD_FAILED limpo), (4) pesos corrompidos rejeitados, (5) arquivo truncado rejeitado, (6) 0-byte rejeitado, (7) cross-machine válido via basename search, (8) basename não encontrado rejeitado, (9) hash inválido rejeitado, (10) load válido após falha, (11) parametrizado — 3 modos de falha preservam DSP + output finito. Todos 21 CLAP tests passam, clippy limpo.
 
 ---
 
