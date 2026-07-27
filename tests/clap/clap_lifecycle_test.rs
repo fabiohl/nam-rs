@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! S8-E8-T02: Lifecycle test now loads the freshly built `.so` via
+//! `artifact_validator::TestedArtifact::resolve_and_hash()`, recording
+//! the SHA256 of the tested binary in the test log.
+//!
+//! This eliminates the false confidence from loading a stale install
+//! at `~/.clap/nam-rs.clap` when no `CLAP_PLUGIN_PATH` is set.
+
 use clack_host::prelude::*;
-use std::env;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -25,45 +30,10 @@ impl HostHandlers for MyHost {
 
 #[test]
 fn test_clap_lifecycle() {
-    let path = if let Ok(custom_path) = env::var("CLAP_PLUGIN_PATH") {
-        PathBuf::from(custom_path)
-    } else {
-        // Try to load from the default install location used by build-release.sh/tests-quick.sh
-        let mut p = PathBuf::from(env::var("HOME").expect("HOME env var not set"));
-        p.push(".clap/nam-rs.clap");
-
-        if !p.exists() {
-            // Fallback to the build directory if not installed under HOME
-            let current_dir = env::current_dir().expect("Failed to get current dir");
-            p = current_dir.join("target/release/libnam_rs.so");
-            if !p.exists() {
-                p = current_dir.join("target/debug/libnam_rs.so");
-                if !p.exists() {
-                    p = current_dir.join("target/clap/release/libnam_rs.so");
-                    if !p.exists() {
-                        p = current_dir.join("target/clap/debug/libnam_rs.so");
-                        if !p.exists() {
-                            p = current_dir.join("target/clap-test/release/libnam_rs.so");
-                            if !p.exists() {
-                                p = current_dir.join("target/clap-test/debug/libnam_rs.so");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        p
-    };
-
-    if !path.exists() {
-        panic!(
-            "Plugin binary not found. Set CLAP_PLUGIN_PATH or run build first. Checked path: {:?}",
-            path
-        );
-    }
+    let artifact = super::artifact_validator::TestedArtifact::resolve_and_hash();
 
     // SAFETY: Loading a CLAP plugin is inherently unsafe because it executes code from a dynamic library.
-    let entry = unsafe { PluginEntry::load(&path).expect("Failed to load plugin entry") };
+    let entry = unsafe { PluginEntry::load(&artifact.path).expect("Failed to load plugin entry") };
     let host_info = HostInfo::new(
         "NAM-rs Test Host",
         "Fabio Lima",
@@ -97,7 +67,6 @@ fn test_clap_lifecycle() {
         .start_processing()
         .expect("Failed to start processing");
 
-    // Prepare audio buffers (silence)
     let mut input_audio_buffers = [[0.0f32; 512]; 2];
     let mut output_audio_buffers = [[0.0f32; 512]; 2];
 
@@ -106,7 +75,6 @@ fn test_clap_lifecycle() {
 
     let mut output_events_buffer = EventBuffer::with_capacity(10);
 
-    // Simulate 4 processing blocks
     for _ in 0..4 {
         let input_events = InputEvents::empty();
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
@@ -136,7 +104,6 @@ fn test_clap_lifecycle() {
             )
             .expect("Process failed");
 
-        // Plugin must return Continue or Sleep (currently implemented as Continue for bypass)
         assert!(
             status == ProcessStatus::Continue || status == ProcessStatus::Sleep,
             "Unexpected process status: {:?}",

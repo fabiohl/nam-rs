@@ -27,12 +27,15 @@ impl HostHandlers for TestHost {
     type AudioProcessor<'a> = ();
 }
 
+/// S8-E8-T02: Creates a plugin instance by loading the freshly built `.so`.
+/// Uses `artifact_validator` to resolve the artifact and record its SHA256.
 fn create_plugin_instance() -> PluginInstance<TestHost> {
-    let entry =
-        PluginEntry::load_from_clack::<clack_plugin::entry::SinglePluginEntry<NamClapPlugin>>(
-            c"/test",
-        )
-        .expect("Failed to load PluginEntry");
+    let artifact = super::artifact_validator::TestedArtifact::resolve_and_hash();
+
+    // SAFETY: Dynamic plugin loading from the build artifact.
+    let entry = unsafe {
+        PluginEntry::load(&artifact.path).expect("Failed to load plugin entry from build artifact")
+    };
 
     let host_info = HostInfo::new(
         "NAM-rs-Test",

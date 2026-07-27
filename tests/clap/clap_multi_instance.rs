@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! S8-E8-T02: Multi-instance tests now load the freshly built `.so`
+//! instead of using the static `PluginEntry::load_from_clack()` path.
+//! SHA256 of the tested binary is recorded in the test log.
+
 #[cfg(feature = "heap-audit")]
 use crate::common::alloc_audit::{TrackingGuard, get_alloc_count};
 use clack_host::prelude::*;
@@ -76,10 +80,7 @@ fn process_block(
 #[test]
 #[ignore = "long-running stress test"]
 fn test_multi_instance_rt_priority() {
-    let entry = PluginEntry::load_from_clack::<
-        clack_plugin::entry::SinglePluginEntry<nam_rs::clap::plugin::NamClapPlugin>,
-    >(c"/test")
-    .expect("Failed to load PluginEntry");
+    let artifact = super::artifact_validator::TestedArtifact::resolve_and_hash();
 
     let host_info = HostInfo::new(
         "NAM-rs Multi-Instance Stress Test",
@@ -100,6 +101,10 @@ fn test_multi_instance_rt_priority() {
         Vec::with_capacity(INSTANCE_COUNT);
 
     for _i in 0..INSTANCE_COUNT {
+        // SAFETY: Dynamic plugin loading.
+        let entry =
+            unsafe { PluginEntry::load(&artifact.path).expect("Failed to load plugin entry") };
+
         let mut plugin_instance = PluginInstance::<MultiHost>::new(
             |_| MultiHostShared {
                 _restart_was_called: Arc::new(AtomicBool::new(false)),
@@ -135,7 +140,6 @@ fn test_multi_instance_rt_priority() {
         let mut output_buf = [[0.0f32; BLOCK_SIZE]; 2];
         let mut events_buf = EventBuffer::with_capacity(10);
 
-        // Process 3 blocks to ensure the instance is fully exercised
         for _block in 0..3 {
             process_block(
                 &mut started_processor,
@@ -151,8 +155,6 @@ fn test_multi_instance_rt_priority() {
         instances.push(plugin_instance);
     }
 
-    // Verify that rt_priority is correctly set for each instance (not the sentinel -1).
-    // The ONCE_PRIO flag is per-instance, so each instance should detect its own rt priority.
     for (i, shared_ptr) in shared_refs.iter().enumerate() {
         let shared = unsafe { &**shared_ptr };
         let priority = shared.cold.rt_status.rt_priority.load(Ordering::Relaxed);
@@ -164,26 +166,19 @@ fn test_multi_instance_rt_priority() {
         );
     }
 
-    // Drop all instances and verify no panics on cleanup
     drop(instances);
 }
 
 /// S5-E5-T04: Multi-instance parallel stress test with heap audit.
 ///
-/// Spawns 16 threads, each creating an independent plugin instance,
-/// activating, processing 10 blocks, deactivating, and cleaning up.
-/// Each process() block is wrapped in a `TrackingGuard` that verifies
-/// **zero heap allocations** on the audio thread — the core RT-safety
-/// invariant. The full pipeline (gate, gain stages, resampler,
-/// oversampling, bypass xfade) is exercised even without a loaded model.
-///
-/// This test also validates the `ACTIVE_INSTANCES` counter from
-/// S5-E5-T03: 16 instances are created and destroyed in parallel
-/// without corrupting the counter (Release/Acquire ordering ensures
-/// correctness).
+/// S8-E8-T02: Loads the freshly built `.so` in each parallel thread
+/// instead of the static `load_from_clack()` path.
 #[cfg(feature = "heap-audit")]
 #[test]
 fn test_multi_instance_heap_audit_stress() {
+    let artifact = super::artifact_validator::TestedArtifact::resolve_and_hash();
+    let artifact_path = artifact.path.clone();
+
     const INSTANCE_COUNT: usize = 16;
     const BLOCK_COUNT: usize = 10;
     const BLOCK_SIZE: usize = 256;
@@ -196,11 +191,11 @@ fn test_multi_instance_heap_audit_stress() {
 
     let handles: Vec<_> = (0..INSTANCE_COUNT)
         .map(|i| {
+            let path = artifact_path.clone();
             std::thread::spawn(move || {
-                let entry = PluginEntry::load_from_clack::<
-                    clack_plugin::entry::SinglePluginEntry<nam_rs::clap::plugin::NamClapPlugin>,
-                >(c"/test")
-                .expect("Failed to load PluginEntry");
+                // SAFETY: Dynamic plugin loading.
+                let entry =
+                    unsafe { PluginEntry::load(&path).expect("Failed to load plugin entry") };
 
                 let host_info = HostInfo::new(
                     "NAM-rs Stress",
@@ -232,7 +227,6 @@ fn test_multi_instance_heap_audit_stress() {
                 let input_buf = [[0.1f32; BLOCK_SIZE]; 2];
                 let output_buf = [[0.0f32; BLOCK_SIZE]; 2];
 
-                // Pre-allocate CLAP audio infrastructure outside heap-audit scope.
                 let mut input_ports = AudioPorts::with_capacity(2, 1);
                 let mut output_ports = AudioPorts::with_capacity(2, 1);
                 let mut events_buf = EventBuffer::with_capacity(10);
@@ -265,7 +259,6 @@ fn test_multi_instance_heap_audit_stress() {
 
                     let mut output_events = OutputEvents::from_buffer(&mut events_buf);
 
-                    // Only the process() call is inside the audit scope.
                     let _guard = TrackingGuard::new();
                     let status = started
                         .process(

@@ -13,6 +13,9 @@ use common::alloc_audit::CountingAllocator;
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 #[cfg(feature = "clap-plugin")]
+#[path = "clap/artifact_validator.rs"]
+mod artifact_validator;
+#[cfg(feature = "clap-plugin")]
 #[path = "clap/clap_cross_machine.rs"]
 mod clap_cross_machine;
 #[cfg(feature = "clap-plugin")]
