@@ -121,11 +121,19 @@ impl<'a> NamClapMainThread<'a> {
     }
 
     /// Builds the common `baseview::WindowOpenOptions` for both embedded and floating windows.
-    fn window_options(title: &str) -> baseview::WindowOpenOptions {
+    ///
+    /// CLAP X11 sizes are physical pixels, but baseview interprets `Size` as logical
+    /// pixels and applies the scale policy. To create a window with the correct
+    /// physical size, we divide the design size by the scale factor and use
+    /// `WindowScalePolicy::with_scale_factor` — this ensures the physical window
+    /// matches `GUI_WIDTH × GUI_HEIGHT` while egui renders at the correct DPI.
+    fn window_options(title: &str, scale_factor: f32) -> baseview::WindowOpenOptions {
+        let logical_w = GUI_WIDTH as f64 / scale_factor as f64;
+        let logical_h = GUI_HEIGHT as f64 / scale_factor as f64;
         baseview::WindowOpenOptions {
             title: title.to_string(),
-            size: baseview::Size::new(GUI_WIDTH as f64, GUI_HEIGHT as f64),
-            scale: baseview::WindowScalePolicy::SystemScaleFactor,
+            size: baseview::Size::new(logical_w, logical_h),
+            scale: baseview::WindowScalePolicy::ScaleFactor(scale_factor as f64),
             gl_config: Some(baseview::gl::GlConfig::default()),
         }
     }
@@ -222,21 +230,18 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
                 old_handle.close();
             }
 
-            let options = Self::window_options("");
+            let scale_factor = {
+                let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
+                if stored == 0 { 1.0f32 } else { f32::from_bits(stored) }
+            };
+
+            let options = Self::window_options("", scale_factor);
             let (host_static, shared_ptr) = self.host_static_and_shared();
 
             let close_signal = Arc::new(AtomicBool::new(false));
             let cs = Arc::clone(&close_signal);
 
             let alive_fence = self.shared.cold.alive_fence.clone();
-            let scale_factor = {
-                let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
-                if stored == 0 {
-                    1.0f32
-                } else {
-                    f32::from_bits(stored)
-                }
-            };
 
             let window_handle = baseview::Window::open_parented(&_window, options, move |win| {
                 NamPluginWindow::new(win, shared_ptr, host_static, cs, alive_fence, scale_factor)
@@ -262,7 +267,12 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
             self.teardown_gui_resources();
 
-            let options = Self::window_options("NAM-rs");
+            let scale_factor = {
+                let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
+                if stored == 0 { 1.0f32 } else { f32::from_bits(stored) }
+            };
+
+            let options = Self::window_options("NAM-rs", scale_factor);
             let (host_static, shared_ptr) = self.host_static_and_shared();
 
             let close_signal = Arc::new(AtomicBool::new(false));
@@ -271,14 +281,6 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             let ready = Arc::clone(&window_ready);
 
             let alive_fence = self.shared.cold.alive_fence.clone();
-            let scale_factor = {
-                let stored = self.shared.cold.gui_scale_factor.load(Ordering::Relaxed);
-                if stored == 0 {
-                    1.0f32
-                } else {
-                    f32::from_bits(stored)
-                }
-            };
 
             let handle = std::thread::spawn(move || {
                 baseview::Window::open_blocking(options, move |win| {
