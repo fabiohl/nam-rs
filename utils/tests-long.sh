@@ -625,6 +625,32 @@ run_clap_audit_phase() {
     echo "  Executando testes de concorrência dedicados (T8.12, sem --test-threads=1)..."
     timed_cargo_test "concurrency_stress" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" $(_test_flag concurrency_stress) -- --ignored --nocapture || audit_status=1
 
+    # --- S8-E8-T05: Headless GUI tests (Xvfb) ---
+    local xvfb_display=""
+    if command -v Xvfb >/dev/null 2>&1; then
+        # Find a free display number
+        local disp_num=99
+        while [ -f "/tmp/.X${disp_num}-lock" ]; do
+            disp_num=$((disp_num + 1))
+        done
+        xvfb_display=":${disp_num}"
+        echo "  Iniciando Xvfb em ${xvfb_display}..."
+        Xvfb "${xvfb_display}" -screen 0 1024x768x24 >/dev/null 2>&1 &
+        local xvfb_pid=$!
+        sleep 1
+        export DISPLAY="${xvfb_display}"
+        echo "  Executando testes de GUI headless (Xvfb)..."
+        RUSTFLAGS="${RUSTFLAGS:-} -C debug-assertions=on" timed_cargo_test "headless_gui_tests" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib -- \
+            clap::processor::processor_gui_test::tests::test_headless_gui_floating_window_lifecycle \
+            clap::processor::processor_gui_test::tests::test_headless_clipboard_works \
+            --nocapture || audit_status=1
+        echo "  Finalizando Xvfb (PID ${xvfb_pid})..."
+        kill "${xvfb_pid}" 2>/dev/null || true
+        unset DISPLAY
+    else
+        echo "  Aviso: Xvfb não encontrado. Pulando testes de GUI headless (instale xvfb)."
+    fi
+
     echo "  Executando testes unitários e de integração em modo Mono..."
     RUSTFLAGS="${RUSTFLAGS:-} -C debug-assertions=on" timed_cargo_test "clap_plugin_testing" --release --no-default-features --no-fail-fast --features "clap-plugin,heap-audit,testing" --lib || audit_status=1
 

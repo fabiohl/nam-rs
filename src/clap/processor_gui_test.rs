@@ -217,4 +217,134 @@ mod tests {
             "model_load_counter should not increment for failed model build"
         );
     }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // S8-E8-T05: Headless GUI lifecycle + clipboard tests
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// Verifies the full floating window lifecycle in a headless X11
+    /// environment (Xvfb): create → set_transient → destroy.
+    ///
+    /// Requires `DISPLAY` to be set to a running X11 display server
+    /// (e.g., `Xvfb :99 -screen 0 1024x768x24 &` and `export DISPLAY=:99`).
+    ///
+    /// The floating window path (`is_floating: true`) is used because it does
+    /// not require a parent window handle from the host — it creates its own
+    /// top-level window via `baseview::Window::open_blocking` on a background
+    /// thread.
+    ///
+    /// Note: `show()` and `hide()` are NOT called because the floating
+    /// window is immediately visible after `set_transient()`; the GUI
+    /// lifecycle FSM's `WindowReady` transition is not triggered in this
+    /// code path (it's a documented limitation — the FSM awaits a GUI-thread
+    /// callback that does not exist in the current implementation).
+    /// DAWs use `destroy()` for window teardown, which is what we test here.
+    #[test]
+    #[cfg(feature = "clap-plugin")]
+    fn test_headless_gui_floating_window_lifecycle() {
+        assert!(
+            std::env::var("DISPLAY").is_ok(),
+            "DISPLAY environment variable not set. \
+             Start Xvfb first: Xvfb :99 -screen 0 1024x768x24 &; export DISPLAY=:99"
+        );
+
+        // SAFETY: Setting environment variables in a single-threaded test is safe.
+        unsafe {
+            std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+            std::env::set_var("GALLIUM_DRIVER", "llvmpipe");
+        }
+
+        use clack_extensions::gui::{GuiApiType, GuiConfiguration, PluginGui, Window};
+
+        let (_entry, _host_info, mut plugin_instance) = test_util::make_test_plugin();
+
+        let gui_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginGui>()
+            .expect("PluginGui extension not found");
+
+        let mut handle = plugin_instance.plugin_handle();
+
+        let float_config = GuiConfiguration {
+            api_type: GuiApiType::X11,
+            is_floating: true,
+        };
+        assert!(
+            gui_ext.is_api_supported(&mut handle, float_config),
+            "X11 floating must be supported"
+        );
+
+        // 1. Create GUI resources
+        assert!(
+            gui_ext.create(&mut handle, float_config).is_ok(),
+            "GUI create() must succeed"
+        );
+
+        // 2. Open floating window — spawns background thread with
+        //    baseview::Window::open_blocking, waits for initialization
+        //    (up to 2 seconds). The `_window` parameter is unused in
+        //    the plugin's set_transient implementation (baseview lacks
+        //    transient window support), so we pass a dummy X11 window.
+        // SAFETY: The dummy window handle is not dereferenced by the plugin.
+        let result = unsafe {
+            gui_ext.set_transient(
+                &mut handle,
+                Window::from_generic_ptr(GuiApiType::X11, std::ptr::null_mut()),
+            )
+        };
+        assert!(
+            result.is_ok(),
+            "set_transient() must succeed — floating window creation; got: {result:?}"
+        );
+
+        // Window is now open and visible on a background thread.
+        // Let it render a frame.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // Destroy — tears down resources, joins window thread via reaper
+        gui_ext.destroy(&mut handle);
+
+        eprintln!("  ✓ GUI floating window lifecycle: create → set_transient → destroy");
+    }
+
+    /// Verifies that `arboard` clipboard operations succeed under Xvfb.
+    ///
+    /// Tests `Clipboard::new()` (X11 connection via `$DISPLAY`) and
+    /// `set_text()` (atom-level text storage).  This ensures the clipboard
+    /// integration — used by the status-bar diagnostic-copy button — is
+    /// compatible with headless CI environments.
+    #[test]
+    #[cfg(feature = "clap-plugin")]
+    fn test_headless_clipboard_works() {
+        assert!(
+            std::env::var("DISPLAY").is_ok(),
+            "DISPLAY environment variable not set. \
+             Start Xvfb first: Xvfb :99 -screen 0 1024x768x24 &; export DISPLAY=:99"
+        );
+
+        use arboard::Clipboard;
+
+        let mut clipboard =
+            Clipboard::new().expect("arboard::Clipboard::new() must succeed with X11 display");
+
+        let test_text = "nam-rs diagnostic test — headless clipboard";
+        clipboard
+            .set_text(test_text)
+            .expect("set_text() must succeed");
+
+        // Verify we can re-open and get the text we just set
+        let mut verify = Clipboard::new().expect("Re-opening clipboard must succeed");
+        let retrieved = verify.get_text().expect("get_text() must succeed");
+        assert_eq!(
+            retrieved, test_text,
+            "Clipboard get_text must match set_text"
+        );
+
+        // Cleanup — clear clipboard
+        clipboard
+            .set_text("")
+            .expect("Clear clipboard must succeed");
+
+        eprintln!("  ✓ Clipboard: X11 connection + set/get round-trip succeeded");
+    }
 }

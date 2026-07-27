@@ -25,6 +25,9 @@ mod clap_lifecycle_test;
 #[path = "clap/clap_multi_instance.rs"]
 mod clap_multi_instance;
 #[cfg(feature = "clap-plugin")]
+#[path = "clap/clap_parity_multi_sr.rs"]
+mod clap_parity_multi_sr;
+#[cfg(feature = "clap-plugin")]
 #[path = "clap/clap_state_migration.rs"]
 mod clap_state_migration;
 #[cfg(feature = "clap-plugin")]
