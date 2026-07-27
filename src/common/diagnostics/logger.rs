@@ -291,9 +291,16 @@ impl NamLogger {
             standalone_mode: true,
             max_level: Mutex::new(level_filter),
         });
-        log::set_logger(logger)?;
-        log::set_max_level(level_filter);
-        Ok(())
+        match log::set_logger(logger) {
+            Ok(()) => {
+                log::set_max_level(level_filter);
+                Ok(())
+            }
+            Err(_) => {
+                log::set_max_level(level_filter);
+                Ok(())
+            }
+        }
     }
 
     /// Creates the global `NamLogger` in plugin mode and installs it as the

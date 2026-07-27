@@ -15,11 +15,11 @@
 //! *   **FIFO input accumulator** — sub-blocks are buffered until
 //!     `partition_size` samples are collected.
 //! *   **FIFO output queue** — processed partitions are staged and slices
-//!     are returned on subsequent [`process_variable()`] calls. The output
+//!     are returned on subsequent [`process_variable()`](CabSimAdapter::process_variable) calls. The output
 //!     buffer is `2 × partition_size` to avoid overwriting unconsumed
 //!     output when a second partition completes before the first is fully
 //!     drained.
-//! *   **Zero-alloc hot path** — all buffers are pre-allocated in [`new()`].
+//! *   **Zero-alloc hot path** — all buffers are pre-allocated in [`new()`](CabSimAdapter::new).
 //! *   **Causal output** — the adapter respects the engine's intrinsic
 //!     latency. Until the first partition is fully accumulated, output is
 //!     silence.
@@ -45,7 +45,7 @@ impl CabSimAdapter {
     /// Creates an adapter wrapping the given convolution engine.
     ///
     /// Pre-allocates all FIFO and scratch buffers to the engine's
-    /// `partition_size`. The hot path in [`process_variable`] is zero-alloc.
+    /// `partition_size`. The hot path in [`process_variable`](CabSimAdapter::process_variable) is zero-alloc.
     pub fn new(engine: Box<ConvEngine>) -> Result<Self, NamErrorCode> {
         let partition = engine.partition_size();
         Ok(Self {
