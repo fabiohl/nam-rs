@@ -28,7 +28,6 @@
 use super::stage::X2Stage;
 use crate::common::diagnostics::NamErrorCode;
 use crate::math::common::AlignedVec;
-use log::info;
 
 /// Half-band FIR filter length (≡ 1 mod 4 so D=HB_TAPS/2 is even).
 /// 25 taps, D=12. Kaiser β=12 → >100 dB stop-band rejection.
@@ -148,17 +147,6 @@ impl OversampleEngine {
                 stage2: Box::new(X2Stage::new()?),
             },
         };
-
-        let latency = match factor {
-            OversampleFactor::Off => 0,
-            OversampleFactor::X2 => HB_DELAY,
-            OversampleFactor::X4 => 2 * HB_DELAY,
-        };
-        info!(
-            "[Oversample] Engine built: factor={:?}, max_input={}, latency={} samples",
-            factor, max_input_samples, latency
-        );
-
         Ok(Self {
             factor,
             stages,

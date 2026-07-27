@@ -37,7 +37,6 @@
 //! 32 ms linear ramp between states to avoid audible artifacts.
 
 use crate::common::spsc::RtStatusFlags;
-use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
 
@@ -166,7 +165,6 @@ impl AdaptiveCompute {
     /// Creates a new `AdaptiveCompute` instance with the given mode.
     #[cold]
     pub fn new(mode: AdaptiveComputeMode) -> Self {
-        debug!("[Adaptive] FSM initialized: mode={:?}, state=Full", mode);
         Self {
             state: AdaptiveState::Full,
             prev_state: AdaptiveState::Full,
@@ -185,7 +183,6 @@ impl AdaptiveCompute {
     /// Sets the user-facing adaptive compute mode.
     #[inline]
     pub fn set_mode(&mut self, mode: AdaptiveComputeMode, rt_status: &RtStatusFlags) {
-        info!("[Adaptive] Mode changed to {:?}", mode);
         self.mode = mode;
         if mode == AdaptiveComputeMode::Off {
             self.state = AdaptiveState::Full;
@@ -208,7 +205,6 @@ impl AdaptiveCompute {
     /// Sets the manual slim override, forcing a fixed quality level.
     #[inline]
     pub fn set_slim_override(&mut self, ov: SlimOverride) {
-        info!("[Adaptive] Slim override: {:?}", ov);
         self.slim_override = ov;
     }
 
@@ -478,7 +474,6 @@ impl AdaptiveCompute {
     /// initial `configure_adaptive_model`). Subsequent slimmable rebuilds update
     /// `wavenet_slim_ch_current` via `take_slimmable_rebuild`.
     pub fn set_wavenet_full_ch(&mut self, ch: usize) {
-        info!("[Adaptive] WaveNet full channels set to {}", ch);
         self.wavenet_full_ch = Some(ch);
         self.wavenet_slim_ch_current = Some(ch);
     }
