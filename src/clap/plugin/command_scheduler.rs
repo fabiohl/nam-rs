@@ -22,8 +22,8 @@
 use super::shared::ClapParamPayload;
 use crate::common::params::RtPluginParams;
 use rtrb::{Consumer, Producer};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Default capacity for the command SPSC ring buffer.
 /// 256 was chosen to safely handle parameter automation bursts
@@ -202,11 +202,7 @@ impl CommandScheduler {
 
     /// Returns previously extracted channel ends to the cold storage
     /// (used during deactivate / rollback).
-    pub fn restore_channels(
-        &self,
-        tx: Producer<ClapParamPayload>,
-        rx: Consumer<ClapParamPayload>,
-    ) {
+    pub fn restore_channels(&self, tx: Producer<ClapParamPayload>, rx: Consumer<ClapParamPayload>) {
         if let Ok(mut g) = self.cmd_tx.lock() {
             *g = Some(tx);
         }
@@ -255,11 +251,14 @@ impl<'a> CommandProducer<'a> {
         self.coalescing.set(0, params.input_gain_db as f64);
         self.coalescing.set(1, params.output_gain_db as f64);
         self.coalescing.set(2, params.gate_threshold_db as f64);
-        self.coalescing.set(3, if params.bypass { 1.0 } else { 0.0 });
-        self.coalescing.set(4, params.adaptive_compute as u32 as f64);
+        self.coalescing
+            .set(3, if params.bypass { 1.0 } else { 0.0 });
+        self.coalescing
+            .set(4, params.adaptive_compute as u32 as f64);
         self.coalescing.set(5, params.slim_override as u32 as f64);
         self.coalescing.set(6, params.oversample as u32 as f64);
-        self.coalescing.set(7, params.activation_precision as u32 as f64);
+        self.coalescing
+            .set(7, params.activation_precision as u32 as f64);
 
         !had_pending
     }
@@ -381,8 +380,8 @@ mod tests {
     use super::*;
     use crate::clap::plugin::ClapParamPayload;
     use crate::common::params::RtPluginParams;
-    use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
     use std::thread;
 
     fn make_test_scheduler() -> (CommandScheduler, Arc<AtomicU64>, Arc<AtomicU64>) {
@@ -398,9 +397,11 @@ mod tests {
         let (tx, _rx) = rtrb::RingBuffer::new(256);
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
-        let mut params = RtPluginParams::default();
-        params.input_gain_db = 5.0;
-        params.bypass = false;
+        let params = RtPluginParams {
+            input_gain_db: 5.0,
+            bypass: false,
+            ..Default::default()
+        };
 
         let is_new = producer.push_params(params);
         assert!(is_new, "first push should start a new batch");
@@ -416,8 +417,10 @@ mod tests {
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
         for gain in 0..100 {
-            let mut p = RtPluginParams::default();
-            p.input_gain_db = gain as f32;
+            let p = RtPluginParams {
+                input_gain_db: gain as f32,
+                ..Default::default()
+            };
             let is_new = producer.push_params(p);
             // First is new, rest are coalesced
             if gain == 0 {
@@ -446,16 +449,20 @@ mod tests {
         let (tx, mut rx) = rtrb::RingBuffer::new(256);
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
-        let mut p1 = RtPluginParams::default();
-        p1.input_gain_db = 3.0;
-        p1.bypass = true;
+        let p1 = RtPluginParams {
+            input_gain_db: 3.0,
+            bypass: true,
+            ..Default::default()
+        };
         assert!(producer.push_params(p1));
 
-        let mut p2 = RtPluginParams::default();
-        p2.input_gain_db = 3.0;
-        p2.bypass = true;
-        p2.output_gain_db = -6.0;
-        p2.gate_threshold_db = -50.0;
+        let p2 = RtPluginParams {
+            input_gain_db: 3.0,
+            bypass: true,
+            output_gain_db: -6.0,
+            gate_threshold_db: -50.0,
+            ..Default::default()
+        };
         assert!(!producer.push_params(p2));
 
         producer.force_flush().unwrap();
@@ -479,8 +486,10 @@ mod tests {
         let (tx, mut rx) = rtrb::RingBuffer::new(256);
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
-        let mut p = RtPluginParams::default();
-        p.input_gain_db = 12.0;
+        let p = RtPluginParams {
+            input_gain_db: 12.0,
+            ..Default::default()
+        };
         assert!(producer.push_params(p));
 
         let seq = producer
@@ -510,8 +519,10 @@ mod tests {
         let (tx, rx) = rtrb::RingBuffer::new(256);
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
-        let mut p = RtPluginParams::default();
-        p.input_gain_db = 1.0;
+        let mut p = RtPluginParams {
+            input_gain_db: 1.0,
+            ..Default::default()
+        };
         producer.push_params(p);
         let seq1 = producer.force_flush().unwrap();
 
@@ -544,16 +555,17 @@ mod tests {
         let last_ack_clone = Arc::clone(&last_ack);
 
         let producer_handle = thread::spawn(move || {
-            let mut producer =
-                CommandProducer::new(cmd_tx, &next_seq_clone, &last_ack_clone);
+            let mut producer = CommandProducer::new(cmd_tx, &next_seq_clone, &last_ack_clone);
 
             for i in 0..10_000u32 {
-                let mut p = RtPluginParams::default();
                 let val = i as f32 * 0.01;
-                p.input_gain_db = val;
-                p.output_gain_db = -val;
-                p.gate_threshold_db = -70.0 + val * 0.1;
-                p.bypass = i % 100 == 0;
+                let p = RtPluginParams {
+                    input_gain_db: val,
+                    output_gain_db: -val,
+                    gate_threshold_db: -70.0 + val * 0.1,
+                    bypass: i % 100 == 0,
+                    ..Default::default()
+                };
 
                 producer.push_params(p);
             }
@@ -590,7 +602,10 @@ mod tests {
         let total = consumer_handle.join().unwrap();
 
         assert!(last_seq > 0, "producer should have sent at least one batch");
-        assert!(total > 0, "consumer should have drained at least one message");
+        assert!(
+            total > 0,
+            "consumer should have drained at least one message"
+        );
         assert!(
             total <= 256,
             "with coalescing, 10k pushes should produce few messages, got {total}"
@@ -609,8 +624,10 @@ mod tests {
 
         let mut producer = CommandProducer::new(cmd_tx, &next_seq, &last_ack);
 
-        let mut p = RtPluginParams::default();
-        p.input_gain_db = 3.0;
+        let mut p = RtPluginParams {
+            input_gain_db: 3.0,
+            ..Default::default()
+        };
         producer.push_params(p);
 
         let _ = producer
@@ -645,8 +662,10 @@ mod tests {
         let (tx, rx) = rtrb::RingBuffer::new(256);
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
-        let mut p = RtPluginParams::default();
-        p.input_gain_db = 7.0;
+        let p = RtPluginParams {
+            input_gain_db: 7.0,
+            ..Default::default()
+        };
         producer.push_params(p);
         let seq = producer.force_flush().unwrap();
 
@@ -672,8 +691,10 @@ mod tests {
         let mut producer = CommandProducer::new(tx, &next_seq, &last_ack);
 
         for i in 0..8 {
-            let mut p = RtPluginParams::default();
-            p.input_gain_db = i as f32;
+            let p = RtPluginParams {
+                input_gain_db: i as f32,
+                ..Default::default()
+            };
             producer.push_params(p);
             let r = producer.force_flush();
             if i < 3 {
@@ -683,8 +704,10 @@ mod tests {
 
         let mut full_count = 0;
         for _ in 0..64 {
-            let mut p = RtPluginParams::default();
-            p.input_gain_db = 99.0;
+            let p = RtPluginParams {
+                input_gain_db: 99.0,
+                ..Default::default()
+            };
             producer.push_params(p);
             if producer.force_flush().is_err() {
                 full_count += 1;

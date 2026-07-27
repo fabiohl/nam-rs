@@ -8,7 +8,7 @@ use super::{
     PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32,
     bypass_f32_to_bool,
 };
-use crate::clap::plugin::{NamClapMainThread};
+use crate::clap::plugin::NamClapMainThread;
 use crate::common::params::RtPluginParams;
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 use clack_extensions::params::{

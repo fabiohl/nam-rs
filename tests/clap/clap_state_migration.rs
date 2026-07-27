@@ -5,15 +5,16 @@ use clack_extensions::state::PluginState;
 use clack_host::prelude::*;
 use nam_rs::clap::plugin::NamClapPlugin;
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 struct TestHostShared {
     restart_was_called: Arc<AtomicBool>,
 }
 impl<'a> SharedHandler<'a> for TestHostShared {
     fn request_restart(&self) {
-        self.restart_was_called.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.restart_was_called
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
     fn request_process(&self) {}
     fn request_callback(&self) {}

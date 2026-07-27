@@ -6,7 +6,8 @@
 pub mod command_scheduler;
 pub mod shared;
 pub use command_scheduler::{
-    CommandConsumer, CommandProducer, CommandScheduler, CommandSchedulerChannels, CMD_QUEUE_CAPACITY,
+    CMD_QUEUE_CAPACITY, CommandConsumer, CommandProducer, CommandScheduler,
+    CommandSchedulerChannels,
 };
 pub use shared::{
     ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata, PendingModel,

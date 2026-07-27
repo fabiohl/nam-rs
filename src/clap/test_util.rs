@@ -25,7 +25,8 @@ pub struct TestHostShared {
 }
 impl<'a> SharedHandler<'a> for TestHostShared {
     fn request_restart(&self) {
-        self.restart_was_called.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.restart_was_called
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
     fn request_process(&self) {}
     fn request_callback(&self) {}

@@ -7,8 +7,8 @@ mod tests {
     use crate::clap::test_util;
     use crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD;
     use crate::dsp::oversample::OversampleFactor;
-    use clack_common::events::event_types::ParamValueEvent;
     use clack_common::events::Pckn;
+    use clack_common::events::event_types::ParamValueEvent;
     use clack_common::utils::{ClapId, Cookie};
     use clack_host::prelude::*;
     use std::sync::atomic::Ordering;
@@ -29,17 +29,25 @@ mod tests {
         let stopped = plugin_instance
             .activate(|_, _| (), audio_config)
             .expect("Failed to activate");
-        let mut started = stopped.start_processing().expect("Failed to start processing");
+        let mut started = stopped
+            .start_processing()
+            .expect("Failed to start processing");
 
         let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 
         // Verify plugin is active
         let buffer_size = shared.cold.buffer_size.load(Ordering::Relaxed);
-        assert!(buffer_size > 0, "plugin should be active after start_processing");
+        assert!(
+            buffer_size > 0,
+            "plugin should be active after start_processing"
+        );
 
         // Verify no pending restart initially
         assert_eq!(
-            shared.cold.pending_restart_os_factor.load(Ordering::Relaxed),
+            shared
+                .cold
+                .pending_restart_os_factor
+                .load(Ordering::Relaxed),
             0
         );
 
@@ -94,10 +102,7 @@ mod tests {
             "pending restart factor should be stored for the requested oversampling"
         );
 
-        let needs_rebuild = shared
-            .cold
-            .rt_status
-            .check_flag(RT_STATUS_NEEDS_OS_REBUILD);
+        let needs_rebuild = shared.cold.rt_status.check_flag(RT_STATUS_NEEDS_OS_REBUILD);
         assert!(
             !needs_rebuild,
             "RT_STATUS_NEEDS_OS_REBUILD should NOT be set for active oversample changes"
@@ -118,7 +123,10 @@ mod tests {
             .store(OversampleFactor::X2.to_f32() as u32, Ordering::Release);
 
         assert_ne!(
-            shared.cold.pending_restart_os_factor.load(Ordering::Relaxed),
+            shared
+                .cold
+                .pending_restart_os_factor
+                .load(Ordering::Relaxed),
             0
         );
 
@@ -134,7 +142,10 @@ mod tests {
 
         // After activate(), the pending factor should be consumed
         assert_eq!(
-            shared.cold.pending_restart_os_factor.load(Ordering::Relaxed),
+            shared
+                .cold
+                .pending_restart_os_factor
+                .load(Ordering::Relaxed),
             0,
             "pending restart factor should be cleared after activate() consumes it"
         );

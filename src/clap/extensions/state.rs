@@ -296,9 +296,8 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             }
         }
 
-        self.cmd_producer.push_params(
-            RtPluginParams::from_plugin_params(&self.params),
-        );
+        self.cmd_producer
+            .push_params(RtPluginParams::from_plugin_params(&self.params));
         let _ = self.cmd_producer.force_flush();
 
         if let Some(params_ext) = self.host.get_extension::<HostParams>() {

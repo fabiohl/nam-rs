@@ -203,7 +203,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 OversampleFactor::from_f32(pending as f32)
             } else {
                 OversampleFactor::from_f32(
-                    shared.ui_to_rt.param_oversample.load(Ordering::Relaxed) as f32,
+                    shared.ui_to_rt.param_oversample.load(Ordering::Relaxed) as f32
                 )
             }
         };
@@ -409,10 +409,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // ownership back for processor construction. Guard Drop is now a no-op.
         let channels = rollback.defuse();
 
-        let cmd_consumer = CommandConsumer::new(
-            channels.param_rx,
-            &shared.cold.cmd_last_ack,
-        );
+        let cmd_consumer = CommandConsumer::new(channels.param_rx, &shared.cold.cmd_last_ack);
 
         let cabsim_tail_initial = cabsim_adapter.as_ref().map_or(0, |a| a.tail_samples());
 
@@ -612,7 +609,7 @@ fn build_cab_sim_from_raw_samples(
 
     let stored_rate = shared.cold.ir_raw_sample_rate.load(Ordering::Relaxed);
 
-    let resolved_samples: std::borrow::Cow<'_, Vec<f32>> =
+    let resolved_samples: std::borrow::Cow<'_, [f32]> =
         if stored_rate > 0 && stored_rate != host_rate {
             let resampled = CabSimIr::resample(samples, stored_rate, host_rate).map_err(|e| {
                 PluginError::Message(Box::leak(

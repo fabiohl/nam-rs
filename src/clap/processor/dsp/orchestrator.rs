@@ -495,15 +495,15 @@ fn process_sub_block(
         buf_os_model_r,
     );
 
-    if let Some(ref mut conv) = ctx.conv {
-        if !conv.is_passthrough() {
-            conv.process_variable(&buf_out_l[..n_out], &mut buf_model_l[..n_out]);
-            unsafe {
-                core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), n_out);
-            }
-            unsafe {
-                core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), n_out);
-            }
+    if let Some(ref mut conv) = ctx.conv
+        && !conv.is_passthrough()
+    {
+        conv.process_variable(&buf_out_l[..n_out], &mut buf_model_l[..n_out]);
+        unsafe {
+            core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), n_out);
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), n_out);
         }
     }
 
@@ -548,6 +548,7 @@ fn process_sub_block(
 /// The tail counter (`cabsim_tail_remaining`) is decremented until zero, after
 /// which the caller switches to true silence.
 #[inline(always)]
+#[expect(clippy::too_many_arguments)]
 fn process_tail_drain(
     n_samples: usize,
     out_l: &mut Option<&mut [f32]>,
@@ -569,13 +570,13 @@ fn process_tail_drain(
     buf_out_l[..drain].fill(0.0);
     buf_out_r[..drain].fill(0.0);
 
-    if let Some(ref mut conv) = ctx.conv {
-        if !conv.is_passthrough() {
-            conv.process_variable(&buf_out_l[..drain], &mut buf_model_l[..drain]);
-            unsafe {
-                core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), drain);
-                core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), drain);
-            }
+    if let Some(ref mut conv) = ctx.conv
+        && !conv.is_passthrough()
+    {
+        conv.process_variable(&buf_out_l[..drain], &mut buf_model_l[..drain]);
+        unsafe {
+            core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), drain);
+            core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), drain);
         }
     }
 
@@ -677,22 +678,22 @@ fn process_crossfade_sub_block(
     let n_out = if gate_state == GateState::Closed {
         if *cabsim_tail_remaining > 0 {
             let drain = n_samples.min(*cabsim_tail_remaining);
-            if let Some(ref mut conv) = ctx.conv {
-                if !conv.is_passthrough() {
-                    buf_out_l[..drain].fill(0.0);
-                    conv.process_variable(&buf_out_l[..drain], &mut buf_model_l[..drain]);
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            buf_model_l.as_ptr(),
-                            buf_out_l.as_mut_ptr(),
-                            drain,
-                        );
-                        core::ptr::copy_nonoverlapping(
-                            buf_out_l.as_ptr(),
-                            buf_out_r.as_mut_ptr(),
-                            drain,
-                        );
-                    }
+            if let Some(ref mut conv) = ctx.conv
+                && !conv.is_passthrough()
+            {
+                buf_out_l[..drain].fill(0.0);
+                conv.process_variable(&buf_out_l[..drain], &mut buf_model_l[..drain]);
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        buf_model_l.as_ptr(),
+                        buf_out_l.as_mut_ptr(),
+                        drain,
+                    );
+                    core::ptr::copy_nonoverlapping(
+                        buf_out_l.as_ptr(),
+                        buf_out_r.as_mut_ptr(),
+                        drain,
+                    );
                 }
             }
             apply_output_stage(
@@ -740,19 +741,15 @@ fn process_crossfade_sub_block(
             buf_os_model_r,
         );
 
-        if let Some(ref mut conv) = ctx.conv {
-            if !conv.is_passthrough() {
-                conv.process_variable(&buf_out_l[..n_o], &mut buf_model_l[..n_o]);
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        buf_model_l.as_ptr(),
-                        buf_out_l.as_mut_ptr(),
-                        n_o,
-                    );
-                }
-                unsafe {
-                    core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), n_o);
-                }
+        if let Some(ref mut conv) = ctx.conv
+            && !conv.is_passthrough()
+        {
+            conv.process_variable(&buf_out_l[..n_o], &mut buf_model_l[..n_o]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf_model_l.as_ptr(), buf_out_l.as_mut_ptr(), n_o);
+            }
+            unsafe {
+                core::ptr::copy_nonoverlapping(buf_out_l.as_ptr(), buf_out_r.as_mut_ptr(), n_o);
             }
         }
 
@@ -1030,14 +1027,12 @@ fn apply_scheduled_event(
                     // S4-E4-T02: if the plugin is active, defer the rebuild
                     // via host restart; otherwise flag the main thread.
                     if buffer_size > 0 {
-                        pending_restart_os_factor
-                            .store(factor.to_f32() as u32, Ordering::Release);
+                        pending_restart_os_factor.store(factor.to_f32() as u32, Ordering::Release);
                     } else {
                         rt_status
                             .requested_os_factor
                             .store(factor.to_f32() as u32, Ordering::Relaxed);
-                        rt_status
-                            .set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
+                        rt_status.set_flag_release(crate::common::spsc::RT_STATUS_NEEDS_OS_REBUILD);
                     }
                 }
             }

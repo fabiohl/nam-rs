@@ -22,8 +22,8 @@ use crate::dsp::resampler::NamResampler;
 use crate::models::{NamModel, StaticModel};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Main thread exclusive state (model loading, state save/load).
 pub struct NamClapMainThread<'a> {

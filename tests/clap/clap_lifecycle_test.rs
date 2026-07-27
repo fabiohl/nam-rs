@@ -4,8 +4,8 @@
 use clack_host::prelude::*;
 use std::env;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 struct MyHostShared {
     _restart_was_called: Arc<AtomicBool>,

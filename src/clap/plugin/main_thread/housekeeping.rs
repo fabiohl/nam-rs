@@ -148,12 +148,12 @@ impl<'a> NamClapMainThread<'a> {
                 OversampleEngine::new(factor, MAX_RESAMP_BUF),
                 OversampleEngine::new(factor, MAX_RESAMP_BUF),
             ) {
-                let _ = self
-                    .cmd_producer
-                    .push_command(crate::clap::plugin::ClapParamPayload::SetOversample {
+                let _ = self.cmd_producer.push_command(
+                    crate::clap::plugin::ClapParamPayload::SetOversample {
                         os_l: Box::new(l),
                         os_r: Box::new(r),
-                    });
+                    },
+                );
                 self.shared
                     .cold
                     .rt_status
@@ -242,7 +242,12 @@ impl<'a> NamClapMainThread<'a> {
                         .store(true, Ordering::Relaxed);
 
                     if let Some(pending) = pending_load {
-                        notify_preset_error(&mut self.host, pending, e.error_code() as i32, err_msg);
+                        notify_preset_error(
+                            &mut self.host,
+                            pending,
+                            e.error_code() as i32,
+                            err_msg,
+                        );
                     }
 
                     log::error!("Failed to load model from GUI: {e:?}");

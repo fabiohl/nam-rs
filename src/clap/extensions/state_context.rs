@@ -280,9 +280,8 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         );
         self.shared.bump_generation();
 
-        self.cmd_producer.push_params(
-            RtPluginParams::from_plugin_params(&self.params),
-        );
+        self.cmd_producer
+            .push_params(RtPluginParams::from_plugin_params(&self.params));
         let _ = self.cmd_producer.force_flush();
 
         if let Some(params_ext) = self

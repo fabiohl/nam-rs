@@ -50,20 +50,21 @@ impl PluginPresetLoadImpl for NamClapMainThread<'_> {
         // S4-E4-T05: Store the location and load_key for deferred host
         // notification when the async load completes (housekeeping.rs).
         {
-            let mut pending_guard = self
-                .shared
-                .cold
-                .pending_preset_load
-                .lock()
-                .unwrap_or_else(|e| {
-                    log::error!("PoisonError in pending_preset_load lock: {e:?}");
-                    e.into_inner()
-                });
+            let mut pending_guard =
+                self.shared
+                    .cold
+                    .pending_preset_load
+                    .lock()
+                    .unwrap_or_else(|e| {
+                        log::error!("PoisonError in pending_preset_load lock: {e:?}");
+                        e.into_inner()
+                    });
             *pending_guard = Some(PendingPresetLoad {
                 location_path: CString::new(path.to_bytes())
                     .unwrap_or_else(|_| CString::new("").unwrap()),
-                load_key: load_key.map(|k| CString::new(k.to_bytes())
-                    .unwrap_or_else(|_| CString::new("").unwrap())),
+                load_key: load_key.map(|k| {
+                    CString::new(k.to_bytes()).unwrap_or_else(|_| CString::new("").unwrap())
+                }),
             });
         }
 
