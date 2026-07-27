@@ -62,29 +62,15 @@ fn relative_path(path: &std::path::Path, base: &std::path::Path) -> String {
         .to_string()
 }
 
-/// Normalizes text for path extraction: removes markdown link wrappers
-/// `[text](PATH)` → `PATH` and strips `../` prefixes.
+/// Normalizes text for path extraction: replaces markdown link delimiters
+/// `[` `]` `(` `)` with spaces to separate anchor text and link target.
 fn strip_markdown_links(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
-    let mut i = 0;
-    let bytes = text.as_bytes();
-
-    while i < bytes.len() {
-        if bytes[i] == b']' && i + 1 < bytes.len() && bytes[i + 1] == b'(' {
-            // Found markdown link: [text](URL)
-            // Find the closing ')'
-            let link_start = i + 2;
-            if let Some(link_end) = text[link_start..].find(')') {
-                let link = &text[link_start..link_start + link_end];
-                result.push_str(link);
-                i = link_start + link_end + 1;
-                continue;
-            }
-        }
-        result.push(text[i..].chars().next().unwrap_or(' '));
-        i += text[i..].chars().next().map_or(1, |c| c.len_utf8());
-    }
-    result
+    text.chars()
+        .map(|c| match c {
+            '[' | ']' | '(' | ')' => ' ',
+            other => other,
+        })
+        .collect()
 }
 
 /// Extracts `utils/<name>.sh` and `utils/<name>.py` references.
@@ -153,6 +139,12 @@ fn extract_src_path_refs(text: &str) -> HashSet<String> {
             let candidate = &rest[..end];
             // Strip trailing 'f' if followed by "ile://" (file:// URL contamination)
             let candidate = if let Some(idx) = candidate.find("file://") {
+                &candidate[..idx]
+            } else {
+                candidate
+            };
+            // Strip URL fragments (e.g. #L10-L20)
+            let candidate = if let Some(idx) = candidate.find('#') {
                 &candidate[..idx]
             } else {
                 candidate
