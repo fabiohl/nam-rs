@@ -6,16 +6,26 @@ pub(crate) fn handle_focus_navigation(
     ui: &mut egui::Ui,
     load_btn_id: Option<egui::Id>,
     load_ir_btn_id: Option<egui::Id>,
+    clear_ir_btn_id: Option<egui::Id>,
+    oversample_id: Option<egui::Id>,
+    activation_id: Option<egui::Id>,
 ) {
     let load_btn_id = load_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_model_button"));
     let load_ir_btn_id = load_ir_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_ir_button"));
+    let clear_ir_btn_id = clear_ir_btn_id.unwrap_or_else(|| ui.make_persistent_id("clear_ir_button"));
+    let os_id = oversample_id.unwrap_or_else(|| ui.make_persistent_id("oversample_control"));
+    let act_id = activation_id.unwrap_or_else(|| ui.make_persistent_id("activation_control"));
+
     let controls = [
         ui.make_persistent_id("input_gain_knob"),
         ui.make_persistent_id("output_gain_knob"),
         ui.make_persistent_id("gate_thresh_knob"),
+        os_id,
+        act_id,
         ui.make_persistent_id("bypass_switch"),
         load_btn_id,
         load_ir_btn_id,
+        clear_ir_btn_id,
     ];
     let num_controls = controls.len();
 

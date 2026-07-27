@@ -23,9 +23,10 @@ pub(crate) fn draw_zone1_identity(
     host: &HostSharedHandle,
     state: &mut UiState,
     accent_color: egui::Color32,
-) -> (Option<egui::Id>, Option<egui::Id>) {
+) -> (Option<egui::Id>, Option<egui::Id>, Option<egui::Id>) {
     let mut load_btn_id = None;
     let mut load_ir_btn_id = None;
+    let mut clear_ir_btn_id = None;
     ui.allocate_ui(egui::vec2(135.0, 230.0), |ui| {
         ui.vertical(|ui| {
             ui.add_space(8.0);
@@ -90,6 +91,17 @@ pub(crate) fn draw_zone1_identity(
                 .stroke(egui::Stroke::new(1.0_f32, COL_BORDER)),
             );
             let btn_id = load_btn.id;
+            load_btn.widget_info(|| egui::WidgetInfo {
+                typ: egui::WidgetType::Button,
+                enabled: true,
+                label: Some("Load NAM model file".into()),
+                current_text_value: None,
+                prev_text_value: None,
+                hint_text: None,
+                text_selection: None,
+                selected: None,
+                value: None,
+            });
             load_btn_id = Some(btn_id);
             ui.memory_mut(|mem| mem.interested_in_focus(btn_id, ui.layer_id()));
 
@@ -244,6 +256,17 @@ pub(crate) fn draw_zone1_identity(
             );
             let ir_btn_id = load_ir_btn.id;
             load_ir_btn_id = Some(ir_btn_id);
+            load_ir_btn.widget_info(|| egui::WidgetInfo {
+                typ: egui::WidgetType::Button,
+                enabled: true,
+                label: Some("Load cabinet simulator impulse response".into()),
+                current_text_value: None,
+                prev_text_value: None,
+                hint_text: None,
+                text_selection: None,
+                selected: None,
+                value: None,
+            });
             ui.memory_mut(|mem| mem.interested_in_focus(ir_btn_id, ui.layer_id()));
 
             if load_ir_btn.has_focus() {
@@ -292,7 +315,19 @@ pub(crate) fn draw_zone1_identity(
                     .stroke(egui::Stroke::new(1.0_f32, COL_BORDER)),
                 );
                 let clear_ir_id = clear_ir_btn.id;
+                clear_ir_btn_id = Some(clear_ir_id);
                 ui.memory_mut(|mem| mem.interested_in_focus(clear_ir_id, ui.layer_id()));
+                clear_ir_btn.widget_info(|| egui::WidgetInfo {
+                    typ: egui::WidgetType::Button,
+                    enabled: true,
+                    label: Some("Clear cabinet simulator impulse response".into()),
+                    current_text_value: None,
+                    prev_text_value: None,
+                    hint_text: None,
+                text_selection: None,
+                    selected: None,
+                    value: None,
+                });
 
                 if clear_ir_btn.has_focus() {
                     ui.painter().rect_stroke(
@@ -405,5 +440,5 @@ pub(crate) fn draw_zone1_identity(
             }
         });
     });
-    (load_btn_id, load_ir_btn_id)
+    (load_btn_id, load_ir_btn_id, clear_ir_btn_id)
 }

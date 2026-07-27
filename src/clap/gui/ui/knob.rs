@@ -89,6 +89,21 @@ pub fn knob_widget(
 
     let response = response.on_hover_text(format!("{:.2}{}", current_value, tooltip_suffix));
 
+    // Accessibility: register widget info for screen readers
+    let label = format!("{:.2}{}", current_value, tooltip_suffix);
+    let knob_enabled = ui.is_enabled();
+    response.clone().widget_info(move || egui::WidgetInfo {
+        typ: egui::WidgetType::DragValue,
+        enabled: knob_enabled,
+        label: Some(label.clone()),
+        current_text_value: None,
+        prev_text_value: None,
+        hint_text: None,
+                text_selection: None,
+        selected: None,
+        value: Some(current_value as f64),
+    });
+
     let painter = ui.painter();
     let center = rect.center();
     let radius = rect.width() / 2.0 - 2.0;

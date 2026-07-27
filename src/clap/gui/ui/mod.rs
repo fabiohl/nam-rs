@@ -87,6 +87,9 @@ pub fn draw_ui(
     let accent_color = resolve_accent(shared);
     let mut load_btn_id = None;
     let mut load_ir_btn_id = None;
+    let mut clear_ir_btn_id = None;
+    let mut oversample_id = None;
+    let mut activation_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
     let available_w = ui.available_width();
@@ -102,14 +105,17 @@ pub fn draw_ui(
         }
 
         // ── Zone 1: Identity (left) ───────────────────────────
-        let (model_btn, ir_btn) = draw_zone1_identity(ui, shared, host, state, accent_color);
+        let (model_btn, ir_btn, clear_ir_btn) = draw_zone1_identity(ui, shared, host, state, accent_color);
         load_btn_id = model_btn;
         load_ir_btn_id = ir_btn;
+        clear_ir_btn_id = clear_ir_btn;
 
         styled_vsep(ui);
 
         // ── Zone 2: Controls (center) ────────────────────
-        draw_zone2_controls(ui, shared, host, current_bypass, accent_color);
+        let (os_id, act_id) = draw_zone2_controls(ui, shared, host, current_bypass, accent_color);
+        oversample_id = os_id;
+        activation_id = act_id;
 
         styled_vsep(ui);
 
@@ -150,7 +156,7 @@ pub fn draw_ui(
             });
     }
 
-    handle_focus_navigation(ui, load_btn_id, load_ir_btn_id);
+    handle_focus_navigation(ui, load_btn_id, load_ir_btn_id, clear_ir_btn_id, oversample_id, activation_id);
 
     // Repaint driver (CLAP-F022):
     // Request repaints only when something is actively changing. The baseview

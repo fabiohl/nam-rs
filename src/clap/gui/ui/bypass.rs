@@ -58,6 +58,20 @@ pub fn handle_bypass(
         });
     }
 
+    // Accessibility: register widget info for screen readers
+    let bypass_label = if current_bypass { "Bypass: On" } else { "Bypass: Off" };
+    response.clone().widget_info(move || egui::WidgetInfo {
+        typ: egui::WidgetType::Checkbox,
+        enabled: true,
+        label: Some(bypass_label.to_string()),
+        current_text_value: None,
+        prev_text_value: None,
+        hint_text: None,
+                text_selection: None,
+        selected: Some(current_bypass),
+        value: None,
+    });
+
     if toggle_bypass {
         let new_bypass = !current_bypass;
         gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);

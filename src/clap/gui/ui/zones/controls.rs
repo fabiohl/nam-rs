@@ -19,7 +19,9 @@ pub(crate) fn draw_zone2_controls(
     host: &HostSharedHandle,
     current_bypass: bool,
     accent_color: egui::Color32,
-) {
+) -> (Option<egui::Id>, Option<egui::Id>) {
+    let mut oversample_id: Option<egui::Id> = None;
+    let mut activation_id: Option<egui::Id> = None;
     ui.allocate_ui(egui::vec2(240.0, 230.0), |ui| {
         if current_bypass {
             ui.disable();
@@ -136,6 +138,30 @@ pub(crate) fn draw_zone2_controls(
             let os_val_i32 = os_val as i32;
 
             ui.allocate_ui(egui::vec2(210.0, 26.0), |ui| {
+                let os_id = ui.make_persistent_id("oversample_control");
+                oversample_id = Some(os_id);
+                ui.memory_mut(|mem| mem.interested_in_focus(os_id, ui.layer_id()));
+
+                let os_label = format!(
+                    "Oversampling: currently {}",
+                    match os_val_i32 {
+                        0 => "Off",
+                        1 => "2×",
+                        _ => "4×",
+                    }
+                );
+                let os_label_clone = os_label.clone();
+                ui.ctx().register_widget_info(os_id, move || egui::WidgetInfo {
+                    typ: egui::WidgetType::RadioGroup,
+                    enabled: true,
+                    label: Some(os_label_clone.clone()),
+                    current_text_value: None,
+                    prev_text_value: None,
+                    hint_text: None,
+                text_selection: None,
+                    selected: None,
+                    value: None,
+                });
                 ui.horizontal_centered(|ui| {
                     ui.label(
                         egui::RichText::new("Oversampling")
@@ -245,6 +271,26 @@ pub(crate) fn draw_zone2_controls(
             let act_val_i32 = act_val as i32;
 
             ui.allocate_ui(egui::vec2(210.0, 26.0), |ui| {
+                let act_id = ui.make_persistent_id("activation_control");
+                activation_id = Some(act_id);
+                ui.memory_mut(|mem| mem.interested_in_focus(act_id, ui.layer_id()));
+
+                let act_label = format!(
+                    "Activation precision: currently {}",
+                    if act_val_i32 == 1 { "Standard" } else { "Fast" }
+                );
+                let act_label_clone = act_label.clone();
+                ui.ctx().register_widget_info(act_id, move || egui::WidgetInfo {
+                    typ: egui::WidgetType::RadioGroup,
+                    enabled: true,
+                    label: Some(act_label_clone.clone()),
+                    current_text_value: None,
+                    prev_text_value: None,
+                    hint_text: None,
+                text_selection: None,
+                    selected: None,
+                    value: None,
+                });
                 ui.horizontal_centered(|ui| {
                     ui.label(
                         egui::RichText::new("Activation")
@@ -318,4 +364,5 @@ pub(crate) fn draw_zone2_controls(
             });
         });
     });
+    (oversample_id, activation_id)
 }
