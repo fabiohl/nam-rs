@@ -111,14 +111,17 @@ pub(crate) fn draw_zone1_identity(
                 });
             }
 
-            if load_clicked && !shared.cold.ui_loading.load(Ordering::Relaxed) {
+            if load_clicked
+                && !shared.cold.ui_loading.load(Ordering::Relaxed)
+                && let Some(dialog_state_arc) = shared.cold.dialog_state.as_ref()
+                && !dialog_state_arc.active.load(Ordering::Relaxed)
+            {
                 shared.cold.ui_loading.store(true, Ordering::Relaxed);
+                dialog_state_arc.active.store(true, Ordering::Relaxed);
                 let host_static = GuiHostBridge::new(host).as_static();
-                if let Some(dialog_state_arc) = shared.cold.dialog_state.as_ref() {
-                    let handle = spawn_file_dialog(Arc::clone(dialog_state_arc), host_static);
-                    if let Ok(mut guard) = shared.cold.dialog_handle_sink.lock() {
-                        *guard = Some(handle);
-                    }
+                let handle = spawn_file_dialog(Arc::clone(dialog_state_arc), host_static);
+                if let Ok(mut guard) = shared.cold.dialog_handle_sink.lock() {
+                    *guard = Some(handle);
                 }
             }
 
@@ -261,14 +264,17 @@ pub(crate) fn draw_zone1_identity(
                 });
             }
 
-            if load_ir_clicked && !ir_loading {
+            if load_ir_clicked
+                && !ir_loading
+                && let Some(ir_dialog_state_arc) = shared.cold.ir_dialog_state.as_ref()
+                && !ir_dialog_state_arc.active.load(Ordering::Relaxed)
+            {
                 shared.cold.ui_ir_loading.store(true, Ordering::Relaxed);
+                ir_dialog_state_arc.active.store(true, Ordering::Relaxed);
                 let host_static = GuiHostBridge::new(host).as_static();
-                if let Some(ir_dialog_state_arc) = shared.cold.ir_dialog_state.as_ref() {
-                    let handle = spawn_ir_file_dialog(Arc::clone(ir_dialog_state_arc), host_static);
-                    if let Ok(mut guard) = shared.cold.ir_dialog_handle_sink.lock() {
-                        *guard = Some(handle);
-                    }
+                let handle = spawn_ir_file_dialog(Arc::clone(ir_dialog_state_arc), host_static);
+                if let Ok(mut guard) = shared.cold.ir_dialog_handle_sink.lock() {
+                    *guard = Some(handle);
                 }
             }
 

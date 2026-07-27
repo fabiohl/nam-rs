@@ -65,6 +65,19 @@ impl<'a> NamClapMainThread<'a> {
                            // is harmless (OS reclaims).
             }
         }
+        // Clear dialog active flags so the UI doesn't show stale Loading state
+        // after the plugin is destroyed.
+        if let Some(dialog_state) = &self.shared.cold.dialog_state {
+            dialog_state.active.store(false, Ordering::Release);
+        }
+        if let Some(ir_dialog_state) = &self.shared.cold.ir_dialog_state {
+            ir_dialog_state.active.store(false, Ordering::Release);
+        }
+
+        // Join dialog threads (model + IR file pickers).
+        // If a dialog is still open (user hasn't picked a file), the join
+        // may block the main thread. Use a bounded spin/poll to avoid
+        // freezing the DAW.
         for sink in [
             &self.shared.cold.dialog_handle_sink,
             &self.shared.cold.ir_dialog_handle_sink,
@@ -72,7 +85,18 @@ impl<'a> NamClapMainThread<'a> {
             if let Ok(mut guard) = sink.lock()
                 && let Some(h) = guard.take()
             {
-                let _ = h.join();
+                if h.is_finished() {
+                    let _ = h.join();
+                } else {
+                    // Dialog still open — spawn reaper to join when done.
+                    // The dialog thread no longer holds Arc references that
+                    // could cause UAF (they're tracked via ColdShared which
+                    // outlives the plugin).
+                    std::thread::Builder::new()
+                        .name("nam-dialog-reaper".into())
+                        .spawn(move || { let _ = h.join(); })
+                        .ok();
+                }
             }
         }
         if let Some(mut window_handle) = self.window_handle.take() {

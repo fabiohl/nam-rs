@@ -4,6 +4,7 @@
 //! Main thread housekeeping: GC drain, status-flags sync, pending model load, latency.
 
 use super::NamClapMainThread;
+use crate::clap::gui::ui::zones::dialog_state;
 use crate::clap::plugin::shared::PendingPresetLoad;
 use crate::common::spsc::{self, drain_gc_channels};
 use crate::models::slimmable::slice_wavenet_model;
@@ -174,6 +175,7 @@ impl<'a> NamClapMainThread<'a> {
         }
 
         // Propagate dialog_state → ui_pending_model (R2: Arc-backed, UAF-safe)
+        // Always propagates: Selected(path), Cancelled, or TimedOut sentinels.
         if let Some(dialog_state) = self.shared.cold.dialog_state.as_ref() {
             let mut dialog_guard = dialog_state.pending_model.lock().unwrap_or_else(|e| {
                 log::error!("PoisonError in dialog_state.pending_model lock: {e:?}");
@@ -193,7 +195,7 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
-        // Check if there is a pending model sent by the UI
+        // Check if there is a pending model sent by the UI (real path) or dialog (sentinel).
         let pending_model = self
             .shared
             .cold
@@ -205,52 +207,63 @@ impl<'a> NamClapMainThread<'a> {
             })
             .take();
         if let Some(path) = pending_model {
-            let res = self.load_model(&path);
-            self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
+            let cancelled_sentinel = dialog_state::dialog_cancelled_sentinel();
+            let timedout_sentinel = dialog_state::dialog_timedout_sentinel();
 
-            // S4-E4-T05: Notify host via HostPresetLoad if this model was
-            // queued by the preset-load extension.
-            let pending_load = self
-                .shared
-                .cold
-                .pending_preset_load
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take();
+            if path == cancelled_sentinel {
+                log::info!("NAM-rs: model file dialog cancelled by user");
+                self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
+            } else if path == timedout_sentinel {
+                log::info!("NAM-rs: model file dialog timed out");
+                self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
+            } else {
+                let res = self.load_model(&path);
+                self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
 
-            match res {
-                Ok(_) => {
-                    if let Some(pending) = pending_load {
-                        notify_preset_loaded(&mut self.host, pending);
+                // S4-E4-T05: Notify host via HostPresetLoad if this model was
+                // queued by the preset-load extension.
+                let pending_load = self
+                    .shared
+                    .cold
+                    .pending_preset_load
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take();
+
+                match res {
+                    Ok(_) => {
+                        if let Some(pending) = pending_load {
+                            notify_preset_loaded(&mut self.host, pending);
+                        }
                     }
-                }
-                Err(e) => {
-                    let err_msg = e.error_code().message();
-                    let mut msg_guard =
+                    Err(e) => {
+                        let err_msg = e.error_code().message();
+                        let mut msg_guard =
+                            self.shared
+                                .cold
+                                .ui_load_error_msg
+                                .lock()
+                                .unwrap_or_else(|e| {
+                                    log::error!("PoisonError in ui_load_error_msg lock: {e:?}");
+                                    e.into_inner()
+                                });
+                        *msg_guard = err_msg.to_string();
                         self.shared
                             .cold
-                            .ui_load_error_msg
-                            .lock()
-                            .unwrap_or_else(|e| {
-                                log::error!("PoisonError in ui_load_error_msg lock: {e:?}");
-                                e.into_inner()
-                            });
-                    *msg_guard = err_msg.to_string();
-                    self.shared
-                        .cold
-                        .ui_load_error
-                        .store(true, Ordering::Relaxed);
+                            .ui_load_error
+                            .store(true, Ordering::Relaxed);
 
-                    if let Some(pending) = pending_load {
-                        notify_preset_error(
-                            &mut self.host,
-                            pending,
-                            e.error_code() as i32,
-                            err_msg,
-                        );
+                        if let Some(pending) = pending_load {
+                            notify_preset_error(
+                                &mut self.host,
+                                pending,
+                                e.error_code() as i32,
+                                err_msg,
+                            );
+                        }
+
+                        log::error!("Failed to load model from GUI: {e:?}");
                     }
-
-                    log::error!("Failed to load model from GUI: {e:?}");
                 }
             }
         }
@@ -286,31 +299,42 @@ impl<'a> NamClapMainThread<'a> {
                 })
                 .take();
             if let Some(path) = pending_ir {
-                let res = self.load_cabsim(&path);
-                self.shared
-                    .cold
-                    .ui_ir_loading
-                    .store(false, Ordering::Relaxed);
-                match res {
-                    Ok(_) => {}
-                    Err(e) => {
-                        let err_msg = e.error_code().message();
-                        let mut msg_guard = self
-                            .shared
-                            .cold
-                            .ui_ir_load_error_msg
-                            .lock()
-                            .unwrap_or_else(|e| {
-                                log::error!("PoisonError in ui_ir_load_error_msg lock: {e:?}");
-                                e.into_inner()
-                            });
-                        *msg_guard = err_msg.to_string();
-                        self.shared
-                            .cold
-                            .ui_ir_load_error
-                            .store(true, Ordering::Relaxed);
+                let cancelled_sentinel = dialog_state::dialog_cancelled_sentinel();
+                let timedout_sentinel = dialog_state::dialog_timedout_sentinel();
 
-                        log::error!("Failed to load cab-sim IR from GUI: {e:?}");
+                if path == cancelled_sentinel {
+                    log::info!("NAM-rs: IR file dialog cancelled by user");
+                    self.shared.cold.ui_ir_loading.store(false, Ordering::Relaxed);
+                } else if path == timedout_sentinel {
+                    log::info!("NAM-rs: IR file dialog timed out");
+                    self.shared.cold.ui_ir_loading.store(false, Ordering::Relaxed);
+                } else {
+                    let res = self.load_cabsim(&path);
+                    self.shared
+                        .cold
+                        .ui_ir_loading
+                        .store(false, Ordering::Relaxed);
+                    match res {
+                        Ok(_) => {}
+                        Err(e) => {
+                            let err_msg = e.error_code().message();
+                            let mut msg_guard = self
+                                .shared
+                                .cold
+                                .ui_ir_load_error_msg
+                                .lock()
+                                .unwrap_or_else(|e| {
+                                    log::error!("PoisonError in ui_ir_load_error_msg lock: {e:?}");
+                                    e.into_inner()
+                                });
+                            *msg_guard = err_msg.to_string();
+                            self.shared
+                                .cold
+                                .ui_ir_load_error
+                                .store(true, Ordering::Relaxed);
+
+                            log::error!("Failed to load cab-sim IR from GUI: {e:?}");
+                        }
                     }
                 }
             }

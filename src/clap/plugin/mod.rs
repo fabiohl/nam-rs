@@ -77,16 +77,10 @@ impl DefaultPluginFactory for NamClapPlugin {
         let (slimmable_tx, slimmable_rx) = RingBuffer::new(4);
 
         let dialog_state = Some(Arc::new(
-            crate::clap::gui::ui::zones::dialog_state::DialogSharedState {
-                pending_model: Mutex::new(None),
-                loading: std::sync::atomic::AtomicBool::new(false),
-            },
+            crate::clap::gui::ui::zones::dialog_state::DialogSharedState::new(),
         ));
         let ir_dialog_state = Some(Arc::new(
-            crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState {
-                pending_ir: Mutex::new(None),
-                ir_loading: std::sync::atomic::AtomicBool::new(false),
-            },
+            crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState::new(),
         ));
 
         Ok(NamClapShared {
