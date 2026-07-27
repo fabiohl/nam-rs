@@ -173,7 +173,7 @@ fn compute_file_hash(path: &Path) -> Result<String, PluginError> {
 /// across the NAM ecosystem. The order is:
 /// 1. `~/.nam/models/` — NAM ecosystem convention
 /// 2. `~/NAM Models/` — alternative common location
-fn canonical_search_dirs() -> Vec<PathBuf> {
+pub(crate) fn canonical_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let home = match std::env::var("HOME") {
         Ok(h) => PathBuf::from(h),
@@ -304,7 +304,10 @@ fn validate_model_full(
     sys: &crate::common::diagnostics::SystemSnapshot,
 ) -> Result<ModelValidationResult, PluginError> {
     let Some(ref path) = loaded_params.model_path else {
-        return Ok((None, None, None, None, None));
+        // S6-E6-T03: ForPreset blobs carry model_path=None but model_basename + model_hash.
+        // Fall through to portable basename search so state.load() restores presets equivalently
+        // to state_context.load(ForPreset).
+        return validate_model_from_basename(loaded_params, host_rate, buffer_size, sys);
     };
 
     if path.exists() {
@@ -367,6 +370,18 @@ fn validate_model_preset(
     buffer_size: u32,
     sys: &crate::common::diagnostics::SystemSnapshot,
 ) -> Result<ModelValidationResult, PluginError> {
+    validate_model_from_basename(loaded_params, host_rate, buffer_size, sys)
+}
+
+/// Shared basename-based portable model resolution with canonical search and
+/// content-hash verification (S6-E6-T02, S6-E6-T03).  Used by both
+/// `validate_model_preset()` and `validate_model_full()` when `model_path` is None.
+fn validate_model_from_basename(
+    loaded_params: &NamPluginParams,
+    host_rate: u32,
+    buffer_size: u32,
+    sys: &crate::common::diagnostics::SystemSnapshot,
+) -> Result<ModelValidationResult, PluginError> {
     let Some(ref basename) = loaded_params.model_basename else {
         return Ok((None, None, None, None, None));
     };
@@ -404,7 +419,7 @@ fn validate_model_preset(
             .map(|s| s.to_string());
         let search_path = candidate.parent().map(|p| p.to_path_buf());
         let hash = Some(resources.model_hash.clone());
-        log::info!("NAM-rs: ForPreset resolved model via canonical search: {candidate:?}");
+        log::info!("NAM-rs: Resolved model via basename search: {candidate:?}");
         return Ok((Some(resources), Some(candidate), basename_from_path, search_path, hash));
     }
 
@@ -632,6 +647,9 @@ fn commit(
             main_thread.params.bypass = validated.params.bypass;
             main_thread.params.adaptive_compute = validated.params.adaptive_compute;
             main_thread.params.slim_override = validated.params.slim_override;
+            // S6-E6-T03: oversample and activation_precision are part of the preset identity
+            main_thread.params.oversample = validated.params.oversample;
+            main_thread.params.activation_precision = validated.params.activation_precision;
         }
     }
 
