@@ -4,9 +4,12 @@
 //! Main thread housekeeping: GC drain, status-flags sync, pending model load, latency.
 
 use super::NamClapMainThread;
+use crate::clap::plugin::shared::PendingPresetLoad;
 use crate::common::spsc::{self, drain_gc_channels};
 use crate::models::slimmable::slice_wavenet_model;
 use crate::models::{NamModel, StaticModel};
+use clack_extensions::preset_discovery::prelude::*;
+use clack_plugin::host::HostMainThreadHandle;
 use std::sync::atomic::Ordering;
 
 impl<'a> NamClapMainThread<'a> {
@@ -204,8 +207,23 @@ impl<'a> NamClapMainThread<'a> {
         if let Some(path) = pending_model {
             let res = self.load_model(&path);
             self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
+
+            // S4-E4-T05: Notify host via HostPresetLoad if this model was
+            // queued by the preset-load extension.
+            let pending_load = self
+                .shared
+                .cold
+                .pending_preset_load
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+
             match res {
-                Ok(_) => {}
+                Ok(_) => {
+                    if let Some(pending) = pending_load {
+                        notify_preset_loaded(&mut self.host, pending);
+                    }
+                }
                 Err(e) => {
                     let err_msg = e.error_code().message();
                     let mut msg_guard =
@@ -222,6 +240,10 @@ impl<'a> NamClapMainThread<'a> {
                         .cold
                         .ui_load_error
                         .store(true, Ordering::Relaxed);
+
+                    if let Some(pending) = pending_load {
+                        notify_preset_error(&mut self.host, pending, e.error_code() as i32, err_msg);
+                    }
 
                     log::error!("Failed to load model from GUI: {e:?}");
                 }
@@ -369,5 +391,38 @@ impl<'a> NamClapMainThread<'a> {
                 }
             }
         }
+    }
+}
+
+/// S4-E4-T05: Notify the host that a preset was loaded successfully.
+/// Reconstructs the `Location` from the stored `PendingPresetLoad` and
+/// calls `HostPresetLoad::loaded()`.
+fn notify_preset_loaded(host: &mut HostMainThreadHandle, pending: PendingPresetLoad) {
+    let path_cstr = pending.location_path;
+    let load_key_cstr = pending.load_key;
+    if let Some(preset_load) = host.get_extension::<HostPresetLoad>() {
+        let location = Location::File { path: &path_cstr };
+        let load_key = load_key_cstr.as_deref();
+        preset_load.loaded(host, location, load_key);
+        log::info!("Host notified: preset loaded successfully");
+    }
+}
+
+/// S4-E4-T05: Notify the host that a preset load failed.
+fn notify_preset_error(
+    host: &mut HostMainThreadHandle,
+    pending: PendingPresetLoad,
+    os_error: i32,
+    message: &str,
+) {
+    let path_cstr = pending.location_path;
+    let load_key_cstr = pending.load_key;
+    if let Some(preset_load) = host.get_extension::<HostPresetLoad>() {
+        let location = Location::File { path: &path_cstr };
+        let load_key = load_key_cstr.as_deref();
+        let msg_cstr = std::ffi::CString::new(message);
+        let msg_ref = msg_cstr.as_deref().ok();
+        preset_load.on_error(host, location, load_key, os_error, msg_ref);
+        log::error!("Host notified: preset load failed (os_error={os_error})");
     }
 }

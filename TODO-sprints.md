@@ -223,10 +223,11 @@ graph TD
   - **Critério de Aceite:** Automações iniciadas pela GUI gravam envelopes corretos na DAW sem perder o fim do gesto (`end_edit`).
   - **Conclusão:** Controles segmentados (Oversampling, Activation Precision) em `controls.rs` agora emitem gesto completo BEGIN→CHANGED→END + chamam `HostParams::request_flush()`. `ColdShared` ganhou `in_flight_params: Mutex<Option<RtPluginParams>>` para retry de push SPSC. `PluginMainThreadParams::flush()` armazena snapshot pendente + chama `host.request_callback()` ao falhar push. `housekeeping()` drena `in_flight_params` via novo método `flush_in_flight_params()` com retry em caso de SPSC ainda cheio. 1297/1316 lib tests passam (2 falhas pré-existentes).
 
-- [ ] **S4-E4-T05 [Média] — Suporte à Extensão HostPresetLoad**
+- [x] **S4-E4-T05 [Média] — Suporte à Extensão HostPresetLoad**
   - **Origem:** E4-T05, CLAP-F017 | **Perfis:** Plugin Extension Specialist
   - **Escopo:** Implementar callbacks da extensão `clap_plugin_preset_load`, suportando carregamento síncrono e assíncrono com respostas adequadas de `loaded` ou `on_error`.
   - **Critério de Aceite:** Carregamento de presets via host nativo funciona sem erros e reporta falhas apropriadamente.
+  - **Conclusão:** `PluginPresetLoadImpl::load_from_location()` agora preserva `location` e `load_key` em `ColdShared.pending_preset_load` (novo `PendingPresetLoad` com `CString`). `housekeeping()` chama `notify_preset_loaded()` no sucesso ou `notify_preset_error()` na falha, usando `HostPresetLoad::loaded()`/`on_error()` com `Location` reconstruída. `load_key` (antes `_load_key` ignorado) é propagado corretamente. 1297/1316 lib tests passam (2 falhas pré-existentes); 10 preset discovery tests + 1 preset_load integration test passam.
 
 ---
 

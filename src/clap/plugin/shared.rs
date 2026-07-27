@@ -10,6 +10,7 @@ use crate::dsp::resampler::NamResampler;
 use crate::models::StaticModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
+use std::ffi::CString;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -177,6 +178,16 @@ pub struct UiToRt {
     pub host_r_deactivated: AtomicBool,
 }
 
+/// Deferred preset-load metadata for `HostPresetLoad` notification (S4-E4-T05).
+/// Stored by `PluginPresetLoadImpl::load_from_location()` and consumed by
+/// `housekeeping()` to call `loaded()` or `on_error()` after the async load.
+pub struct PendingPresetLoad {
+    /// Owned copy of the file-system path from the `Location`.
+    pub location_path: CString,
+    /// Owned copy of the `load_key` (preset identifier from discovery provider).
+    pub load_key: Option<CString>,
+}
+
 /// Fields accessed at low frequency by both threads (init, shutdown, rare events).
 #[repr(align(128))]
 pub struct ColdShared {
@@ -273,6 +284,11 @@ pub struct ColdShared {
     /// (channel full), the snapshot is stored here for retry via
     /// `host.request_callback()` → `housekeeping()`.
     pub in_flight_params: Mutex<Option<crate::common::params::RtPluginParams>>,
+    /// Pending preset-load operation (S4-E4-T05).
+    /// Set by `load_from_location()` with the location and load_key for
+    /// deferred host notification. Consumed by `housekeeping()` to call
+    /// `HostPresetLoad::loaded()` or `on_error()` after the async load.
+    pub pending_preset_load: Mutex<Option<PendingPresetLoad>>,
     /// Model loaded before `activate()` (state restore while `buffer_size == 0`),
     /// deferred to avoid heap allocation on the audio thread (F3 fix).
     /// See `flush_pending_model()` in load.rs and housekeeping.rs.
