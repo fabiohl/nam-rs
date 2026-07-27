@@ -151,8 +151,8 @@ impl<'a> NamClapMainThread<'a> {
                 ));
             }
 
-            self.param_tx
-                .push(ClapParamPayload::LoadModel {
+            self.cmd_producer
+                .push_command(ClapParamPayload::LoadModel {
                     model_l,
                     new_resampler,
                     input_mult_adj,
@@ -267,8 +267,8 @@ impl<'a> NamClapMainThread<'a> {
             )
         })?);
 
-        self.param_tx
-            .push(ClapParamPayload::LoadCabIr { adapter })
+        self.cmd_producer
+            .push_command(ClapParamPayload::LoadCabIr { adapter })
             .map_err(|_| {
                 Box::new(
                     NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)

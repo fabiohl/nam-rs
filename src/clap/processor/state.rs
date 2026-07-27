@@ -3,7 +3,7 @@
 
 //! Processor state (struct definition).
 
-use crate::clap::plugin::{ClapParamPayload, NamClapShared};
+use crate::clap::plugin::{CommandConsumer, NamClapShared};
 use crate::clap::processor::dsp::orchestrator::ScheduledEvent;
 use crate::common::params::{ActivationPrecision, RtPluginParams};
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
@@ -154,8 +154,8 @@ pub struct NamClapProcessor<'a> {
     pub(crate) model_output_mult_adj: f32,
     /// Parking lot for model/resampler disposal if the GC channel is full.
     pub(crate) parking_lot: [Option<GcItem>; 16],
-    /// SPSC channel: Main Thread -> Audio Thread (Consumer).
-    pub(crate) param_rx: Consumer<ClapParamPayload>,
+    /// Command consumer with acknowledgment (S4-E4-T01).
+    pub(crate) cmd_consumer: CommandConsumer<'a>,
     /// SPSC channel: Main Thread -> Audio Thread (Slimmable model consumer).
     pub(crate) slimmable_rx: Consumer<Option<Box<StaticModel>>>,
     /// GC channel: Audio Thread -> Main Thread (Producer).

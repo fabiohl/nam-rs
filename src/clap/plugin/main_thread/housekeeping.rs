@@ -144,8 +144,8 @@ impl<'a> NamClapMainThread<'a> {
                 OversampleEngine::new(factor, MAX_RESAMP_BUF),
             ) {
                 let _ = self
-                    .param_tx
-                    .push(crate::clap::plugin::ClapParamPayload::SetOversample {
+                    .cmd_producer
+                    .push_command(crate::clap::plugin::ClapParamPayload::SetOversample {
                         os_l: Box::new(l),
                         os_r: Box::new(r),
                     });
@@ -288,8 +288,8 @@ impl<'a> NamClapMainThread<'a> {
 
             if self.shared.cold.ui_clear_ir.swap(false, Ordering::Relaxed) {
                 let _ = self
-                    .param_tx
-                    .push(ClapParamPayload::LoadCabIr { adapter: None });
+                    .cmd_producer
+                    .push_command(ClapParamPayload::LoadCabIr { adapter: None });
                 {
                     let mut ir_guard = self.shared.cold.ir_path.lock().unwrap_or_else(|e| {
                         log::error!("PoisonError in ir_path lock: {e:?}");

@@ -195,7 +195,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                             .into_boxed_str(),
                     ))
                 })?);
-            let _ = self.param_tx.push(ClapParamPayload::LoadModel {
+            let _ = self.cmd_producer.push_command(ClapParamPayload::LoadModel {
                 model_l: None,
                 new_resampler: bypass_resampler,
                 input_mult_adj: 1.0,
@@ -216,8 +216,8 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
         if ir_load_failed {
             // Clear any old IR from the RT thread
             let _ = self
-                .param_tx
-                .push(ClapParamPayload::LoadCabIr { adapter: None });
+                .cmd_producer
+                .push_command(ClapParamPayload::LoadCabIr { adapter: None });
             log::error!("NAM-rs: State restore failed — IR not found. Old IR unloaded.");
         }
 
@@ -291,14 +291,15 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             if new_params.ir_path.is_none() && !ir_load_failed {
                 // No IR requested in new state — bypass cabsim
                 let _ = self
-                    .param_tx
-                    .push(ClapParamPayload::LoadCabIr { adapter: None });
+                    .cmd_producer
+                    .push_command(ClapParamPayload::LoadCabIr { adapter: None });
             }
         }
 
-        let _ = self.param_tx.push(ClapParamPayload::Params(
+        self.cmd_producer.push_params(
             RtPluginParams::from_plugin_params(&self.params),
-        ));
+        );
+        let _ = self.cmd_producer.force_flush();
 
         if let Some(params_ext) = self.host.get_extension::<HostParams>() {
             params_ext.rescan(&mut self.host, ParamRescanFlags::VALUES);

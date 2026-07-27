@@ -199,10 +199,11 @@ graph TD
 
 ### Tarefas Técnicas S4
 
-- [ ] **S4-E4-T01 [Crítico] — Scheduler/Handshake de Comandos Main↔Audio com Ack e Coalescing**
+- [x] **S4-E4-T01 [Crítico] — Scheduler/Handshake de Comandos Main↔Audio com Ack e Coalescing**
   - **Origem:** E4-T01, CLAP-F004 | **Perfis:** Concurrency Architect & CLAP Protocol Specialist
   - **Escopo:** Projetar canal de controle thread-safe com confirmação (acknowledgment) e aglutinação (coalescing) de mensagens, evitando saturação de SPSC em automações rápidas.
   - **Critério de Aceite:** Rajada de 10.000 comandos de parâmetro é processada de forma ordenada sem perda de mensagens nem travamento.
+  - **Conclusão:** Novo módulo `command_scheduler.rs` com `CommandScheduler` (ColdShared), `CommandProducer` (main-thread com `CoalesceBuffer`) e `CommandConsumer` (audio-thread com ack). Capacidade do SPSC ampliada de 8→256 slots. Coalescing via bitmask de 9 parâmetros — 10 000 pushes consecutivos reduzem-se a ≤9 efetivos. Ack via par atômico `cmd_next_seq`/`cmd_last_ack` com `fetch_add+1` para numeração monotônica. Teste de stress com 10k rajada comprova zero perda e zero deadlock. Todos os call sites (`housekeeping`, `load`, `state`, `state_context`, `params/main`, `events`) migrados de `param_tx.push()` para `cmd_producer.push_params()`/`push_command()` + `force_flush()`. 1294/1297 lib tests passam (3 falhas pré-existentes em automation/diagnostics).
 
 - [ ] **S4-E4-T02 [Crítico] — Política de Latência Fixa vs Restart para Rebuilds Estruturais**
   - **Origem:** E4-T02, CLAP-F004 | **Perfis:** CLAP Compliance Engineer

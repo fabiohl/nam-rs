@@ -109,7 +109,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                             format!("Failed to create bypass resampler: {e:?}").into_boxed_str(),
                         ))
                     })?);
-                let _ = self.param_tx.push(ClapParamPayload::LoadModel {
+                let _ = self.cmd_producer.push_command(ClapParamPayload::LoadModel {
                     model_l: None,
                     new_resampler: bypass_resampler,
                     input_mult_adj: 1.0,
@@ -199,7 +199,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                             format!("Failed to create bypass resampler: {e:?}").into_boxed_str(),
                         ))
                     })?);
-                let _ = self.param_tx.push(ClapParamPayload::LoadModel {
+                let _ = self.cmd_producer.push_command(ClapParamPayload::LoadModel {
                     model_l: None,
                     new_resampler: bypass_resampler,
                     input_mult_adj: 1.0,
@@ -220,8 +220,8 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             if ir_load_failed {
                 let _ = self
-                    .param_tx
-                    .push(ClapParamPayload::LoadCabIr { adapter: None });
+                    .cmd_producer
+                    .push_command(ClapParamPayload::LoadCabIr { adapter: None });
                 log::error!(
                     "NAM-rs: State-context restore failed — IR not found. Old IR unloaded."
                 );
@@ -249,8 +249,8 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
                 self.params.ir_path = None;
             } else if loaded_params.ir_path.is_none() {
                 let _ = self
-                    .param_tx
-                    .push(ClapParamPayload::LoadCabIr { adapter: None });
+                    .cmd_producer
+                    .push_command(ClapParamPayload::LoadCabIr { adapter: None });
             }
         }
 
@@ -280,9 +280,10 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
         );
         self.shared.bump_generation();
 
-        let _ = self.param_tx.push(ClapParamPayload::Params(
+        self.cmd_producer.push_params(
             RtPluginParams::from_plugin_params(&self.params),
-        ));
+        );
+        let _ = self.cmd_producer.force_flush();
 
         if let Some(params_ext) = self
             .host

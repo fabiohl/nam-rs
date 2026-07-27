@@ -3,7 +3,11 @@
 
 //! NAM-rs plugin definition and its CLAP lifecycle components.
 
+pub mod command_scheduler;
 pub mod shared;
+pub use command_scheduler::{
+    CommandConsumer, CommandProducer, CommandScheduler, CommandSchedulerChannels, CMD_QUEUE_CAPACITY,
+};
 pub use shared::{
     ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata, PendingModel,
     RENDER_MODE_OFFLINE, RENDER_MODE_REALTIME, RtToUi, UiToRt,
@@ -20,7 +24,7 @@ use crate::common::spsc::{GcOverflowBuffer, RtStatusFlags};
 use clack_plugin::prelude::*;
 use rtrb::RingBuffer;
 use std::ffi::CString;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// NAM-rs plugin: main entry point for the CLAP lifecycle.
@@ -64,7 +68,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             crate::common::panic_hook::install_panic_hook("clap");
         });
 
-        let (param_tx, param_rx) = RingBuffer::new(8);
+        let (param_tx, param_rx) = RingBuffer::new(CMD_QUEUE_CAPACITY);
         let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
         let (slimmable_tx, slimmable_rx) = RingBuffer::new(4);
 
@@ -158,6 +162,8 @@ impl DefaultPluginFactory for NamClapPlugin {
                 slimmable_tx: Mutex::new(Some(slimmable_tx)),
                 slimmable_rx: Mutex::new(Some(slimmable_rx)),
                 full_wavenet_model: Mutex::new(None),
+                cmd_next_seq: AtomicU64::new(0),
+                cmd_last_ack: AtomicU64::new(0),
                 pending_model: Mutex::new(None),
                 deactivated_dsp: Mutex::new(None),
                 dialog_state: dialog_state.clone(),
@@ -265,13 +271,19 @@ impl DefaultPluginFactory for NamClapPlugin {
             }
         }
 
+        let cmd_producer = CommandProducer::new(
+            param_tx,
+            &shared.cold.cmd_next_seq,
+            &shared.cold.cmd_last_ack,
+        );
+
         #[cfg_attr(test, allow(unused_mut, clippy::allow_attributes))]
         let main_thread = NamClapMainThread {
             shared,
             params: NamPluginParams::default(),
             host,
             sys: SystemSnapshot::capture(),
-            param_tx,
+            cmd_producer,
             gc_rx,
             slimmable_tx,
             last_reported_latency: 0,

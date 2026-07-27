@@ -12,6 +12,7 @@ mod housekeeping;
 mod load;
 mod logging;
 
+use super::command_scheduler::CommandProducer;
 use super::shared::{ClapParamPayload, NamClapShared, PendingModel};
 use crate::common::diagnostics::SystemSnapshot;
 use crate::common::params::NamPluginParams;
@@ -21,8 +22,8 @@ use crate::dsp::resampler::NamResampler;
 use crate::models::{NamModel, StaticModel};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// Main thread exclusive state (model loading, state save/load).
 pub struct NamClapMainThread<'a> {
@@ -33,8 +34,8 @@ pub struct NamClapMainThread<'a> {
     pub host: HostMainThreadHandle<'a>,
     /// System snapshot for emitting diagnostics.
     pub sys: SystemSnapshot,
-    /// Producer to send updates to the audio thread.
-    pub param_tx: Producer<ClapParamPayload>,
+    /// Producer to send updates to the audio thread with coalescing and ack.
+    pub cmd_producer: CommandProducer<'a>,
     /// Consumer to collect garbage (obsolete models) from the audio thread.
     pub gc_rx: Consumer<GcItem>,
     /// Producer to send slimmable-rebuilt models to the audio thread.
@@ -132,13 +133,16 @@ impl<'a> NamClapMainThread<'a> {
             )));
         }
 
-        match self.param_tx.push(ClapParamPayload::LoadModel {
+        match self.cmd_producer.push_command(ClapParamPayload::LoadModel {
             model_l,
             new_resampler,
             input_mult_adj,
             output_mult_adj,
         }) {
-            Ok(()) => Ok(()),
+            Ok(seq) => {
+                log::trace!("Deferred model sent to audio thread (seq={seq})");
+                Ok(())
+            }
             Err(_) => {
                 self.shared
                     .cold

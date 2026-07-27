@@ -11,7 +11,7 @@ use crate::models::StaticModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Main -> RT communication payload for the CLAP plugin.
@@ -255,6 +255,13 @@ pub struct ColdShared {
     /// When a WaveNet model is loaded, a clone is stored here so the main thread
     /// can create slimmed variants without touching the audio thread.
     pub full_wavenet_model: Mutex<Option<Box<StaticModel>>>,
+    /// Command scheduler ack atomics (S4-E4-T01).
+    /// Monotonic sequence counter incremented by the main thread on each
+    /// enqueued command batch.
+    pub cmd_next_seq: AtomicU64,
+    /// Last sequence fully drained and processed by the audio thread.
+    /// Written by the audio thread (Release), read by the main thread (Acquire).
+    pub cmd_last_ack: AtomicU64,
     /// Model loaded before `activate()` (state restore while `buffer_size == 0`),
     /// deferred to avoid heap allocation on the audio thread (F3 fix).
     /// See `flush_pending_model()` in load.rs and housekeeping.rs.

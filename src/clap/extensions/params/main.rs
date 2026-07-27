@@ -8,7 +8,7 @@ use super::{
     PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN, PARAM_OVERSAMPLE, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32,
     bypass_f32_to_bool,
 };
-use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
+use crate::clap::plugin::{NamClapMainThread};
 use crate::common::params::RtPluginParams;
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 use clack_extensions::params::{
@@ -400,15 +400,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             param_changed = true;
         }
 
-        if param_changed
-            && self
-                .param_tx
-                .push(ClapParamPayload::Params(
-                    RtPluginParams::from_plugin_params(&self.params),
-                ))
-                .is_err()
-        {
-            self.shared.bump_generation();
+        if param_changed {
+            let snapshot = RtPluginParams::from_plugin_params(&self.params);
+            self.cmd_producer.push_params(snapshot);
+            if self.cmd_producer.force_flush().is_err() {
+                self.shared.bump_generation();
+            }
         }
     }
 }

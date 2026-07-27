@@ -22,7 +22,7 @@ mod state;
 pub(crate) use deactivated::DeactivatedDspState;
 pub(crate) use state::NamClapProcessor;
 
-use crate::clap::plugin::{NamClapMainThread, NamClapShared};
+use crate::clap::plugin::{CommandConsumer, NamClapMainThread, NamClapShared};
 use crate::common::params::RtPluginParams;
 #[cfg(target_arch = "x86_64")]
 use crate::common::tsc::rdtsc_nanos;
@@ -364,6 +364,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // ownership back for processor construction. Guard Drop is now a no-op.
         let channels = rollback.defuse();
 
+        let cmd_consumer = CommandConsumer::new(
+            channels.param_rx,
+            &shared.cold.cmd_last_ack,
+        );
+
         let cabsim_tail_initial = cabsim_adapter.as_ref().map_or(0, |a| a.tail_samples());
 
         Ok(Self {
@@ -401,7 +406,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             smoother_out,
             model_input_mult_adj,
             model_output_mult_adj,
-            param_rx: channels.param_rx,
+            cmd_consumer,
             gc_tx: channels.gc_tx,
             slimmable_rx: channels.slimmable_rx,
             gc_overflow: Arc::clone(&shared.cold.gc_overflow),
@@ -432,7 +437,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .param_rx
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        *param_rx_guard = Some(self.param_rx);
+        *param_rx_guard = Some(self.cmd_consumer.into_inner());
 
         let mut gc_tx_guard = self
             .shared

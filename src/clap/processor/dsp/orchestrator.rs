@@ -883,8 +883,6 @@ fn apply_iir_gain_ramp_sub_block(
         for i in 0..n {
             let gain = target + bp * diff;
             unsafe {
-                let s = slice_l.get_unchecked(i).to_f32() * gain;
-                *slice_l.get_unchecked_mut(i) = AlignedF32(s);
                 *slice_l.get_unchecked_mut(i) *= gain;
                 *slice_r.get_unchecked_mut(i) *= gain;
             }

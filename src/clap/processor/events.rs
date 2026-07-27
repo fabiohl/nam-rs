@@ -23,8 +23,11 @@ impl<'a> NamClapProcessor<'a> {
         self.drain_parking_lot();
 
         // 1. Event Processing (Main Thread SPSC)
+        // S4-E4-T01: Use CommandConsumer with acknowledgment.
+        let mut drained_count = 0u32;
 
-        while let Ok(payload) = self.param_rx.pop() {
+        while let Some(payload) = self.cmd_consumer.pop() {
+            drained_count += 1;
             match payload {
                 ClapParamPayload::Params(new_params) => {
                     self.apply_params_from_spsc(new_params);
@@ -43,6 +46,13 @@ impl<'a> NamClapProcessor<'a> {
                     self.cold_load_os(os_l, os_r);
                 }
             }
+            if drained_count >= 64 {
+                break;
+            }
+        }
+
+        if drained_count > 0 {
+            self.cmd_consumer.ack_latest(&self.shared.cold.cmd_next_seq);
         }
 
         // Sync parameters changed via GUI that were not echoed as input events by the host.
