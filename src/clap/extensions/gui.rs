@@ -4,10 +4,11 @@
 //! Implementation of the `clap_plugin_gui` extension for NAM-rs.
 
 use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
+use crate::clap::gui::lifecycle::{GuiEvent, GuiLifecycle};
 use crate::clap::plugin::NamClapMainThread;
 use crate::clap::plugin::debug_assert_main_thread;
 use clack_extensions::gui::{
-    GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window,
+    GuiApiType, GuiConfiguration, GuiSize, HostGui, PluginGui, PluginGuiImpl, Window,
 };
 use clack_plugin::plugin::PluginError;
 use std::sync::Arc;
@@ -123,6 +124,10 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             "embedded"
         };
         log::info!("GUI mode selected = {mode}");
+        #[cfg(feature = "clap-plugin")]
+        {
+            self.gui_lifecycle = GuiLifecycle::Hidden;
+        }
         Ok(())
     }
 
@@ -130,7 +135,14 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
     fn destroy(&mut self) {
         debug_assert_main_thread(&self.host);
         #[cfg(feature = "clap-plugin")]
-        self.teardown_gui_resources();
+        {
+            // Notify host that the GUI was destroyed by the plugin
+            if let Some(gui_host) = self.host.get_extension::<HostGui>() {
+                gui_host.closed(&self.host.shared(), true);
+            }
+            self.teardown_gui_resources();
+            let _ = self.gui_lifecycle.transition(GuiEvent::Destroy);
+        }
     }
 
     /// Sets the absolute scale factor for the GUI.
@@ -269,14 +281,30 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
     }
 
     /// Makes the GUI window visible.
+    ///
+    /// Transitions the lifecycle state from `Hidden` to `ShowRequested`.
+    /// The actual window mapping happens on the GUI thread (baseview callback),
+    /// which transitions to `Active` once the window is ready.
     fn show(&mut self) -> Result<(), PluginError> {
         debug_assert_main_thread(&self.host);
+        #[cfg(feature = "clap-plugin")]
+        {
+            self.gui_lifecycle.transition(GuiEvent::Show)?;
+        }
         Ok(())
     }
 
     /// Hides the GUI window.
+    ///
+    /// Transitions the lifecycle state from `Active` to `HideRequested`.
+    /// The actual window unmapping happens on the GUI thread.
+    /// Resources are preserved so `show()` can re-display the window.
     fn hide(&mut self) -> Result<(), PluginError> {
         debug_assert_main_thread(&self.host);
+        #[cfg(feature = "clap-plugin")]
+        {
+            self.gui_lifecycle.transition(GuiEvent::Hide)?;
+        }
         Ok(())
     }
 

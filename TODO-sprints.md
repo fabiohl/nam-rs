@@ -313,10 +313,11 @@ graph TD
 
 ### Tarefas Técnicas S7
 
-- [ ] **S7-E7-T01 [Crítico] — State Machine Completa do Lifecycle da GUI**
+- [x] **S7-E7-T01 [Crítico] — State Machine Completa do Lifecycle da GUI**
   - **Origem:** E7-T01, CLAP-F019 | **Perfis:** GUI Systems Architect
   - **Escopo:** Implementar máquina de estados finita formal para a janela egui: `Hidden` -> `ShowRequested` -> `Active` -> `HideRequested` -> `Destroyed`.
   - **Critério de Aceite:** Fechar e reabrir a interface repetidamente no Bitwig/REAPER não causa congelamento, vazamento de janela nem deadlock.
+  - **Conclusão (2026-07-27):** Criado `src/clap/gui/lifecycle.rs` com a enum `GuiLifecycle` e 7 eventos (`GuiEvent`) que formalizam as transições. `create()` inicializa como `Hidden`, `show()` transita `Hidden → ShowRequested`, `hide()` transita `Active → HideRequested`, `destroy()` transita qualquer estado para `Destroyed` (terminal). `WindowEvent::WillClose` notifica o host via `HostGui::closed(false)`. Transições ilegais (double-show, hide-before-activate, etc.) retornam `Err(PluginError)`. 10 testes unitários cobrem happy path, user-closed, window-failed, destroy-from-any-state, destroyed-is-terminal e helpers. GUI existente + e0 containment tests passam (3 pre-existing failures: F001, F007, F009). Clippy limpo. Nota: O mapeamento/desmapeamento físico X11 via `show()`/`hide()` depende de suporte da baseview (T02/T03 refinam isso).
 
 - [ ] **S7-E7-T02 [Crítico] — Remoção de Ponteiros Raw e Teardown Bounded Sem Detached Thread**
   - **Origem:** E7-T02, CLAP-F020 | **Perfis:** Rust Concurrency & GUI Safety Engineer

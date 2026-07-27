@@ -4,6 +4,7 @@
 use baseview::{
     DropEffect, Event, EventStatus, MouseEvent, ScrollDelta, Window, WindowEvent, WindowHandler,
 };
+use clack_extensions::gui::HostGui;
 use std::sync::atomic::Ordering;
 
 use super::NamPluginWindow;
@@ -150,6 +151,16 @@ impl WindowHandler for NamPluginWindow {
         self.dirty = true;
 
         match event {
+            Event::Window(WindowEvent::WillClose) => {
+                // User closed the window via the window manager (X button, Alt-F4, etc.).
+                // Notify the host that the GUI was closed externally, then
+                // clean up GL resources and stop the render loop.
+                if let Some(gui_host) = self.host.get_extension::<HostGui>() {
+                    gui_host.closed(&self.host, false);
+                }
+                self.close_signal.store(true, Ordering::Release);
+                EventStatus::Captured
+            }
             Event::Window(WindowEvent::Resized(window_info)) => {
                 self.scale = window_info.scale() as f32;
                 let size = window_info.logical_size();

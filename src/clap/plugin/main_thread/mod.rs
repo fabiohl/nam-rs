@@ -14,6 +14,7 @@ mod logging;
 
 use super::command_scheduler::CommandProducer;
 use super::shared::{ClapParamPayload, NamClapShared, PendingModel};
+use crate::clap::gui::lifecycle::GuiLifecycle;
 use crate::common::diagnostics::SystemSnapshot;
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::{self, GcItem};
@@ -71,6 +72,10 @@ pub struct NamClapMainThread<'a> {
     #[expect(dead_code, reason = "held for Arc lifecycle, never read directly")]
     pub(crate) ir_dialog_state:
         Option<Arc<crate::clap::gui::ui::zones::dialog_state::IrDialogSharedState>>,
+    /// Finite state machine tracking the GUI window lifecycle
+    /// (Hidden → ShowRequested → Active → HideRequested → Destroyed).
+    #[cfg(feature = "clap-plugin")]
+    pub(crate) gui_lifecycle: GuiLifecycle,
 }
 
 impl<'a> NamClapMainThread<'a> {

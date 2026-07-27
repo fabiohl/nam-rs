@@ -309,6 +309,8 @@ impl DefaultPluginFactory for NamClapPlugin {
             ir_dialog_handle: None,
             #[cfg(feature = "clap-plugin")]
             ir_dialog_state: shared.cold.ir_dialog_state.clone(),
+            #[cfg(feature = "clap-plugin")]
+            gui_lifecycle: crate::clap::gui::lifecycle::GuiLifecycle::Hidden,
         };
 
         let host_name = main_thread

@@ -5,6 +5,8 @@
 
 //! Implementation of the main graphical user interface window.
 
+/// GUI lifecycle finite state machine.
+pub mod lifecycle;
 /// egui rendering function and UI components.
 pub mod ui;
 /// Main window and event/draw manager with baseview + egui.
