@@ -8,6 +8,7 @@ use super::NamClapProcessor;
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
 use crate::models::StaticModel;
+use clack_extensions::tail::HostTail;
 use clack_plugin::prelude::OutputEvents;
 use std::sync::atomic::Ordering;
 
@@ -204,6 +205,14 @@ impl<'a> NamClapProcessor<'a> {
             .cabsim_tail_samples
             .store(cabsim_tail, Ordering::Relaxed);
         self.cabsim_tail_remaining = self.cabsim_adapter.as_ref().map_or(0, |a| a.tail_samples());
+
+        // S4-E4-T03: Notify the host of tail changes from the audio thread,
+        // which owns the valid HostAudioProcessorHandle. Eliminates the
+        // unsafe main-thread → audio-thread pointer cast previously in
+        // housekeeping.rs.
+        if let Some(tail_ext) = self.host.get_extension::<HostTail>() {
+            tail_ext.changed(&mut self.host);
+        }
     }
 
     #[cold]

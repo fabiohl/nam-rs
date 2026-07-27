@@ -7,7 +7,6 @@ use super::NamClapMainThread;
 use crate::common::spsc::{self, drain_gc_channels};
 use crate::models::slimmable::slice_wavenet_model;
 use crate::models::{NamModel, StaticModel};
-use clack_extensions::tail::HostTail;
 use std::sync::atomic::Ordering;
 
 impl<'a> NamClapMainThread<'a> {
@@ -328,29 +327,17 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
-        // Tail Monitoring: notify the host when the CabSim tail length changes.
-        let cabsim_tail = self
+        // S4-E4-T03: Tail notification moved to cold_load_cabsim() on the audio
+        // thread (events.rs). The audio thread owns HostAudioProcessorHandle and
+        // calls HostTail::changed() safely without unsafe pointer casts.
+        // The cabsim_tail_samples value is still monitored here for logging.
+        let _cabsim_tail = self
             .shared
             .rt_to_ui
             .cabsim_tail_samples
             .load(Ordering::Relaxed);
-        if cabsim_tail != self.last_reported_cabsim_tail {
-            self.last_reported_cabsim_tail = cabsim_tail;
-            log::info!(
-                "[Housekeeping] CabSim tail changed: {} samples reported to host.",
-                cabsim_tail
-            );
-            if let Some(tail_ext) = self.host.get_extension::<HostTail>() {
-                let raw = std::ptr::NonNull::from(self.host.as_raw());
-                // SAFETY: HostMainThreadHandle and HostAudioProcessorHandle are
-                // repr(transparent) wrappers around the same NonNull<clap_host>.
-                // Calling tail.changed() from the main thread is valid per the
-                // clap_plugin_tail specification — it posts an event to the
-                // host's main-thread event queue.
-                let mut audio_host =
-                    unsafe { clack_plugin::host::HostAudioProcessorHandle::from_raw(raw) };
-                tail_ext.changed(&mut audio_host);
-            }
+        if _cabsim_tail != self.last_reported_cabsim_tail {
+            self.last_reported_cabsim_tail = _cabsim_tail;
         }
     }
 }

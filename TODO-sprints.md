@@ -211,10 +211,11 @@ graph TD
   - **Critério de Aceite:** Mudança de oversampling ativa solicita restart ao host mock; latência anunciada nunca muda abruptamente durante `process()`.
   - **Conclusão:** Implementada política de restart-on-latency-change. `ColdShared` ganhou `pending_restart_os_factor: AtomicU32`. `apply_oversample()` (SPSC/GUI path) e `apply_scheduled_event()` (host events path) agora bifurcam: se `buffer_size > 0`, armazenam fator pendente + pedem `host.request_restart()`; caso contrário mantêm flag `RT_STATUS_NEEDS_OS_REBUILD`. `activate()` consome `pending_restart_os_factor` para construir `OversampleEngine` no fator correto (não mais `Off`), e `DeactivatedDspState` preserva `os_factor` para detectar rebuilds necessários no restore. Testes: `processor_restart_test.rs` verifica que fator pendente é armazenado, `RT_STATUS_NEEDS_OS_REBUILD` não é setado quando ativo, e `activate()` limpa o pending. `TestHostShared` refatorado com `Arc<AtomicBool>` para rastreio de restart nos mocks. 1296/1316 lib tests passam (3 falhas pré-existentes).
 
-- [ ] **S4-E4-T03 [Alta] — Notificação de Tail Exclusiva do Audio Thread**
+- [x] **S4-E4-T03 [Alta] — Notificação de Tail Exclusiva do Audio Thread**
   - **Origem:** E4-T03, CLAP-F005 | **Perfis:** CLAP Systems Engineer
   - **Escopo:** Mover a chamada de `clap_host_tail.changed()` estritamente para o audio thread. Eliminar a conversão `unsafe` de ponteiros de main-thread handle para audio-thread handle em `housekeeping.rs`.
   - **Critério de Aceite:** `HostTail::changed()` é invocado exclusivamente a partir de contextos audio-thread autorizados; zero avisos em validators estritos.
+  - **Conclusão:** `HostTail::changed()` movido para `cold_load_cabsim()` no audio thread (`processor/events.rs:214`), que tem acesso direto ao `HostAudioProcessorHandle` via `self.host`. Removido bloco `unsafe` de 7 linhas em `housekeeping.rs` que convertia `HostMainThreadHandle` → `HostAudioProcessorHandle` via `from_raw`. Import `clack_extensions::tail::HostTail` removido de `housekeeping.rs`. Atualização do `cabsim_tail_samples` em `rt_to_ui` mantida inalterada — apenas a notificação ao host agora ocorre junto com a troca do adapter. 1296/1316 lib tests passam (3 falhas pré-existentes).
 
 - [ ] **S4-E4-T04 [Alta] — Eventos de Parâmetros GUI Completos e Retryable**
   - **Origem:** E4-T04, CLAP-F016 | **Perfis:** GUI/Plugin Integration Specialist
