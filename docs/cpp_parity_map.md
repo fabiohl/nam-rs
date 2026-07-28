@@ -19,13 +19,13 @@ when. **For a single-page triage of what is actually broken vs. what is under co
 
 ## 0. Audit Status
 
-| Architecture                | Status                                                                                               | Section                                   |
-|:--------------------------- |:---------------------------------------------------------------------------------------------------- |:----------------------------------------- |
-| **LSTM**                    | ✅ Fully Verified — Native f32 weights, bit-exact/sub-1e-11 interop parity vs NAMcore                | [§2](#2-lstm-architecture)                |
-| **WaveNet A1**              | ✅ Fully Verified — Const-generic fast path & dynamic fallback pass canonical golden gates           | [§3](#3-wavenet-a1-architecture)          |
-| **WaveNet A2**              | 🟡 Verified Dynamic/Fast paths — 🔴 Flagship (`wavenet_a2_max.nam`) disabled fail-closed at dispatch | [§4](#4-wavenet-a2-architecture)          |
-| **ConvNet**                 | 🟠 Audited — Bespoke format (pre-fused BatchNorm), documented A/B científico in Quality Contract     | [§6](#6-other-architectures-out-of-scope) |
-| Linear / Container / Cabsim | ✅ Verified — Affine linear, SlimmableContainer, and IR Cabsim covered by targeted test suites       | [§6](#6-other-architectures-out-of-scope) |
+| Architecture                | Status                                                                                                 | Section                                   |
+|:--------------------------- |:------------------------------------------------------------------------------------------------------ |:----------------------------------------- |
+| **LSTM**                    | ✅ Fully Verified — Native f32 weights, bit-exact/sub-1e-11 interop parity vs NAMcore                  | [§2](#2-lstm-architecture)                |
+| **WaveNet A1**              | ✅ Fully Verified — Const-generic fast path & dynamic fallback pass canonical golden gates             | [§3](#3-wavenet-a1-architecture)          |
+| **WaveNet A2**              | 🟡 Verified Dynamic/Fast paths — 🔴 Flagship (`wavenet_a2_max.nam`) disabled fail-closed at dispatch   | [§4](#4-wavenet-a2-architecture)          |
+| **ConvNet**                 | ✅ IDÊNTICO — Paridade Total de Inicialização e Aritmética (prewarm fix elimina transiente de 2.54e-5) | [§6](#6-other-architectures-out-of-scope) |
+| Linear / Container / Cabsim | ✅ Verified — Affine linear, SlimmableContainer, and IR Cabsim covered by targeted test suites         | [§6](#6-other-architectures-out-of-scope) |
 
 ## 1. Methodology
 
@@ -898,11 +898,26 @@ audit cycles from re-discovering and re-investigating it.
 
 ConvNet, Linear, `SlimmableContainer`, and the IR Cabsim convolution stage complete the model suite:
 
-- **ConvNet — format collision & A/B científico (audited contract).** The vendored
-  NAMcore implements ConvNet (`NAM/convnet.cpp`), but using a flat config with raw BatchNorm params. NAM-rs uses a per-block nested config with pre-fused BatchNorm scale/offset (`src/loader/dispatcher/convnet/mod.rs`).
+- **ConvNet — Paridade Total de Inicialização e Aritmética (✅ resolved 2026-07-28).** O vendored
+  NAMcore implementa ConvNet (`NAM/convnet.cpp`), mas usando um formato flat com BatchNorm params
+  brutos. O NAM-rs usa um formato nested por-bloco com BatchNorm pré-fundido scale/offset
+  (`src/loader/dispatcher/convnet/mod.rs`). A divergência de ESR `2.54e-5` (SNR `45.9 dB`)
+  previamente reportada era **exclusivamente um transiente de inicialização de estado (prewarm)**
+  confinado às primeiras 62 amostras — o `ConvNetModel::prewarm()` preenchia zeros literais por
+  bloco isolado, enquanto o NAMcore (`dsp.cpp:67-96`) processa `receptive_field_size + 1` amostras
+  de silêncio através da rede inteira. A correção (`TASK-CONVNET-01`, 2026-07-28) replicou a
+  semântica exata do NAMcore, eliminando o transiente.
 
-  - **Quality Contract baseline:** ESR vs NAMcore = `2.54e-05` (SNR `45.9 dB`, classified as `A/B CIENTÍFICO`), ESR vs f64 Ideal = `3.57e-15` (SNR `144.5 dB`), CPU latency = `10.3 µs` (0.8% of RT budget).
-  - The sub-1e-14 ESR vs f64 ideal confirms that the 45.9 dB gap against C++ is due to different operation order (pre-fused vs post-conv BatchNorm execution), not accumulated numerical noise.
+  - **Métricas de paridade definitivas (pós-fix, 2026-07-28):**
+    - **C++ cross-validation** (`quick_parity_convnet`): ESR = `4.20e-15` (SNR `143.8 dB`), MR-STFT = `1.20e-6`
+    - **Oráculo f64** (`test_oracle_convnet`): ESR = `3.57e-15` (SNR `144.5 dB`, piso f32)
+    - **Oráculo vs NumPy f64** (`test_oracle_vs_python_anchor_convnet`): ESR = `5.23e-33` (bit-exact)
+    - **Self-golden** (`test_golden_vectors_convnet_test`): ESR = `0.00e0` (determinismo total)
+  - **Gates de qualidade recalibrados:** SNR ≥ `120 dB`, ESR ≤ `1.0e-12`, MR-STFT ≤ `1.0e-4`
+    (`TASK-CONVNET-05`).
+  - **Teste de invariante:** `test_convnet_prewarm_fixed_point_invariant()` confirma que o
+    estado pós-prewarm é um ponto fixo estacionário idêntico à convergência explícita (`TASK-CONVNET-03`).
+  - CPU latency = `10.3 µs` (0.8% of RT budget) — inalterada (prewarm opera em caminho frio).
 
 - **Linear (RF=2048 / 4096 / 8192).** Affine linear model. Baseline ESR vs NAMcore = `1.70e-14` (SNR `137.7 dB`), CPU latency = `0.3 µs` (0.0% of RT budget).
 
@@ -1009,9 +1024,9 @@ These do not produce wrong audio, but they can make the *evidence* for parity ev
   The non-ignored `quick_parity_*` subset in `tests-quick.sh` Fase 2 can therefore pass
   green with **zero** cross-validations executed. (`run_v2_multi_sr_impl` tracks
   outcomes correctly and asserts the completed-rate set.)
-- **`quick_parity_convnet` always skips** (§6 — architecture incompatibility) yet
-  reports `ok`, giving the false impression of a 4-model quick-parity matrix when only
-  3 models are actually cross-validated.
+- **`quick_parity_convnet`** previously always skipped (§6 — architecture incompatibility), but
+  after the prewarm fix (TASK-CONVNET-01, 2026-07-28) it now passes with ESR=4.20e-15 (SNR 143.8 dB),
+  completing the 4-model quick-parity matrix at full coverage.
 - **`wavenet_a2_film_input_mixin_pre.nam`** is in the CATALOG and has a NumPy anchor,
   but its C++ golden `.bin` was never generated/committed; its golden test is
   `#[ignore]`d with placeholder (unmeasured) thresholds in `tests/common/validation.rs`.

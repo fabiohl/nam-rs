@@ -105,7 +105,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
 
 ### Sprint 3: Documentação & Atualização de Contratos de Qualidade
 
-#### `TASK-CONVNET-07`: Sincronização da Tabela de Paridade em `docs/cpp_parity_map.md`
+#### `TASK-CONVNET-07`: Sincronização da Tabela de Paridade em `docs/cpp_parity_map.md` [DONE]
 
 - **Arquivos:** [`docs/cpp_parity_map.md`](docs/cpp_parity_map.md)
 - **Risco:** **MÍNIMO**.

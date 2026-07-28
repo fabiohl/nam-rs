@@ -136,7 +136,7 @@ fn ensure_render_compiled() -> bool {
     let build_dir = project_root.join(BUILD_DIR);
     fs::create_dir_all(&build_dir).ok();
 
-    eprintln!("Compiling render tool (v0.5.3 + A2-fast)...");
+    eprintln!("Compiling render tool (v0.5.4 + A2-fast)...");
 
     let cmake_args = vec![
         "-S",
