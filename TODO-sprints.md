@@ -43,7 +43,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
   3. Atualizar a implementação do trait `prewarm_samples(&self) -> usize` em `src/models/convnet/mod.rs` para retornar `self.receptive_field_size + 1` (64 amostras).
 - **Critério de Aceite:** `model.prewarm()` compila sem warnings e popula o estado estacionário de entrada zero em todos os blocos `ConvNetBlock`.
 
-#### `TASK-CONVNET-02`: Eliminar `ConvNetBlock::prewarm` descontinuado (Código Morto)
+#### `TASK-CONVNET-02`: Eliminar `ConvNetBlock::prewarm` descontinuado (Código Morto) [DONE]
 
 - **Arquivos:** [`src/models/convnet/block.rs`](src/models/convnet/block.rs)
 - **Risco:** **MÍNIMO**.

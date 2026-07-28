@@ -290,6 +290,69 @@ fn test_prewarm_with_head() {
 }
 
 #[test]
+fn test_convnet_prewarm_fixed_point_invariant() {
+    fn create_model() -> ConvNetModel {
+        let mut block =
+            ConvNetBlock::new(1, 1, 2, 2, false, ActivationType::Tanh, 0).expect("create block");
+
+        let weights = vec![1.0f32, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        block.set_conv_weights(&weights);
+        block.set_bn_params(&[1.0f32], &[0.5f32]).unwrap();
+
+        let rf = block.receptive_field();
+        ConvNetModel {
+            blocks: vec![block],
+            head_scale: 1.0,
+            receptive_field_size: rf,
+            post_stack_head: None,
+            head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+                .expect("head_output_scratch"),
+            scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+                .expect("scratch_a"),
+            scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
+                .expect("scratch_b"),
+            prewarm_on_reset: true,
+            linear_head: None,
+        }
+    }
+
+    let mut model_a = create_model();
+    model_a.prewarm();
+
+    const NUM_TEST: usize = 64;
+    let zeros = vec![0.0f32; NUM_TEST];
+    let mut out_a = vec![0.0f32; NUM_TEST];
+    model_a.process(&zeros, &mut out_a);
+
+    let dc_a = out_a[0];
+    for i in 1..NUM_TEST {
+        assert!(
+            (out_a[i] - dc_a).abs() < 1e-6,
+            "post-prewarm output drift: out_a[{}]={} vs out_a[0]={}, diff={:.2e}",
+            i,
+            out_a[i],
+            dc_a,
+            (out_a[i] - dc_a).abs()
+        );
+    }
+
+    let mut model_b = create_model();
+    const CONVERGE: usize = 256;
+    let zeros_b = vec![0.0f32; CONVERGE];
+    let mut out_b = vec![0.0f32; CONVERGE];
+    model_b.process(&zeros_b, &mut out_b);
+
+    let dc_b_steady = out_b[CONVERGE - 1];
+    assert!(
+        (dc_a - dc_b_steady).abs() < 1e-4,
+        "prewarm fixed point = {} diverges from explicit convergence = {}, diff = {:.2e}",
+        dc_a,
+        dc_b_steady,
+        (dc_a - dc_b_steady).abs()
+    );
+}
+
+#[test]
 fn test_struct_alignment() {
     assert_eq!(std::mem::align_of::<ConvNetModel>(), 64);
 }
