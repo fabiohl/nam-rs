@@ -29,7 +29,7 @@ impl NamModel for ConvNetModel {
     }
 
     fn prewarm_samples(&self) -> usize {
-        self.receptive_field_size
+        self.receptive_field_size + 1
     }
 
     fn set_max_buffer_size(&mut self, _max_buf: usize) -> anyhow::Result<()> {

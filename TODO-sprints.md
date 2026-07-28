@@ -32,7 +32,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
 
 ### Sprint 1: Correção do Motor DSP & Limpeza de Código Morto
 
-#### `TASK-CONVNET-01`: Atualizar `ConvNetModel::prewarm` para propagação de silêncio
+#### `TASK-CONVNET-01`: Atualizar `ConvNetModel::prewarm` para propagação de silêncio [DONE]
 
 - **Arquivos:** [`src/models/convnet/model.rs`](src/models/convnet/model.rs) e [`src/models/convnet/mod.rs`](src/models/convnet/mod.rs)
 - **Risco:** **BAIXO** (caminho frio executado apenas em `reset()` / inicialização).

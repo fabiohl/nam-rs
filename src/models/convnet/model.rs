@@ -204,33 +204,16 @@ impl ConvNetModel {
     }
 
     /// Stabilizes the model by processing silence (Zero Input) for pre-warm.
+    ///
+    /// Replicates `nam::DSP::prewarm()` semantics from NAMcore (`dsp.cpp:67-96`):
+    /// processes `receptive_field_size + 1` samples of silence through the
+    /// entire network, leaving internal states at the zero-input fixed point.
     #[cold]
     pub fn prewarm(&mut self) {
-        unsafe {
-            crate::math::common::dispatch_simd!(self, prewarm_internal);
-        }
-    }
-
-    #[inline(always)]
-    #[cold]
-    unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
-        let num_blocks = self.blocks.len();
-        if num_blocks == 0 {
-            return;
-        }
-
-        let blocks_ptr = self.blocks.as_mut_ptr();
-
-        for i in 0..num_blocks {
-            unsafe {
-                (*blocks_ptr.add(i)).prewarm_internal::<M>();
-            }
-        }
-
-        if let Some(ref mut head_proc) = self.post_stack_head {
-            head_proc.prewarm();
-        }
-        // Linear head has no state — no prewarm needed.
+        let n = self.receptive_field_size + 1;
+        let zeros = vec![0.0f32; n];
+        let mut sink = vec![0.0f32; n * self.out_channels()];
+        self.process(&zeros, &mut sink);
     }
 }
 
