@@ -5,11 +5,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # 🎸 NAM-rs 3.1
 
-![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg) [![crates.io](https://img.shields.io/crates/v/NeuralAmpModeler-rs.svg)](https://crates.io/crates/NeuralAmpModeler-rs) [![docs.rs](https://img.shields.io/docsrs/NeuralAmpModeler-rs.svg)](https://docs.rs/NeuralAmpModeler-rs)
+![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
 **NAM-rs** is a cutting-edge, high-fidelity, high-performance, real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) core and client written in pure Rust. Designed for guitar amplifiers, pedals, and studio gear simulation on Linux, it operates both as a **native PipeWire standalone application** and as a **CLAP plugin with an integrated GUI** for digital audio workstations (DAWs), as well as an embeddable Rust DSP library.
 
-> **❤️‍🔥 NAM-rs is in "public beta" stage.** Feedbacks, bug reports, suggestions, and testing are very welcome (and needed 😉)!
+> **❤️‍🔥 NAM-rs is in beta stage.** Feedbacks, bug reports, suggestions, and testing are very welcome (and needed 😉)!
 
 ---
 
@@ -139,17 +139,6 @@ Run diagnostic self-checks or output support telemetry:
 * **Standalone:** `nam-rs --diagnose`
 * **CLAP Plugin:** Click **"Copy Diagnostic"** (`ℹ`) in the GUI status bar to copy telemetry to clipboard and `~/.cache/nam-rs/diagnostic-<timestamp>.txt`.
 * **Issue Reporting:** Paste the generated telemetry block into a GitHub Issue or submit it to the diagnostic assistant ([.agents/skills/diagnostico/SKILL.md](.agents/skills/diagnostico/SKILL.md)).
-
----
-
-## 📦 **For Rust Developers [crates.io](https://crates.io/crates/NeuralAmpModeler-rs):**
-
-📖 Full API documentation & integration guide: **[docs.rs/NeuralAmpModeler-rs](https://docs.rs/NeuralAmpModeler-rs)**
-
-```toml
-[dependencies]
-NeuralAmpModeler-rs = { version = "x.y.z", default-features = false }
-```
 
 ---
 
