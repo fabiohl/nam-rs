@@ -173,61 +173,6 @@ impl ConvNetBlock {
 
         self.state.advance_frames(num_frames, in_ch);
     }
-
-    /// Public prewarm wrapper with SIMD dispatch.
-    #[cold]
-    pub fn prewarm(&mut self) {
-        unsafe {
-            crate::math::common::dispatch_simd!(self, prewarm_internal);
-        }
-    }
-
-    /// Fills the conv state buffer with a single frame of silence replicated
-    /// backward to cover the entire receptive field.
-    ///
-    /// # Safety
-    /// Must be called via `dispatch_simd!` macro. The state buffer must be
-    /// properly allocated and the ring buffer start pointer must be valid.
-    #[inline(always)]
-    pub unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
-        let in_ch = self.conv.in_ch;
-        let out_ch = self.conv.out_ch;
-        let kernel = self.conv.kernel;
-        let dilation = self.conv.dilation;
-
-        let silence = vec![0.0f32; in_ch];
-        let buf_start = self.state.buffer_start * in_ch;
-
-        self.state.layer_buffer[buf_start..buf_start + in_ch].copy_from_slice(&silence);
-
-        let start_idx = buf_start;
-        let src_range = start_idx..start_idx + in_ch;
-        let max_offset = (kernel - 1) * dilation + 1;
-        for offset in 1..=max_offset {
-            let dst_idx = (self.state.buffer_start - offset) * in_ch;
-            self.state
-                .layer_buffer
-                .copy_within(src_range.clone(), dst_idx);
-        }
-
-        let scratch_slice = &mut self.scratch[..out_ch];
-        unsafe {
-            self.conv.process_single_frame::<M>(
-                &self.state.layer_buffer,
-                scratch_slice,
-                self.state.buffer_start,
-                None,
-            );
-        }
-        unsafe {
-            self.bn.process_simd::<M>(scratch_slice, 1);
-        }
-        unsafe {
-            self.activation.apply_simd::<M>(scratch_slice);
-        }
-
-        self.state.advance_frames(1, in_ch);
-    }
 }
 
 #[cfg(test)]

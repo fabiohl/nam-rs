@@ -130,24 +130,6 @@ fn test_multi_frame_causal() {
 }
 
 #[test]
-fn test_prewarm_no_nan() {
-    let mut block =
-        ConvNetBlock::new(1, 1, 2, 1, false, ActivationType::Tanh, 0).expect("create block");
-
-    let weights = vec![0.5f32, 0.0, 0.0, 0.0, 0.5f32, 0.0, 0.0, 0.0];
-    block.set_conv_weights(&weights);
-
-    block.prewarm();
-
-    let input = [1.0f32];
-    let mut output = [0.0f32];
-    unsafe {
-        block.process_block(&input, &mut output, 1);
-    }
-    assert!(output[0].is_finite());
-}
-
-#[test]
 fn test_conv_bias() {
     let mut block =
         ConvNetBlock::new(1, 1, 1, 1, true, ActivationType::Tanh, 0).expect("create block");

@@ -53,7 +53,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
   2. Ajustar `convnet_block_test.rs` se houver chamadas diretas a esse método descontinuado.
 - **Critério de Aceite:** Ausência de código morto no módulo de bloco; compilação limpa sem warnings.
 
-#### `TASK-CONVNET-03`: Adicionar Teste Unitário de Invariante de Ponto Fixo Estacionário
+#### `TASK-CONVNET-03`: Adicionar Teste Unitário de Invariante de Ponto Fixo Estacionário [DONE]
 
 - **Arquivos:** [`src/models/convnet/convnet_model_test.rs`](src/models/convnet/convnet_model_test.rs)
 - **Risco:** **BAIXO**.
