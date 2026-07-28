@@ -307,10 +307,8 @@ fn test_convnet_prewarm_fixed_point_invariant() {
             post_stack_head: None,
             head_output_scratch: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
                 .expect("head_output_scratch"),
-            scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
-                .expect("scratch_a"),
-            scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0)
-                .expect("scratch_b"),
+            scratch_a: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0).expect("scratch_a"),
+            scratch_b: AlignedVec::new(WAVENET_MAX_NUM_FRAMES, 0.0).expect("scratch_b"),
             prewarm_on_reset: true,
             linear_head: None,
         }
@@ -325,14 +323,14 @@ fn test_convnet_prewarm_fixed_point_invariant() {
     model_a.process(&zeros, &mut out_a);
 
     let dc_a = out_a[0];
-    for i in 1..NUM_TEST {
+    for (i, &val) in out_a.iter().enumerate().skip(1) {
         assert!(
-            (out_a[i] - dc_a).abs() < 1e-6,
+            (val - dc_a).abs() < 1e-6,
             "post-prewarm output drift: out_a[{}]={} vs out_a[0]={}, diff={:.2e}",
             i,
-            out_a[i],
+            val,
             dc_a,
-            (out_a[i] - dc_a).abs()
+            (val - dc_a).abs()
         );
     }
 

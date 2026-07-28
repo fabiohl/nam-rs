@@ -92,7 +92,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
   2. Em `tests/parity/cpp_parity.rs`: atualizar `ABSOLUTE_ESR_CAP_CONVNET_HF` de `1e-3` para **`1e-10`**, alinhando ao cap da família WaveNet.
 - **Critério de Aceite:** Todos os testes de paridade passam com os novos gates estritos ativados.
 
-#### `TASK-CONVNET-06`: Validação Integrada da Suíte Ágil com `utils/tests-quick.sh`
+#### `TASK-CONVNET-06`: Validação Integrada da Suíte Ágil com `utils/tests-quick.sh` [DONE]
 
 - **Arquivos:** `utils/tests-quick.sh`
 - **Risco:** **MÉDIO**.

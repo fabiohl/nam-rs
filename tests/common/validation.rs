@@ -916,7 +916,12 @@ pub fn get_calibrated_threshold(
         // Floor: SNR - 23.8 dB, ESR factor ~238×, MR-STFT factor ~83×.
         "convnet_test" => {
             let snr_db = 120.0;
-            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-12), Some(1.0e-4)))
+            Some((
+                Some(snr_to_mse(snr_db)),
+                snr_db,
+                Some(1.0e-12),
+                Some(1.0e-4),
+            ))
         }
         // --- Linear FFT — Partitioned Convolution ---
         // FFT-based FIR convolution via partitioned overlapless FFT.
