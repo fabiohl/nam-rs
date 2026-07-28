@@ -412,7 +412,7 @@ fn run_render_comparison(
     const ABSOLUTE_ESR_CAP_WAVENET_HF: f64 = 1.0e-10;
     const ABSOLUTE_ESR_CAP_LSTM_NATIVE_HF: f64 = 1.0e-5;
     const ABSOLUTE_ESR_CAP_LSTM_HIRATE_HF: f64 = 1.0e-4;
-    const ABSOLUTE_ESR_CAP_CONVNET_HF: f64 = 1.0e-3;
+    const ABSOLUTE_ESR_CAP_CONVNET_HF: f64 = 1.0e-10;
     const ABSOLUTE_ESR_CAP_FILM_HF: f64 = 0.15;
     const ABSOLUTE_SNR_FLOOR: f64 = 5.0;
     const ABSOLUTE_MRSTFT_CAP: f64 = 0.95;

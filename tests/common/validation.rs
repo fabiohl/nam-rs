@@ -907,12 +907,16 @@ pub fn get_calibrated_threshold(
             let snr_db = 120.0;
             Some((None, snr_db, Some(3.5e-12), Some(0.08)))
         }
-        // --- ConvNet Test (CH=8, 6 blocks, C++ flat format) ---
-        // Measured: SNR=45.9 dB, ESR=2.54e-5, MR-STFT=2.66e-3 (C++ render
-        // cross-validation, 2026-07-12, 2048-sample v1 stress signal).
+        // --- ConvNet Test (CH=1, 1 block, C++ flat format) ---
+        // Measured: SNR=143.8 dB, ESR=4.20e-15, MR-STFT=1.20e-6 (C++ render
+        // cross-validation, 2026-07-28, 2048-sample v1 stress signal).
+        // Prewarm fix (TASK-CONVNET-01) eliminated the 2.54e-5 transient,
+        // bringing ESR to the f32 numerical noise floor.
+        //
+        // Floor: SNR - 23.8 dB, ESR factor ~238×, MR-STFT factor ~83×.
         "convnet_test" => {
-            let snr_db = 35.0;
-            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-4), Some(0.03)))
+            let snr_db = 120.0;
+            Some((Some(snr_to_mse(snr_db)), snr_db, Some(1.0e-12), Some(1.0e-4)))
         }
         // --- Linear FFT — Partitioned Convolution ---
         // FFT-based FIR convolution via partitioned overlapless FFT.

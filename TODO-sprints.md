@@ -67,7 +67,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
 
 ### Sprint 2: Validação Paritária & Recalibração de Gates de Qualidade
 
-#### `TASK-CONVNET-04`: Medição Empírica das Métricas Paritárias ConvNet ↔ Golden C++
+#### `TASK-CONVNET-04`: Medição Empírica das Métricas Paritárias ConvNet ↔ Golden C++ [DONE]
 
 - **Arquivos:** Suíte de testes `tests/parity/cpp_parity.rs` e `tests/parity/golden_vectors.rs`
 - **Risco:** **CRÍTICO / MÉDIO** (ponto de validação da hipótese analítica).
@@ -82,7 +82,7 @@ Este plano organiza a resolução técnica em 3 Sprints ágeis contendo Tarefas 
   3. Confirmar a queda do ESR da faixa de $2.54 \times 10^{-5}$ para o piso real da família ConvNet ($\approx 10^{-14} \dots 10^{-15}$, SNR $\ge 130$ dB).
 - **Critério de Aceite:** Registro documentado das métricas reais em log e confirmação de concordância com o oráculo NumPy.
 
-#### `TASK-CONVNET-05`: Recalibração dos Gates de Qualidade em `validation.rs` e `cpp_parity.rs`
+#### `TASK-CONVNET-05`: Recalibração dos Gates de Qualidade em `validation.rs` e `cpp_parity.rs` [DONE]
 
 - **Arquivos:** [`tests/common/validation.rs`](tests/common/validation.rs) e [`tests/parity/cpp_parity.rs`](tests/parity/cpp_parity.rs)
 - **Risco:** **MÉDIO** (alteração dos critérios de CI/CD).
