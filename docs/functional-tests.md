@@ -38,8 +38,6 @@ To prevent manual QA from being skipped due to friction ("philosophy of zero laz
 - [ ] **T1.5 Telemetry & Diagnostic Export:** Hover over status bar `"ℹ"` icon → click `"ℹ"` → paste (Ctrl+V) into a text editor.
   *Expected:* Status bar shows RT telemetry (sample rate, latency, DSP load). Visual toast confirmation appears; pasted text contains complete diagnostic dump.
 
-✅ **Tier 1 PASS:** Core audio engine, SPSC queues, GUI rendering, and host sync are operational.
-
 ---
 
 ## Tier 2: 🎯 Feature & Host Integration Sweep (~10–15 min)
