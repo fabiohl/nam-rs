@@ -82,6 +82,20 @@ mod tests {
                 (0u32, PARAM_INPUT_GAIN, -60.0f64)
             ]
         );
+        run!(
+            "pre-warm",
+            [
+                (0u32, PARAM_GATE_THRESH, -90.0f64),
+                (0u32, PARAM_INPUT_GAIN, -60.0f64)
+            ]
+        );
+        run!(
+            "pre-warm",
+            [
+                (0u32, PARAM_GATE_THRESH, -90.0f64),
+                (0u32, PARAM_INPUT_GAIN, -60.0f64)
+            ]
+        );
 
         run!(
             "test",
@@ -164,6 +178,20 @@ mod tests {
             }};
         }
 
+        run!(
+            "pre-warm",
+            [
+                (0u32, PARAM_GATE_THRESH, -90.0f64),
+                (0u32, PARAM_INPUT_GAIN, -60.0f64)
+            ]
+        );
+        run!(
+            "pre-warm",
+            [
+                (0u32, PARAM_GATE_THRESH, -90.0f64),
+                (0u32, PARAM_INPUT_GAIN, -60.0f64)
+            ]
+        );
         run!(
             "pre-warm",
             [

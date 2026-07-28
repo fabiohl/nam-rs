@@ -39,7 +39,10 @@ mod tests {
         model_dir.push("tests/fixtures/models/mock_a2.nam");
 
         let params = test_util::make_default_params(Some(model_dir));
-        test_util::load_plugin_state(&mut plugin_instance, &params);
+        let state_bytes = serde_json::to_vec(&params).unwrap();
+        let state_ext = test_util::get_state_ext(&mut plugin_instance);
+        let mut handle = plugin_instance.plugin_handle();
+        let _ = state_ext.load(&mut handle, &mut state_bytes.as_slice());
 
         let shared = unsafe { &*test_util::extract_shared(&mut plugin_instance) };
 

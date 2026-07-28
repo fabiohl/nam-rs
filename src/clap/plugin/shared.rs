@@ -381,8 +381,13 @@ impl Drop for NamClapShared {
         log::debug!("NAM-rs: NamClapShared dropped.");
         self.cold.alive_fence.store(false, Ordering::Release); // pairs with Acquire load em gui/window/state.rs:190
         // S5-E5-T03: only signal shutdown when the last instance is destroyed
-        let remaining = ACTIVE_INSTANCES.fetch_sub(1, Ordering::Release) - 1;
-        if remaining == 0 {
+        let prev = ACTIVE_INSTANCES
+            .fetch_update(Ordering::Release, Ordering::Relaxed, |val| {
+                Some(val.saturating_sub(1))
+            })
+            .unwrap_or(0);
+        let remaining = prev.saturating_sub(1);
+        if prev > 0 && remaining == 0 {
             crate::common::panic_hook::set_shutdown_in_progress();
         }
     }
