@@ -89,20 +89,118 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Épico 2: Extração e Construção do CLI Standalone (`NAM-Audio-Pipe`)
 
-### Sprint 2.1 — Inicialização e Dependência Local
+> **Detalhamento completo:** Ver [epico2_detalhado.md](/home/fabio/.gemini/antigravity-ide/brain/901e1a21-a4fa-4ba2-bda7-7d20f4e015d4/epico2_detalhado.md) (peer review integrado, comandos precisos, mapeamento completo de imports, critérios de conclusão verificáveis).
+>
+> **Regra de ouro:** Usar `cp` (nunca `mv`) do staging `nam-rs` → `NAM-Audio-Pipe`, preservando o staging intacto para o Épico 3.
+> A raiz `./` e o staging `nam-rs` **jamais** recebem `git commit`.
 
-- [OK] **Tarefa 2.1.1:** Configurar o repositório Git <https://github.com/fabiohl/NAM-Audio-Pipe> em `target/transicao/NAM-Audio-Pipe` (branch `dev`).
-- **Tarefa 2.1.2:** Mover `src/standalone` e `src/main.rs` de `target/transicao/nam-rs` para `NAM-Audio-Pipe`.
-- **Tarefa 2.1.3:** Configurar `Cargo.toml` declarando a dependência por caminho: `NeuralAmpModeler-rs = { path = "../NeuralAmpModeler-rs" }` e dependências nativas (`pipewire`, `lexopt`).
+### Sprint 2.1 — Inicialização, Estrutura de Arquivos e `Cargo.toml`
 
-### Sprint 2.2 — Adaptação de Importações e Módulo de Gravação em Disco (WAV)
+> **Gate de conclusão:** `cargo check` retorna apenas erros de `use crate::*` (imports) — zero erros de estrutura de projeto.
 
-> **Nota do PO:** Aproveitar muito do que já foi feito no projeto <https://github.com/fabiohl/audiorip>, aqui espelhado em `target/transicao/audiorip`. Respeitar os objetivos do NAM-Audio-Pipe, pegar "emprestado" o código necessário para as funcionalidades desejadas.
+- [OK] **Tarefa 2.1.1:** Confirmar repositório Git <https://github.com/fabiohl/NAM-Audio-Pipe> em `target/transicao/NAM-Audio-Pipe` (branch `dev`). Verificar: `git status` → `nothing to commit`.
 
-- **Tarefa 2.2.1:** Atualizar importações em `src/standalone/` para utilizar o crate `NeuralAmpModeler_rs`.
-- **Tarefa 2.2.2:** Criar estrutura do novo módulo `src/recording/mod.rs` para gravação assíncrona/lock-free do stream de áudio exclusivamente em formato **WAV** no disco.
-- **Tarefa 2.2.3:** Mover os testes e benchmarks que exercitam o módulo PipeWire (`src/standalone/cli_test.rs`, benchmarks de quantum PipeWire) e herdar documentação e scripts `utils/` adaptados ao contexto Standalone (`run-standalone.sh`, `lints.sh`, `tests-quick.sh`, `build-release.sh`).
-- **Tarefa 2.2.4:** Gestão e fixes internos em `NAM-Audio-Pipe` até que todos os testes passem de primeira.
+- **Tarefa 2.1.2 — Migração de `src/` Standalone:**
+  `cp $SRC/src/main.rs $DST/src/main.rs` e `cp -r $SRC/src/standalone $DST/src/standalone`.
+  **Estrutura esperada:** `src/main.rs`, `src/standalone/{mod.rs, cli.rs, colors.rs, pw_host/, rt_setup/}`.
+  **⚠️ NÃO copiar:** `src/dsp/`, `src/models/`, `src/math/`, `src/common/`, `src/loader/`, `src/testing/`, `src/clap/`, `src/lib.rs`.
+
+- **Tarefa 2.1.3 — Reescrever `src/standalone/mod.rs`:**
+  Remover `#![cfg(feature = "standalone")]` (gate do monolito — inválido aqui).
+  Remover re-exportações glob (`pub use cli::*;`). Manter apenas `pub mod cli; pub mod colors; pub mod pw_host; pub mod rt_setup;`.
+
+- **Tarefa 2.1.4 — Criar `Cargo.toml` (Especificação Completa):**
+  `name = "nam-audio-pipe"` / `[[bin]] name = "nam-audio-pipe"` / `path = "src/main.rs"`.
+  Dependências: `NeuralAmpModeler-rs = { path = "../NeuralAmpModeler-rs" }`, `pipewire = "0.8"`, `lexopt`, `hound = "3.5"`, `rtrb`, `tokio` (`rt`/`time`/`macros`), `tokio-uring = "0.5"`, `anyhow`, `libc`, `log`, `env_logger`.
+  **Pré-requisitos de sistema:** kernel Linux ≥ 5.10 (`uname -r`), `libpipewire-0.3-dev` (`pkg-config --modversion libpipewire-0.3`).
+  Perfis `release`/`dist`/`dev` equivalentes ao staging. `[lints.*]` rigorosos.
+
+- **Tarefa 2.1.5 — Copiar Configuração de Baixo Nível:**
+  `cp -r nam-rs/.cargo NAM-Audio-Pipe/.cargo` (vital: força `target-cpu=x86-64-v3`).
+  `cp nam-rs/.gitignore nam-rs/LICENSE.txt nam-rs/NOTICE.txt NAM-Audio-Pipe/`.
+  **Verificar** `build.rs` antes de copiar — se tiver lógica DSP, NÃO copiar.
+
+- **Tarefa 2.1.6 — Primeira Compilação e Diagnóstico:**
+  `cargo check 2>&1 | head -100`. Erros esperados: apenas `use crate::dsp/models/common/math::...`.
+  Zero erros de estrutura = gate de conclusão da Sprint 2.1.
+
+### Sprint 2.2 — Adaptação de Importações e Integração com `NeuralAmpModeler-rs`
+
+> **Gate de conclusão:** `cargo check 2>&1 | grep "^error"` → saída vazia. `cargo build` sem warnings não tratados.
+
+- **Tarefa 2.2.1 — Mapeamento e Substituição de Importações:**
+  Grep: `grep -rn "use crate::" src/ | grep -v "standalone\|colors" | sort`.
+  Substituição em lote via `find src/ -name "*.rs" -exec sed -i 's/use crate::dsp::/use neural_amp_modeler_rs::dsp::/g; s/use crate::models::/use neural_amp_modeler_rs::models::/g; s/use crate::common::/use neural_amp_modeler_rs::common::/g; s/use crate::math::/use neural_amp_modeler_rs::math::/g' {} \;`.
+  **⚠️ NÃO substituir:** `use crate::standalone::` e `use crate::standalone::colors::` — são locais do `NAM-Audio-Pipe`.
+  Verificação: `grep -rn "use crate::dsp\|use crate::models\|use crate::common\|use crate::math" src/` → saída vazia.
+
+- **Tarefa 2.2.2 — Atualizar `src/main.rs`:**
+  Remover `#[cfg(feature = "standalone")]` de `mod standalone;`. Substituir referências `nam_rs` por `nam_audio_pipe`.
+  Garantir `env_logger::init()` no início de `main()`. Verificar imports de `NamLogger`/`DiagnosticBundle` → via `neural_amp_modeler_rs::common::...`.
+
+- **Tarefa 2.2.3 — Corrigir Visibilidade de APIs do `NeuralAmpModeler-rs`:**
+  `cargo check 2>&1 | grep "not found\|is private"`. Para cada tipo inacessível, adicionar `pub use ...` em `NeuralAmpModeler-rs/src/lib.rs`.
+  **⚠️ Regra:** Commits no `NeuralAmpModeler-rs` devem ser feitos **antes** do commit do `NAM-Audio-Pipe`.
+
+- **Tarefa 2.2.4 — Compilação Limpa:**
+  `cargo check` → zero erros. `cargo build` → zero warnings não tratados.
+
+### Sprint 2.3 — Módulo de Gravação WAV (`src/recording/`)
+
+> **Fonte:** `target/transicao/audiorip/src/` — `buffer.rs` e `disk.rs`.
+> **⚠️ Processo:** adaptação (não cópia direta) — reescrever cabeçalho para `Apache-2.0`, ajustar imports e globais.
+> **Nota do PO:** Aproveitar código do projeto <https://github.com/fabiohl/audiorip> (espelhado em `target/transicao/audiorip`), especialmente para trim de silêncios — respeitar os objetivos do NAM-Audio-Pipe.
+
+- **Tarefa 2.3.1 — Estrutura do Módulo:**
+  `mkdir -p src/recording`. Criar: `src/recording/mod.rs` (do zero), `src/recording/buffer.rs` (adaptar de `audiorip/src/buffer.rs`), `src/recording/disk.rs` (adaptar de `audiorip/src/disk.rs`).
+
+- **Tarefa 2.3.2 — Adaptar `src/recording/buffer.rs`:**
+  Cabeçalho → `Apache-2.0`. Remover `static SHUTDOWN` local → reutilizar `neural_amp_modeler_rs::common::spsc::SHUTDOWN` (DRY).
+  Manter `static OVERRUN_COUNT: AtomicU64` local. Ajustar `MAX_BLOCK_SIZE = 4096`, `RING_CAPACITY = 1024`.
+
+- **Tarefa 2.3.3 — Adaptar `src/recording/disk.rs`:**
+  Cabeçalho → `Apache-2.0`. `use crate::buffer::` → `use crate::recording::buffer::`. `SHUTDOWN` local → `neural_amp_modeler_rs::common::spsc::SHUTDOWN`.
+  Mensagens de log: `[AudioRip]` → `[NAM-Audio-Pipe]`. Verificar runtime `tokio_uring::start()` vs. `#[tokio::main]`.
+  Trim de silêncios: feature futura — adicionar `// TODO: integrar trim (ver audiorip/src/audio.rs)`.
+
+- **Tarefa 2.3.4 — Criar `src/recording/mod.rs`:**
+  Expor: `buffer::{AlignedBlock, AudioMetadata, MAX_BLOCK_SIZE, OVERRUN_COUNT, RING_CAPACITY, RingPayload, create_audio_ring_buffer}` e `disk::disk_writer_loop`.
+
+- **Tarefa 2.3.5 — Integrar `recording` no Pipeline PipeWire (`pw_host/run.rs`):**
+  Em `main()`: criar ring buffer off-RT, spawnar thread `tokio_uring` de I/O com `disk_writer_loop`, passar `Option<Producer>` para `run_pipewire_host`.
+  Na RT capture callback: `try_push(RingPayload::Audio(block))` — em caso de overrun, `OVERRUN_COUNT.fetch_add(1, Ordering::Relaxed)`.
+  **⚠️ RT-safety obrigatória:** NUNCA `push` bloqueante na callback. Usar APENAS `try_push`.
+
+- **Tarefa 2.3.6 — Flag `--record` como Opt-In no CLI:**
+  Adicionar `pub record: bool` em `CliArgs`. Parsing de `Long("record")` em `parse_args_from()`. Atualizar `print_help()`. Criar ring buffer e thread de I/O somente se `args.record == true`.
+
+### Sprint 2.4 — Testes, Benchmarks, Scripts e Fechamento
+
+- **Tarefa 2.4.1 — Testes do Standalone:**
+  Testes inline (`cli_test.rs`, `pw_host_test.rs`, `rt_setup_test.rs`) já copiados com os módulos em 2.1.2.
+  `cargo test --no-run` → zero erros de compilação. Execução real dos testes PipeWire: requer ambiente com PipeWire ativo — executar manualmente antes do Épico 4.
+
+- **Tarefa 2.4.2 — Benchmark PipeWire:**
+  Verificar: `ls nam-rs/benches/ | grep -i "pw\|pipe\|standalone"`. Se existir, copiar e adaptar.
+  Se não existir, criar stub `benches/pw_latency_bench.rs` com `#[ignore]`. `cargo bench --no-run` → compila.
+
+- **Tarefa 2.4.3 — Adaptar Scripts `utils/`:**
+  `cp _lib.sh lints.sh tests-quick.sh run-standalone.sh build-release.sh` do staging.
+  **`lints.sh`:** substituir `nam_rs`/`nam-rs` por `nam_audio_pipe`/`nam-audio-pipe`; remover blocos de features `clap-plugin`/`standalone`. Validar: `bash -n utils/lints.sh`.
+  **`tests-quick.sh`:** remover `--features standalone`; remover blocos `tests/clap*` e `tests/models*`. Validar: `bash -n`.
+  **`run-standalone.sh`:** `nam-rs` → `nam-audio-pipe`; `~/.local/bin/nam-rs` → `~/.local/bin/nam-audio-pipe`; modelo via caminho relativo a `../NeuralAmpModeler-rs/tests/fixtures/`. Validar: `bash -n`.
+  **`build-release.sh`:** remover `--features standalone`; binário `nam-rs` → `nam-audio-pipe`. Validar: `bash -n`.
+
+- **Tarefa 2.4.4 — Documentação Mínima:**
+  Criar `docs/` com `README.md` documentando: descrição, dependências do sistema, build, instalação, exemplos de uso (`--model`, `--record`, `--oversample`, `--activation`).
+
+- **Tarefa 2.4.5 — Pipeline de Qualidade Final e Commit:**
+  **A.** `bash utils/lints.sh` — zero erros/warnings, SPDX em todos os arquivos.
+  **B.** `cargo build --release` — binário `target/release/nam-audio-pipe` existe.
+  **C.** `cargo test --no-run` — zero erros de compilação de testes.
+  **D.** `grep -rL "SPDX-License-Identifier" src/` → saída vazia.
+  **E.** `git add -A && git commit` em `NAM-Audio-Pipe` (mensagem de encerramento de épico).
+  **⚠️ Não dar push** — push somente no Épico 4.
 
 ---
 
