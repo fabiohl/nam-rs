@@ -100,29 +100,45 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - [OK] **Tarefa 2.1.1:** Confirmar repositório Git <https://github.com/fabiohl/NAM-Audio-Pipe> em `target/transicao/NAM-Audio-Pipe` (branch `dev`). Verificar: `git status` → `nothing to commit`.
 
-- **Tarefa 2.1.2 — Migração de `src/` Standalone:**
+- [OK] **Tarefa 2.1.2 — Migração de `src/` Standalone:**
   `cp $SRC/src/main.rs $DST/src/main.rs` e `cp -r $SRC/src/standalone $DST/src/standalone`.
   **Estrutura esperada:** `src/main.rs`, `src/standalone/{mod.rs, cli.rs, colors.rs, pw_host/, rt_setup/}`.
   **⚠️ NÃO copiar:** `src/dsp/`, `src/models/`, `src/math/`, `src/common/`, `src/loader/`, `src/testing/`, `src/clap/`, `src/lib.rs`.
 
-- **Tarefa 2.1.3 — Reescrever `src/standalone/mod.rs`:**
+- [OK] **Tarefa 2.1.3 — Reescrever `src/standalone/mod.rs`:**
   Remover `#![cfg(feature = "standalone")]` (gate do monolito — inválido aqui).
   Remover re-exportações glob (`pub use cli::*;`). Manter apenas `pub mod cli; pub mod colors; pub mod pw_host; pub mod rt_setup;`.
 
-- **Tarefa 2.1.4 — Criar `Cargo.toml` (Especificação Completa):**
+- [OK] **Tarefa 2.1.4 — Criar `Cargo.toml` (Especificação Completa):**
   `name = "nam-audio-pipe"` / `[[bin]] name = "nam-audio-pipe"` / `path = "src/main.rs"`.
   Dependências: `NeuralAmpModeler-rs = { path = "../NeuralAmpModeler-rs" }`, `pipewire = "0.8"`, `lexopt`, `hound = "3.5"`, `rtrb`, `tokio` (`rt`/`time`/`macros`), `tokio-uring = "0.5"`, `anyhow`, `libc`, `log`, `env_logger`.
   **Pré-requisitos de sistema:** kernel Linux ≥ 5.10 (`uname -r`), `libpipewire-0.3-dev` (`pkg-config --modversion libpipewire-0.3`).
   Perfis `release`/`dist`/`dev` equivalentes ao staging. `[lints.*]` rigorosos.
 
-- **Tarefa 2.1.5 — Copiar Configuração de Baixo Nível:**
+- [OK] **Tarefa 2.1.5 — Copiar Configuração de Baixo Nível:**
   `cp -r nam-rs/.cargo NAM-Audio-Pipe/.cargo` (vital: força `target-cpu=x86-64-v3`).
   `cp nam-rs/.gitignore nam-rs/LICENSE.txt nam-rs/NOTICE.txt NAM-Audio-Pipe/`.
   **Verificar** `build.rs` antes de copiar — se tiver lógica DSP, NÃO copiar.
 
-- **Tarefa 2.1.6 — Primeira Compilação e Diagnóstico:**
+- [OK] **Tarefa 2.1.6 — Primeira Compilação e Diagnóstico:**
   `cargo check 2>&1 | head -100`. Erros esperados: apenas `use crate::dsp/models/common/math::...`.
   Zero erros de estrutura = gate de conclusão da Sprint 2.1.
+
+> **Notas de conclusão da Sprint 2.1 (registradas em 2026-07-29):**
+>
+> 1. **`build.rs` copiado (sem lógica DSP):** O `build.rs` do staging contém apenas fix de linker ELF para symbol interposition de libm (version script `.cargo/hide-libm-shadow.map`), sem qualquer lógica DSP. Foi copiado porque o binário `nam-audio-pipe` linka as mesmas dependências e está sujeito ao mesmo bug.
+>
+> 2. **`mod standalone;` inserido em `main.rs`:** No monolito, `mod standalone;` ficava em `lib.rs`. No `NAM-Audio-Pipe` (crate binário, sem `lib.rs`), foi adicionado diretamente no topo de `main.rs` sem `#[cfg()]`.
+>
+> 3. **`cargo check` — gate atingido com 26 erros:** 100% dos erros são de importação (`nam_rs::` não encontrado, métodos `.bright_green()`/`.cyan()`/`.yellow()` ausentes após remoção dos `pub use colors::*;`). Zero erros de estrutura de diretórios, `mod` ausente ou arquivo não encontrado.
+>
+> 4. **Pipewire 0.8 vs 0.10:** O staging usa `pipewire = "0.10.0"`, mas o spec do Épico 2 determina `pipewire = "0.8"`. Seguido conforme spec. Se houver incompatibilidade com APIs reais, revisitar na Sprint 2.2.
+>
+> 5. **143 substituições de imports na Sprint 2.2:** Os padrões `crate::dsp::`, `crate::models::`, `crate::common::`, `crate::math::` aparecem nos sub-módulos do standalone (não apenas em `use`, mas também em `pub use`, `pub(crate) use`, e imports indentados). A substituição por sed foi expandida para cobrir todas as variações de prefixo, preservando `crate::standalone::`. `nam_rs::` só aparecia em `main.rs`.
+>
+> 6. **Itens de pipeline gated atrás de `#[cfg(feature = "standalone")]` no NeuralAmpModeler-rs:** `build_spa_format_pod`, `playback_dsp_cycle`, `AppState`, `PipewireHostConfig` e outros em `dsp::pipeline/output_pw.rs` estão inacessíveis porque a feature `standalone` não existe no `NeuralAmpModeler-rs`. A Tarefa 2.2.3 deve resolver isso ungatando os itens ou adicionando a feature com `pipewire` como dependência opcional.
+>
+> 7. **`Cargo.toml` com feature `testing = []`:** Adicionada porque `main.rs:45` usa `#[cfg(feature = "testing")]`. Sem a definição, o bloco fica permanentemente inativo — sem erro de compilação, mas requer a feature para testes futuros.
 
 ### Sprint 2.2 — Adaptação de Importações e Integração com `NeuralAmpModeler-rs`
 
