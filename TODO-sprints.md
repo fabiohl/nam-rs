@@ -144,22 +144,34 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > **Gate de conclusão:** `cargo check 2>&1 | grep "^error"` → saída vazia. `cargo build` sem warnings não tratados.
 
-- **Tarefa 2.2.1 — Mapeamento e Substituição de Importações:**
+- [OK] **Tarefa 2.2.1 — Mapeamento e Substituição de Importações:**
   Grep: `grep -rn "use crate::" src/ | grep -v "standalone\|colors" | sort`.
   Substituição em lote via `find src/ -name "*.rs" -exec sed -i 's/use crate::dsp::/use neural_amp_modeler_rs::dsp::/g; s/use crate::models::/use neural_amp_modeler_rs::models::/g; s/use crate::common::/use neural_amp_modeler_rs::common::/g; s/use crate::math::/use neural_amp_modeler_rs::math::/g' {} \;`.
   **⚠️ NÃO substituir:** `use crate::standalone::` e `use crate::standalone::colors::` — são locais do `NAM-Audio-Pipe`.
   Verificação: `grep -rn "use crate::dsp\|use crate::models\|use crate::common\|use crate::math" src/` → saída vazia.
 
-- **Tarefa 2.2.2 — Atualizar `src/main.rs`:**
+- [OK] **Tarefa 2.2.2 — Atualizar `src/main.rs`:**
   Remover `#[cfg(feature = "standalone")]` de `mod standalone;`. Substituir referências `nam_rs` por `nam_audio_pipe`.
   Garantir `env_logger::init()` no início de `main()`. Verificar imports de `NamLogger`/`DiagnosticBundle` → via `neural_amp_modeler_rs::common::...`.
 
-- **Tarefa 2.2.3 — Corrigir Visibilidade de APIs do `NeuralAmpModeler-rs`:**
+- [OK] **Tarefa 2.2.3 — Corrigir Visibilidade de APIs do `NeuralAmpModeler-rs`:**
   `cargo check 2>&1 | grep "not found\|is private"`. Para cada tipo inacessível, adicionar `pub use ...` em `NeuralAmpModeler-rs/src/lib.rs`.
   **⚠️ Regra:** Commits no `NeuralAmpModeler-rs` devem ser feitos **antes** do commit do `NAM-Audio-Pipe`.
 
-- **Tarefa 2.2.4 — Compilação Limpa:**
+- [OK] **Tarefa 2.2.4 — Compilação Limpa:**
   `cargo check` → zero erros. `cargo build` → zero warnings não tratados.
+
+> **Notas de conclusão da Sprint 2.2 (registradas em 2026-07-29):**
+>
+> 1. **Feature `standalone` adicionada ao NeuralAmpModeler-rs:** Adicionada `standalone = ["pipewire"]` como feature real (não apenas cfg esperado). `pipewire = "0.8"` como dependência opcional. `build.warnings` forçou documentar campos de `AppState` e remover `#[expect(dead_code)]` que se tornou unfulfilled após `pub(crate)` → `pub`.
+>
+> 2. **Visibilidade corrigida:** `AppState`, `playback_dsp_cycle`, `build_spa_format_pod` de `pub(crate)` → `pub` para acesso externo pelo NAM-Audio-Pipe. Re-exports em `pipeline/mod.rs` atualizados (`pub(crate) use` → `pub use`). `.yellow()` em `system_info.rs` removido (Colorize inexistente no kernel crate).
+>
+> 3. **Migração PipeWire 0.8:** `StreamBox`/`ContextBox`/`ThreadLoopBox` (wrappers de 0.10) substituídos por `Stream`/`Context`/`ThreadLoop` (tipos nativos de 0.8). `Context::new` agora aceita `&thread_loop` (ThreadLoop implementa `IsLoopRc`), não `(loop_(), None)`. Stream não tem lifetime parameter em 0.8. Callbacks recebem `&StreamRef`, não `&Stream` — assinaturas de `state_changed_handler`, `param_changed_handler`, `process_dsp_buffer`, `playback_dsp_cycle` e closures `.process()` adaptadas.
+>
+> 4. **Telemetria de tempo PipeWire removida:** `pw_stream_get_time()` é `// TODO` em pipewire 0.8 — blocos de telemetria `.time()` removidos dos callbacks RT de capture e playback (não-essenciais, eram `if let Ok(...)`). Restaurar quando pipewire ≥ 0.10 estiver disponível.
+>
+> 5. **Warnings suprimidos:** `bright_cyan` (colors.rs) e `detect_hardware_sink` (pm_qos.rs) com `#[allow(dead_code)]` — código preservado para uso futuro. Import `panic_hook` removido de main.rs (caminho fully qualified já usado inline).
 
 ### Sprint 2.3 — Módulo de Gravação WAV (`src/recording/`)
 
@@ -167,50 +179,50 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > **⚠️ Processo:** adaptação (não cópia direta) — reescrever cabeçalho para `Apache-2.0`, ajustar imports e globais.
 > **Nota do PO:** Aproveitar código do projeto <https://github.com/fabiohl/audiorip> (espelhado em `target/transicao/audiorip`), especialmente para trim de silêncios — respeitar os objetivos do NAM-Audio-Pipe.
 
-- **Tarefa 2.3.1 — Estrutura do Módulo:**
+- [OK] **Tarefa 2.3.1 — Estrutura do Módulo:**
   `mkdir -p src/recording`. Criar: `src/recording/mod.rs` (do zero), `src/recording/buffer.rs` (adaptar de `audiorip/src/buffer.rs`), `src/recording/disk.rs` (adaptar de `audiorip/src/disk.rs`).
 
-- **Tarefa 2.3.2 — Adaptar `src/recording/buffer.rs`:**
+- [OK] **Tarefa 2.3.2 — Adaptar `src/recording/buffer.rs`:**
   Cabeçalho → `Apache-2.0`. Remover `static SHUTDOWN` local → reutilizar `neural_amp_modeler_rs::common::spsc::SHUTDOWN` (DRY).
   Manter `static OVERRUN_COUNT: AtomicU64` local. Ajustar `MAX_BLOCK_SIZE = 4096`, `RING_CAPACITY = 1024`.
 
-- **Tarefa 2.3.3 — Adaptar `src/recording/disk.rs`:**
+- [OK] **Tarefa 2.3.3 — Adaptar `src/recording/disk.rs`:**
   Cabeçalho → `Apache-2.0`. `use crate::buffer::` → `use crate::recording::buffer::`. `SHUTDOWN` local → `neural_amp_modeler_rs::common::spsc::SHUTDOWN`.
   Mensagens de log: `[AudioRip]` → `[NAM-Audio-Pipe]`. Verificar runtime `tokio_uring::start()` vs. `#[tokio::main]`.
   Trim de silêncios: feature futura — adicionar `// TODO: integrar trim (ver audiorip/src/audio.rs)`.
 
-- **Tarefa 2.3.4 — Criar `src/recording/mod.rs`:**
+- [OK] **Tarefa 2.3.4 — Criar `src/recording/mod.rs`:**
   Expor: `buffer::{AlignedBlock, AudioMetadata, MAX_BLOCK_SIZE, OVERRUN_COUNT, RING_CAPACITY, RingPayload, create_audio_ring_buffer}` e `disk::disk_writer_loop`.
 
-- **Tarefa 2.3.5 — Integrar `recording` no Pipeline PipeWire (`pw_host/run.rs`):**
+- [OK] **Tarefa 2.3.5 — Integrar `recording` no Pipeline PipeWire (`pw_host/run.rs`):**
   Em `main()`: criar ring buffer off-RT, spawnar thread `tokio_uring` de I/O com `disk_writer_loop`, passar `Option<Producer>` para `run_pipewire_host`.
   Na RT capture callback: `try_push(RingPayload::Audio(block))` — em caso de overrun, `OVERRUN_COUNT.fetch_add(1, Ordering::Relaxed)`.
   **⚠️ RT-safety obrigatória:** NUNCA `push` bloqueante na callback. Usar APENAS `try_push`.
 
-- **Tarefa 2.3.6 — Flag `--record` como Opt-In no CLI:**
+- [OK] **Tarefa 2.3.6 — Flag `--record` como Opt-In no CLI:**
   Adicionar `pub record: bool` em `CliArgs`. Parsing de `Long("record")` em `parse_args_from()`. Atualizar `print_help()`. Criar ring buffer e thread de I/O somente se `args.record == true`.
 
 ### Sprint 2.4 — Testes, Benchmarks, Scripts e Fechamento
 
-- **Tarefa 2.4.1 — Testes do Standalone:**
+- [OK] **Tarefa 2.4.1 — Testes do Standalone:**
   Testes inline (`cli_test.rs`, `pw_host_test.rs`, `rt_setup_test.rs`) já copiados com os módulos em 2.1.2.
   `cargo test --no-run` → zero erros de compilação. Execução real dos testes PipeWire: requer ambiente com PipeWire ativo — executar manualmente antes do Épico 4.
 
-- **Tarefa 2.4.2 — Benchmark PipeWire:**
+- [OK] **Tarefa 2.4.2 — Benchmark PipeWire:**
   Verificar: `ls nam-rs/benches/ | grep -i "pw\|pipe\|standalone"`. Se existir, copiar e adaptar.
   Se não existir, criar stub `benches/pw_latency_bench.rs` com `#[ignore]`. `cargo bench --no-run` → compila.
 
-- **Tarefa 2.4.3 — Adaptar Scripts `utils/`:**
+- [OK] **Tarefa 2.4.3 — Adaptar Scripts `utils/`:**
   `cp _lib.sh lints.sh tests-quick.sh run-standalone.sh build-release.sh` do staging.
   **`lints.sh`:** substituir `nam_rs`/`nam-rs` por `nam_audio_pipe`/`nam-audio-pipe`; remover blocos de features `clap-plugin`/`standalone`. Validar: `bash -n utils/lints.sh`.
   **`tests-quick.sh`:** remover `--features standalone`; remover blocos `tests/clap*` e `tests/models*`. Validar: `bash -n`.
   **`run-standalone.sh`:** `nam-rs` → `nam-audio-pipe`; `~/.local/bin/nam-rs` → `~/.local/bin/nam-audio-pipe`; modelo via caminho relativo a `../NeuralAmpModeler-rs/tests/fixtures/`. Validar: `bash -n`.
   **`build-release.sh`:** remover `--features standalone`; binário `nam-rs` → `nam-audio-pipe`. Validar: `bash -n`.
 
-- **Tarefa 2.4.4 — Documentação Mínima:**
+- [OK] **Tarefa 2.4.4 — Documentação Mínima:**
   Criar `docs/` com `README.md` documentando: descrição, dependências do sistema, build, instalação, exemplos de uso (`--model`, `--record`, `--oversample`, `--activation`).
 
-- **Tarefa 2.4.5 — Pipeline de Qualidade Final e Commit:**
+- [OK] **Tarefa 2.4.5 — Pipeline de Qualidade Final e Commit:**
   **A.** `bash utils/lints.sh` — zero erros/warnings, SPDX em todos os arquivos.
   **B.** `cargo build --release` — binário `target/release/nam-audio-pipe` existe.
   **C.** `cargo test --no-run` — zero erros de compilação de testes.
@@ -222,23 +234,94 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Épico 3: Extração e Construção do Plugin CLAP (`NAM-Plug`)
 
-### Sprint 3.1 — Inicialização e Dependências de GUI/CLAP
+> **Detalhamento completo:** Ver [epico3_detalhado.md](/home/fabio/.gemini/antigravity-ide/brain/1963821e-c768-4180-8608-8ab52ee6970f/epico3_detalhado.md) (peer review integrado, comandos precisos, inventário completo de arquivos, critérios de conclusão verificáveis).
+>
+> **Regra de ouro:** Usar `cp` (nunca `mv`) do staging `nam-rs` → `NAM-Plug`, preservando o staging intacto para auditoria.
+> A raiz `./` e o staging `nam-rs` **jamais** recebem `git commit`.
 
-- [OK] **Tarefa 3.1.1:** Configurar o repositório Git <https://github.com/fabiohl/NAM-Plug> em `target/transicao/NAM-Plug` (branch `dev`).
-- **Tarefa 3.1.2:** Mover `src/clap/`, `src/lib.rs` (cdylib) e `src/bin/pgo_profiling_workload.rs` para `NAM-Plug`.
-- **Tarefa 3.1.3:** Mover testes do plugin (`tests/clap.rs`, `tests/clap/`, `tests/clap_e0_containment_test.rs`, `tests/clap_e2_proptest.rs`) e benchmarks (`benches/clap_bench.rs`) para `NAM-Plug`.
-- **Tarefa 3.1.4:** Configurar `Cargo.toml` com a dependência por caminho `NeuralAmpModeler-rs = { path = "../NeuralAmpModeler-rs" }` e dependências `clack-*`, `egui`, `glow`, `baseview`, `rfd`.
+### Sprint 3.1 — Inicialização, Estrutura de Arquivos e `Cargo.toml`
 
-### Sprint 3.2 — Adaptação de Imports, Documentação e Scripts Adaptados
+> **Gate de conclusão:** `cargo check --features testing 2>&1 | grep "^error"` retorna **apenas** erros de `use crate::*` (imports). Zero erros de estrutura de projeto, módulo não encontrado ou arquivo ausente.
 
-- **Tarefa 3.2.1:** Atualizar importações no código do CLAP de `crate::dsp::...` para `NeuralAmpModeler_rs::...`.
-- **Tarefa 3.2.2:** Copiar documentação dedicada (`docs/clap_integration.md`) e utilitários enxutos/adaptados (`utils/build-release.sh`, `utils/lints.sh`, `utils/tests-quick.sh`).
-- **Tarefa 3.2.3:** Gestão e fixes internos em `NAM-Plug` garantindo compilação limpa, zero lints e 100% de passagem de testes de plugin.
+- [OK] **Tarefa 3.1.1 — Repositório Git já inicializado:**
+  Verificar: `git status` → `nothing to commit`; `git branch` → `dev`.
+  **Ação obrigatória:** Substituir `LICENSE` GPL-2.0 (template GitHub) por `Apache-2.0`:
+  `cp nam-rs/LICENSE.txt NAM-Plug/LICENSE.txt && rm NAM-Plug/LICENSE && cp nam-rs/NOTICE.txt NAM-Plug/NOTICE.txt`.
+  Verificação: `head -3 NAM-Plug/LICENSE.txt` → deve conter "Apache License".
 
----
+- **Tarefa 3.1.2 — Migração de `src/clap/` e Reescrita de `src/lib.rs`:**
+  `cp -r $SRC/src/clap $DST/src/clap` — copiar o módulo integralmente (~23 arquivos Rust).
+  `cp -r $SRC/src/bin $DST/src/bin` → remover `gen_stress.rs` e `wav_to_golden.rs` (dependem de DSP-only).
+  **⚠️ NÃO copiar** `src/lib.rs` do monolito (10 KB de docs do monolito inteiro — inválido aqui).
+  **Reescrever** `src/lib.rs` do zero: expor apenas `pub mod clap;` + `clack_export_entry!(crate::clap::entry::NamEntry)`.
+  **Remover** a macro `clack_export_entry!(entry::NamEntry)` de `src/clap/mod.rs` (ela vai para `lib.rs`) — senão o símbolo C `clap_entry` ficará em namespace errado ou causará conflito.
 
-## Épico 4: Fechamento Final
+- **Tarefa 3.1.3 — Copiar Testes de Integração e Benchmarks:**
+  `cp $SRC/tests/clap.rs $DST/tests/`, `cp -r $SRC/tests/clap/ $DST/tests/clap/`.
+  `cp $SRC/tests/clap_e0_containment_test.rs $SRC/tests/clap_e2_proptest.rs $DST/tests/`.
+  `cp -r $SRC/tests/common $DST/tests/common` — **obrigatório**: contém `CountingAllocator` usado por `tests/clap.rs`.
+  `cp -r $SRC/tests/fixtures $DST/tests/fixtures` — verificar tamanho antes (`du -sh`); copiar apenas fixtures referenciadas nos testes CLAP.
+  `cp $SRC/benches/clap_bench.rs $SRC/benches/common.rs $DST/benches/` — verificar se `common.rs` tem imports DSP incompatíveis.
 
-- Dar merge das branches "dev" de todos os repos nas respectivas branches "main". Só ai dar "git push origin" (apenas de "main").
-- Montar um Workspace local funcional dos 3 novos repositórios no VScode/Antigravity. Assegurar que todos os testes passam.
-- Publicar o novo `NeuralAmpModeler-rs` no crates.io/docs.rs e assegurar que os demais projetos consigam utilizá-lo como dependência tanto local como remota.
+- **Tarefa 3.1.4 — Criar `Cargo.toml` (Especificação Completa):**
+  `name = "nam-plug"` / `[lib] name = "nam_plug"` / `crate-type = ["cdylib"]`.
+  Deps: `NeuralAmpModeler-rs = { path = "../NeuralAmpModeler-rs", default-features = false, features = ["stereo"] }`,
+  `clack-common = "0.1"`, `clack-plugin = "0.1"`, `clack-extensions = "0.1"` (com todas as features: audio-ports, gui, params, state, preset-discovery, etc.),
+  `egui = "0.34.3"`, `egui_glow = "0.34.3"`, `glow = "0.17.0"`, `baseview = { version = "0.1.4", features = ["opengl"] }`,
+  `rfd = "0.17.2"`, `keyboard-types = "0.6"`, `arboard = "3"`, `clack-host = { version = "0.1", features = ["clack-plugin"] }`.
+  Features: `default = []`, `testing = ["NeuralAmpModeler-rs/testing"]`, `heap-audit = []` — **⚠️ NÃO incluir** `clap-plugin` (o crate inteiro é o plugin).
+  `[lints.rust] unexpected_cfgs` registrar `cfg(feature, values("clap-plugin"))` para suprimir guards residuais do monolito.
+  `cp -r $SRC/.cargo $DST/.cargo` (vital: `target-cpu=x86-64-v3`). Copiar `build.rs` (conservador — remover se causar erro de link em cdylib).
+
+### Sprint 3.2 — Adaptação de Imports e Correção de CFG Guards
+
+> **Gate de conclusão:** `cargo check --features testing 2>&1 | grep "^error"` → saída vazia. `cargo build --features testing` → zero warnings não tratados. `libnam_plug.so` gerada em `target/debug/`.
+
+- **Tarefa 3.2.1 — Remoção de CFG Guards `clap-plugin` Obsoletos:**
+  Grep: `grep -rn 'cfg(feature = "clap-plugin")' $DST/src/`.
+  Remover todos os guards encontrados (no NAM-Plug, o código CLAP é **incondicional**).
+  Em `src/clap/mod.rs`: `sed -i '/#\[cfg(feature = "clap-plugin")\]/d' src/clap/mod.rs` → resultado: `pub mod gui;` sem guard.
+  **Manter** `#[cfg(any(test, feature = "testing"))]` — esses continuam válidos.
+  Verificação: `grep "cfg.*clap-plugin" $DST/src/clap/mod.rs` → saída vazia.
+
+- **Tarefa 3.2.2 — Mapeamento e Substituição de Importações:**
+  Grep: `grep -rn "use crate::\(dsp\|models\|common\|math\|loader\|testing\|standalone\)::\|use nam_rs::" src/ | sort`.
+  Substituição em lote via `find src/ tests/ benches/ -name "*.rs" -exec sed -i 's/use crate::dsp::/use neural_amp_modeler_rs::dsp::/g; s/use crate::models::/use neural_amp_modeler_rs::models::/g; s/use crate::common::/use neural_amp_modeler_rs::common::/g; s/use crate::math::/use neural_amp_modeler_rs::math::/g; s/use crate::loader::/use neural_amp_modeler_rs::loader::/g; s/use crate::testing::/use neural_amp_modeler_rs::testing::/g; s/use nam_rs::/use neural_amp_modeler_rs::/g' {} \;`.
+  **⚠️ NÃO substituir:** `use crate::clap::` — são locais do NAM-Plug.
+  Verificar também paths qualificados: `grep -rn "nam_rs::" src/ tests/ benches/` → saída vazia após substituição.
+
+- **Tarefa 3.2.3 — Corrigir Visibilidade de APIs no `NeuralAmpModeler-rs`:**
+  `cargo check --features testing 2>&1 | grep "not found\|is private"`. Para cada tipo inacessível, promover `pub(crate)` → `pub` em `NeuralAmpModeler-rs`.
+  Itens mais prováveis: `dsp::pipeline::{DspPipelineContext, BridgeBuffer, apply_input_stage, run_inference}`, `dsp::oversample::OversampleEngine`, `common::spsc::{SHUTDOWN, GcItem}`.
+  **⚠️ Regra:** Commits no `NeuralAmpModeler-rs` devem ser feitos **antes** do commit no `NAM-Plug`.
+
+- **Tarefa 3.2.4 — Documentação e Scripts `utils/`:**
+  `cp $SRC/docs/{clap_integration.md, architecture.md, audio_fidelity_map.md} $DST/docs/`. Criar `docs/README.md` com descrição, build, instalação e uso.
+  `cp _lib.sh lints.sh tests-quick.sh build-release.sh` do staging.
+  **`lints.sh`:** substituir `nam_rs` → `nam_plug`; remover `--features standalone`/`clap-plugin`. Validar: `bash -n`.
+  **`tests-quick.sh`:** substituir identidade; remover blocos models/parity/perf_soak/loom; manter/adaptar blocos `--test clap`, `--test clap_e0_containment_test`, `--test clap_e2_proptest`. Validar: `bash -n`.
+  **`build-release.sh`:** substituir identidade; remover `--features standalone`/`--features clap-plugin`. Validar: `bash -n`.
+
+### Sprint 3.3 — Compilação Limpa, Zero Lints e Fechamento
+
+- **Tarefa 3.3.1 — Compilação Limpa:**
+  **A.** `cargo check --features testing` → zero erros.
+  **B.** `cargo check` (sem features) → zero erros (cdylib base).
+  **C.** `cargo build --release` → `target/release/libnam_plug.so` existe.
+  **D.** `file target/release/libnam_plug.so` → `ELF 64-bit LSB shared object, x86-64`.
+  **E.** `nm -D target/release/libnam_plug.so | grep "clap_entry"` → símbolo `T clap_entry` presente. Se ausente: `clack_export_entry!` não está em `lib.rs` — revisar Tarefa 3.1.2.
+
+- **Tarefa 3.3.2 — Zero Lints e SPDX:**
+  **A.** `bash utils/lints.sh` → zero erros/warnings, SPDX em todos os arquivos.
+  **B.** `grep -rL "SPDX-License-Identifier" src/ tests/ benches/ utils/` → saída vazia.
+  **C.** `cargo clippy --features testing -- -D warnings` → zero erros.
+  **D.** `cargo test --features testing --no-run` → zero erros de compilação de testes.
+  **E.** `cargo bench --no-run --features testing` → benchmark compila.
+
+- **Tarefa 3.3.3 — Pipeline de Qualidade Final e Commit:**
+  **A.** `bash utils/lints.sh` — zero erros/warnings.
+  **B.** `cargo build --release` — `libnam_plug.so` com `clap_entry` exportado.
+  **C.** `cargo test --no-run --features testing` — zero erros de compilação.
+  **D.** `grep -rL "SPDX-License-Identifier" src/` → saída vazia.
+  **E.** `git add -A && git commit` em `NAM-Plug` (mensagem de encerramento de épico).
+  **⚠️ Não dar push** — push somente no Épico 4.
