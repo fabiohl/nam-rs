@@ -9,38 +9,38 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > [!IMPORTANT]
 >
-> ### 🚀 O NAM-rs evoluiu! / NAM-rs has evolved into 3 specialized subprojects
+> ### 🚀 NAM-rs has evolved into 3 specialized subprojects
 >
-> O projeto monolítico **NAM-rs** passou por uma reorganização arquitetural e sofreu fork/divisão em **3 subprojetos especializados** que herdaram integralmente sua base de código, seus oráculos de paridade e seus objetivos de simulação de áudio em tempo real de altíssima fidelidade.
+> The monolithic **NAM-rs** project underwent an architectural reorganization and has been forked/split into **3 specialized subprojects** that fully inherited its codebase, parity test oracles, and ultra-high-fidelity real-time audio simulation goals.
 >
-> O desenvolvimento continua em pleno ritmo, com a mesma energia, foco aprimorado e arquitetura modular em cada uma das frentes:
+> Active development continues at full speed with the same energy, refined focus, and modular architecture across all fronts:
 >
-> 1. ⚙️ **[NeuralAmpModeler-rs](https://github.com/fabiohl/NeuralAmpModeler-rs)** — *Motor DSP Core & Biblioteca Rust*
->    - Núcleo de inferência neural em Rust puro (WaveNet A1/A2, LSTM, ConvNet, IR Cabinet).
->    - Kernels SIMD (AVX2 / AVX-512), RT-safety com zero alocação e oráculos de paridade matemática (`~1e-14`).
+> 1. ⚙️ **[NeuralAmpModeler-rs](https://github.com/fabiohl/NeuralAmpModeler-rs)** — *Core DSP Engine & Rust Library*
+>    - Pure Rust neural inference core (WaveNet A1/A2, LSTM, ConvNet, IR Cabinet).
+>    - SIMD kernels (AVX2 / AVX-512), zero-allocation RT safety, and mathematical parity oracles (`~1e-14`).
 >
-> 2. 🎛️ **[NAM-Plug](https://github.com/fabiohl/NAM-Plug)** — *Plugin de Áudio CLAP & Interface Gráfica (GUI)*
->    - Plugin no padrão CLAP para DAWs (Reaper, Bitwig, etc.) com interface gráfica rica em `egui`.
->    - Automação de parâmetros lock-free, oversampling anti-aliasing e integração completa com DAWs.
+> 2. 🎛️ **[NAM-Plug](https://github.com/fabiohl/NAM-Plug)** — *CLAP Audio Plugin & Graphical Interface (GUI)*
+>    - CLAP-standard plugin for DAWs (Reaper, Bitwig, etc.) featuring a rich `egui` user interface.
+>    - Lock-free parameter automation, anti-aliasing oversampling, and seamless DAW integration.
 >
-> 3. 🎚️ **[NAM-Audio-Pipe](https://github.com/fabiohl/NAM-Audio-Pipe)** — *Aplicação Standalone PipeWire*
->    - Cliente nativo Linux de ultra-baixa latência integrado diretamente ao servidor de áudio PipeWire.
->    - Agendamento em tempo real (`SCHED_FIFO`), afinidade de CPU e execução standalone determinística.
+> 3. 🎚️ **[NAM-Audio-Pipe](https://github.com/fabiohl/NAM-Audio-Pipe)** — *PipeWire Standalone Application*
+>    - Native Linux low-latency standalone client integrated directly into the PipeWire audio server.
+>    - Real-time scheduling (`SCHED_FIFO`), CPU core affinity, and deterministic execution.
 >
 > ---
-> **❤️‍🔥 O sonho continua! / The dream continues!**<br/>
-> Convidamos todos os usuários, colaboradores e entusiastas a acompanhar, utilizar e estrelar os novos repositórios sucessores.
+> **❤️‍🔥 The dream continues!**<br/>
+> We invite all users, contributors, and audio enthusiasts to follow, use, and star the new successor repositories.
 
 ---
 
-## 📜 Documentação Histórica / Legacy Monolithic Documentation (v3.1)
+## 📜 Legacy Monolithic Documentation (v3.1)
 
 > [!WARNING]
-> **Status:** ⚠️ *Desativado / Arquivado (Archived)*<br/>
-> O conteúdo abaixo é mantido exclusivamente para fins de consulta e registro histórico da versão monolítica do NAM-rs (v3.1). Para documentação atualizada, instruções de instalação e desenvolvimento ativo, consulte os repositórios dos projetos sucessores indicados acima.
+> **Status:** ⚠️ *Deactivated / Archived*<br/>
+> The content below is maintained exclusively for reference and historical recording of the legacy monolithic version of NAM-rs (v3.1). For updated documentation, installation instructions, and active development, please refer to the successor project repositories linked above.
 
-<details open>
-<summary><b>▼ Clique para expandir / recolher a documentação legada do NAM-rs v3.1</b></summary>
+<details>
+<summary><b>▼ Click to expand / collapse legacy NAM-rs v3.1 documentation</b></summary>
 
 ---
 
@@ -179,7 +179,7 @@ Run diagnostic self-checks or output support telemetry:
 
 - **Standalone:** `nam-rs --diagnose`
 - **CLAP Plugin:** Click **"Copy Diagnostic"** (`ℹ`) in the GUI status bar to copy telemetry to clipboard and `~/.cache/nam-rs/diagnostic-<timestamp>.txt`.
-- **Issue Reporting:** Paste the generated telemetry block into a GitHub Issue or submit it to the diagnostic assistant ([.agents/skills/diagnostico/SKILL.md](.agents/skills/diagnostico/SKILL.md)).
+- **Issue Reporting:** Paste the generated telemetry block into a GitHub Issue.
 
 ---
 
