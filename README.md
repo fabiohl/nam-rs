@@ -3,7 +3,48 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# 🎸 NAM-rs 3.1
+# 🎸 NAM-rs — Project Evolution & Transition Notice
+
+![Status: Evolved / Archived Monorepo](https://img.shields.io/badge/Status-Evolved%20%2F%20Archived-orange.svg) ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg)
+
+> [!IMPORTANT]
+>
+> ### 🚀 O NAM-rs evoluiu! / NAM-rs has evolved into 3 specialized subprojects
+>
+> O projeto monolítico **NAM-rs** passou por uma reorganização arquitetural e sofreu fork/divisão em **3 subprojetos especializados** que herdaram integralmente sua base de código, seus oráculos de paridade e seus objetivos de simulação de áudio em tempo real de altíssima fidelidade.
+>
+> O desenvolvimento continua em pleno ritmo, com a mesma energia, foco aprimorado e arquitetura modular em cada uma das frentes:
+>
+> 1. ⚙️ **[NeuralAmpModeler-rs](https://github.com/fabiohl/NeuralAmpModeler-rs)** — *Motor DSP Core & Biblioteca Rust*
+>    - Núcleo de inferência neural em Rust puro (WaveNet A1/A2, LSTM, ConvNet, IR Cabinet).
+>    - Kernels SIMD (AVX2 / AVX-512), RT-safety com zero alocação e oráculos de paridade matemática (`~1e-14`).
+>
+> 2. 🎛️ **[NAM-Plug](https://github.com/fabiohl/NAM-Plug)** — *Plugin de Áudio CLAP & Interface Gráfica (GUI)*
+>    - Plugin no padrão CLAP para DAWs (Reaper, Bitwig, etc.) com interface gráfica rica em `egui`.
+>    - Automação de parâmetros lock-free, oversampling anti-aliasing e integração completa com DAWs.
+>
+> 3. 🎚️ **[NAM-Audio-Pipe](https://github.com/fabiohl/NAM-Audio-Pipe)** — *Aplicação Standalone PipeWire*
+>    - Cliente nativo Linux de ultra-baixa latência integrado diretamente ao servidor de áudio PipeWire.
+>    - Agendamento em tempo real (`SCHED_FIFO`), afinidade de CPU e execução standalone determinística.
+>
+> ---
+> **❤️‍🔥 O sonho continua! / The dream continues!**<br/>
+> Convidamos todos os usuários, colaboradores e entusiastas a acompanhar, utilizar e estrelar os novos repositórios sucessores.
+
+---
+
+## 📜 Documentação Histórica / Legacy Monolithic Documentation (v3.1)
+
+> [!WARNING]
+> **Status:** ⚠️ *Desativado / Arquivado (Archived)*<br/>
+> O conteúdo abaixo é mantido exclusivamente para fins de consulta e registro histórico da versão monolítica do NAM-rs (v3.1). Para documentação atualizada, instruções de instalação e desenvolvimento ativo, consulte os repositórios dos projetos sucessores indicados acima.
+
+<details open>
+<summary><b>▼ Clique para expandir / recolher a documentação legada do NAM-rs v3.1</b></summary>
+
+---
+
+## 🎸 NAM-rs 3.1 (Legacy Monolith)
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
@@ -15,11 +56,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## ⚡ Why NAM-rs? Key Advantages
 
-* **Pure Rust & Zero-Allocation RT Safety:** Built from the ground up to guarantee zero heap allocations, zero locks, and zero blocking I/O on the audio thread. Thread promotion (`SCHED_FIFO`), lock-free SPSC queues, and CPU core affinity ensure rock-solid determinism under heavy real-time loads.
-* **Extremely Fast SIMD Inference:** Hand-crafted AVX2 (`x86-64-v3`) baseline vectorization and optional AVX-512 kernels deliver up to 45× speedups over scalar baselines. Even the most consuming .nam models keeps CPU consumption down to ~3% of a 1.33 ms real-time deadline on a cheap consumer CPU.
-* **Uncompromising Audio Parity:** Validated against three independent test oracles (canonical C++ NAMCore f32, double-precision f64 reference oracle, and Cross-ISA parity). WaveNet models achieve mathematical parity down to imperceptible levels (`~1e-14`), and LSTM models hit exact bit-level matches (`0.00e0`).
-* **Flexible Operating Modes:** Runs as a native PipeWire standalone client or as a CLAP plugin featuring an egui-powered GUI on popular DAWs such as Bitwig and Reaper. Supports both Live mode (zero added latency) and HQ/Offline render mode (24-stage polyphase FIR oversampling with >100 dB stopband rejection).
-* **Const-Generic Optimization:** Static WaveNet and LSTM variants leverage Rust const generics so kernel sizes and channel counts are known at compile time, enabling aggressive LLVM compiler optimization such as SIMD, instruction reordering and loop unrolling.
+- **Pure Rust & Zero-Allocation RT Safety:** Built from the ground up to guarantee zero heap allocations, zero locks, and zero blocking I/O on the audio thread. Thread promotion (`SCHED_FIFO`), lock-free SPSC queues, and CPU core affinity ensure rock-solid determinism under heavy real-time loads.
+- **Extremely Fast SIMD Inference:** Hand-crafted AVX2 (`x86-64-v3`) baseline vectorization and optional AVX-512 kernels deliver up to 45× speedups over scalar baselines. Even the most consuming .nam models keeps CPU consumption down to ~3% of a 1.33 ms real-time deadline on a cheap consumer CPU.
+- **Uncompromising Audio Parity:** Validated against three independent test oracles (canonical C++ NAMCore f32, double-precision f64 reference oracle, and Cross-ISA parity). WaveNet models achieve mathematical parity down to imperceptible levels (`~1e-14`), and LSTM models hit exact bit-level matches (`0.00e0`).
+- **Flexible Operating Modes:** Runs as a native PipeWire standalone client or as a CLAP plugin featuring an egui-powered GUI on popular DAWs such as Bitwig and Reaper. Supports both Live mode (zero added latency) and HQ/Offline render mode (24-stage polyphase FIR oversampling with >100 dB stopband rejection).
+- **Const-Generic Optimization:** Static WaveNet and LSTM variants leverage Rust const generics so kernel sizes and channel counts are known at compile time, enabling aggressive LLVM compiler optimization such as SIMD, instruction reordering and loop unrolling.
 
 ---
 
@@ -27,14 +68,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 NAM-rs natively supports Neural Amp Modeler (A1 and A2 architectures), ConvNet topologies, and Impulse Response (`.wav`) convolution files.
 
-* **Const-Generic Profiles (Static Mode — Maximum Performance):** Compile-time sized structures for peak execution speed.
-  * **WaveNet A1:** Standard (16 channels), Lite (12 channels), Feather (8 channels), and Nano (4 channels)
-  * **WaveNet A2:** Full (8 channels) and Lite (3 channels)
-  * **LSTM:** 1 and 2 Layers (Hidden Size 3 to 40: `1×3`, `1×8`, `1×12`, `1×16`, `1×24`, `1×40`, `2×8`, `2×12`, `2×16`, `2×24`)
-  * **Linear:** FIR-based model (dot product of input history with weights + bias or Partitioned FFT convolution)
-* **Dynamic Fallback Profiles (Free-Shape Mode):**
-  * **WaveNet Dyn**, **LSTM Dyn**, **WaveNet A2 Dyn / Cascade**, and **ConvNet**: Runtime-dimensioned topologies executing with guaranteed real-time safety.
-  * **Slimmable Container:** Bundles multiple submodels for dynamic quality transitions.
+- **Const-Generic Profiles (Static Mode — Maximum Performance):** Compile-time sized structures for peak execution speed.
+  - **WaveNet A1:** Standard (16 channels), Lite (12 channels), Feather (8 channels), and Nano (4 channels)
+  - **WaveNet A2:** Full (8 channels) and Lite (3 channels)
+  - **LSTM:** 1 and 2 Layers (Hidden Size 3 to 40: `1×3`, `1×8`, `1×12`, `1×16`, `2×24`, `1×40`, `2×8`, `2×12`, `2×16`, `2×24`)
+  - **Linear:** FIR-based model (dot product of input history with weights + bias or Partitioned FFT convolution)
+- **Dynamic Fallback Profiles (Free-Shape Mode):**
+  - **WaveNet Dyn**, **LSTM Dyn**, **WaveNet A2 Dyn / Cascade**, and **ConvNet**: Runtime-dimensioned topologies executing with guaranteed real-time safety.
+  - **Slimmable Container:** Bundles multiple submodels for dynamic quality transitions.
 
 ---
 
@@ -54,9 +95,9 @@ NAM-rs adopts an opinionated design focused on four core pillars:
 
 Our automated Quality Dashboard ensures top-tier performance without sacrificing audio fidelity:
 
-* **Zero-Compromise Fidelity:** Bit-exact parity with canonical NAMCore C++. WaveNet models match within numerical precision (`~1e-14`), and BossLSTM models achieve an exact `0.00e0` error score.
-* **Extreme CPU Headroom:** A full WaveNet Standard CH16 model processes a 64-sample block in just **42 µs**—consuming only **3.1%** of a strict 1.33 ms real-time deadline in consumer cheap CPUs. Light models like LSTM 1x16 consume under **0.6%**.
-* **Rock-Solid Stability:** Stress tests confirm the Lock-Free SPSC architecture withstands over 1,000 concurrent model hot-swaps under heavy load with zero heap allocations on the audio thread and no clicks or dropouts.
+- **Zero-Compromise Fidelity:** Bit-exact parity with canonical NAMCore C++. WaveNet models match within numerical precision (`~1e-14`), and BossLSTM models achieve an exact `0.00e0` error score.
+- **Extreme CPU Headroom:** A full WaveNet Standard CH16 model processes a 64-sample block in just **42 µs**—consuming only **3.1%** of a strict 1.33 ms real-time deadline in consumer cheap CPUs. Light models like LSTM 1x16 consume under **0.6%**.
+- **Rock-Solid Stability:** Stress tests confirm the Lock-Free SPSC architecture withstands over 1,000 concurrent model hot-swaps under heavy load with zero heap allocations on the audio thread and no clicks or dropouts.
 
 ---
 
@@ -64,20 +105,20 @@ Our automated Quality Dashboard ensures top-tier performance without sacrificing
 
 ### Prerequisites
 
-* **OS & Kernel:** Modern Linux distribution with PipeWire audio server (nam-rs was developed and tested on Ubuntu 25.10 / 26.04).
-* **CPU:** `x86-64-v3` processor with AVX2 and FMA support (Intel Haswell 2013+, AMD Excavator 2015+; 2019+ CPUs recommended).
-* **Toolchain:** Rust 1.85+ (`rustup`/`cargo`).
-* **Development Packages:**
+- **OS & Kernel:** Modern Linux distribution with PipeWire audio server (nam-rs was developed and tested on Ubuntu 25.10 / 26.04).
+- **CPU:** `x86-64-v3` processor with AVX2 and FMA support (Intel Haswell 2013+, AMD Excavator 2015+; 2019+ CPUs recommended).
+- **Toolchain:** Rust 1.85+ (`rustup`/`cargo`).
+- **Development Packages:**
   `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph vlc ffmpeg libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) llvm-22-tools jq ripgrep fd-find`
 
-* **Cargo Utilities:**
-  * `cargo install cargo-edit`
-  * `cargo install --git https://github.com/free-audio/clap-validator.git`
-  * `cargo install cargo-pgo`
-  * `cargo install cargo-show-asm`
-  * `rustup component add llvm-tools-preview`
+- **Cargo Utilities:**
+  - `cargo install cargo-edit`
+  - `cargo install --git https://github.com/free-audio/clap-validator.git`
+  - `cargo install cargo-pgo`
+  - `cargo install cargo-show-asm`
+  - `rustup component add llvm-tools-preview`
 
-* **System Real-Time Configuration:**
+- **System Real-Time Configuration:**
   1. Add your user to the `audio` group: `sudo usermod -aG audio $USER`
   2. Configure real-time limits in `/etc/security/limits.d/audio.conf`:
 
@@ -136,27 +177,27 @@ The CLAP plugin GUI presents an **Oversampling** control (**Off** | **2×** | **
 
 Run diagnostic self-checks or output support telemetry:
 
-* **Standalone:** `nam-rs --diagnose`
-* **CLAP Plugin:** Click **"Copy Diagnostic"** (`ℹ`) in the GUI status bar to copy telemetry to clipboard and `~/.cache/nam-rs/diagnostic-<timestamp>.txt`.
-* **Issue Reporting:** Paste the generated telemetry block into a GitHub Issue or submit it to the diagnostic assistant ([.agents/skills/diagnostico/SKILL.md](.agents/skills/diagnostico/SKILL.md)).
+- **Standalone:** `nam-rs --diagnose`
+- **CLAP Plugin:** Click **"Copy Diagnostic"** (`ℹ`) in the GUI status bar to copy telemetry to clipboard and `~/.cache/nam-rs/diagnostic-<timestamp>.txt`.
+- **Issue Reporting:** Paste the generated telemetry block into a GitHub Issue or submit it to the diagnostic assistant ([.agents/skills/diagnostico/SKILL.md](.agents/skills/diagnostico/SKILL.md)).
 
 ---
 
 ## 📚 Documentation & Technical References
 
-* [docs/architecture.md](docs/architecture.md) — Comprehensive architecture specification, thread model, and module taxonomy
-* [docs/audio_fidelity_map.md](docs/audio_fidelity_map.md) — Quality trade-off map for DSP decisions (activations, oversampling, adaptive compute)
-* [docs/fastmath-approximations.md](docs/fastmath-approximations.md) — Tanh/sigmoid approximation benchmarks and math details
-* [docs/clap_integration.md](docs/clap_integration.md) — CLAP thread model, lock-free GC, and GUI implementation
-* [docs/namb-spec.md](docs/namb-spec.md) — Binary `.namb` container spec and CRC32 layout
-* [docs/testing.md](docs/testing.md) — Test suite layout, execution phases, and verification rules
-* [docs/perceptual_validation.md](docs/perceptual_validation.md) — Perceptual measurement framework (ESR, MR-STFT, ASR, LUFS)
-* [docs/cpp_parity_map.md](docs/cpp_parity_map.md) — Line-by-line parity audit against NeuralAmpModelerCore
-* [docs/benchmarks.md](docs/benchmarks.md) — Criterion benchmark methodology and performance regression gates
-* [docs/research-references.md](docs/research-references.md) — Scientific literature and DSP reference bibliography
-* [docs/functional-tests.md](docs/functional-tests.md) — Manual QA checklist for CLAP plugin verification
-* [docs/postmortem-libm-symbol-interposition.md](docs/postmortem-libm-symbol-interposition.md) — Analysis of initialization symbol interposition resolution
-* [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector formats and stress signal generation instructions
+- [docs/architecture.md](docs/architecture.md) — Comprehensive architecture specification, thread model, and module taxonomy
+- [docs/audio_fidelity_map.md](docs/audio_fidelity_map.md) — Quality trade-off map for DSP decisions (activations, oversampling, adaptive compute)
+- [docs/fastmath-approximations.md](docs/fastmath-approximations.md) — Tanh/sigmoid approximation benchmarks and math details
+- [docs/clap_integration.md](docs/clap_integration.md) — CLAP thread model, lock-free GC, and GUI implementation
+- [docs/namb-spec.md](docs/namb-spec.md) — Binary `.namb` container spec and CRC32 layout
+- [docs/testing.md](docs/testing.md) — Test suite layout, execution phases, and verification rules
+- [docs/perceptual_validation.md](docs/perceptual_validation.md) — Perceptual measurement framework (ESR, MR-STFT, ASR, LUFS)
+- [docs/cpp_parity_map.md](docs/cpp_parity_map.md) — Line-by-line parity audit against NeuralAmpModelerCore
+- [docs/benchmarks.md](docs/benchmarks.md) — Criterion benchmark methodology and performance regression gates
+- [docs/research-references.md](docs/research-references.md) — Scientific literature and DSP reference bibliography
+- [docs/functional-tests.md](docs/functional-tests.md) — Manual QA checklist for CLAP plugin verification
+- [docs/postmortem-libm-symbol-interposition.md](docs/postmortem-libm-symbol-interposition.md) — Analysis of initialization symbol interposition resolution
+- [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector formats and stress signal generation instructions
 
 ---
 
@@ -195,16 +236,16 @@ python3 utils/check-model.py path/to/model.nam
 
 Contributions, feedback, and real-world testing are warmly welcomed!
 
-* **Test Models:** Try your favorite `.nam` models and IR files and let us know your experience.
-* **Report Issues:** Submit detailed bug reports or feature suggestions on GitHub.
-* **Code & Docs:** Pull requests for optimizations, bug fixes, or documentation enhancements are welcome.
+- **Test Models:** Try your favorite `.nam` models and IR files and let us know your experience.
+- **Report Issues:** Submit detailed bug reports or feature suggestions on GitHub.
+- **Code & Docs:** Pull requests for optimizations, bug fixes, or documentation enhancements are welcome.
 
 ---
 
 ## 🙏 Credits & Acknowledgments
 
-* **Steven Atkinson** — Creator of [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler) for pioneering deep learning amplifier modeling and sharing the ecosystem with the community.
-* **Mike Oliphant** — Author of [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio), this codebase provided invaluable insight into WaveNet inference in the nam-rs birth.
+- **Steven Atkinson** — Creator of [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler) for pioneering deep learning amplifier modeling and sharing the ecosystem with the community.
+- **Mike Oliphant** — Author of [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio), this codebase provided invaluable insight into WaveNet inference in the nam-rs birth.
 
 ---
 
@@ -217,3 +258,5 @@ The architecture, core engineering decisions, mathematical verification framewor
 ### License
 
 This project is licensed under the **Apache License, Version 2.0**. See [LICENSE.txt](LICENSE.txt) for details.
+
+</details>
